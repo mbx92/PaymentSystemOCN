@@ -1,0 +1,486 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\ERP\Accounting\Models\Account;
+use App\ERP\Accounting\Models\Payable;
+use App\ERP\Accounting\Services\GlPostingService;
+use App\ERP\Purchasing\Models\GoodsReceipt;
+use App\ERP\Purchasing\Models\PurchaseOrder;
+use App\ERP\Purchasing\Models\Vendor;
+use App\ERP\Shared\Enums\DocumentStatus;
+use App\ERP\Shared\Services\ErpSystemLogger;
+use App\Models\MasterProduct;
+use App\Models\ProductStockMovement;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class ERPPurchasingController extends Controller
+{
+    public function __construct(
+        private readonly GlPostingService $glPostingService,
+        private readonly ErpSystemLogger $systemLogger,
+    ) {}
+
+    public function suppliers(Request $request): Response
+    {
+        $query = Vendor::query()->orderBy('name');
+        if ($request->filled('q')) {
+            $q = $request->string('q')->toString();
+            $query->where(fn ($inner) => $inner
+                ->where('code', 'like', '%'.$q.'%')
+                ->orWhere('name', 'like', '%'.$q.'%')
+                ->orWhere('phone', 'like', '%'.$q.'%'));
+        }
+        if ($request->filled('status')) {
+            $query->where('is_active', $request->string('status')->toString() === 'active');
+        }
+
+        return Inertia::render('ERP/Purchasing/Suppliers', [
+            'suppliers' => $query
+                ->get()
+                ->map(fn (Vendor $vendor) => [
+                    'code' => $vendor->code,
+                    'name' => $vendor->name,
+                    'phone' => $vendor->phone,
+                    'lead_time_days' => (int) ($vendor->lead_time_days ?? 7),
+                    'status' => $vendor->is_active ? 'active' : 'void',
+                ]),
+            'highlight' => $request->query('highlight'),
+            'filters' => $request->only(['q', 'status']),
+        ]);
+    }
+
+    public function storeSupplier(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:120',
+            'email' => 'nullable|email|max:120',
+            'phone' => 'nullable|string|max:40',
+            'address' => 'nullable|string',
+            'tax_id' => 'nullable|string|max:64',
+            'payment_terms' => 'nullable|string|max:40',
+            'lead_time_days' => 'required|integer|min:1|max:365',
+        ]);
+
+        $code = 'SUP-'.str_pad((string) (Vendor::query()->count() + 1), 3, '0', STR_PAD_LEFT);
+        while (Vendor::query()->where('code', $code)->exists()) {
+            $code = 'SUP-'.str_pad((string) random_int(100, 999), 3, '0', STR_PAD_LEFT);
+        }
+
+        Vendor::query()->create([
+            ...$validated,
+            'code' => $code,
+            'is_active' => true,
+        ]);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Supplier baru berhasil ditambahkan.']);
+    }
+
+    public function supplierShow(Vendor $supplier): Response
+    {
+        return Inertia::render('ERP/Purchasing/SupplierShow', [
+            'detail' => [
+                'code' => $supplier->code,
+                'name' => $supplier->name,
+                'phone' => $supplier->phone,
+                'email' => $supplier->email,
+                'address' => $supplier->address,
+                'tax_id' => $supplier->tax_id,
+                'lead_time_days' => (int) ($supplier->lead_time_days ?? 7),
+                'status' => $supplier->is_active ? 'active' : 'void',
+                'payment_terms' => $supplier->payment_terms ?? 'Net 14',
+                'notes' => $supplier->notes,
+            ],
+        ]);
+    }
+
+    public function purchaseOrders(Request $request): Response
+    {
+        $query = PurchaseOrder::query()
+            ->with('vendor')
+            ->orderByDesc('order_date')
+            ->orderByDesc('id');
+
+        if ($request->filled('supplier')) {
+            $query->whereHas('vendor', fn ($q) => $q->where('code', $request->string('supplier')));
+        }
+        if ($request->filled('status')) {
+            $query->where('status', $request->string('status')->toString());
+        }
+        if ($request->filled('q')) {
+            $q = $request->string('q')->toString();
+            $query->where(function ($inner) use ($q): void {
+                $inner->where('number', 'like', '%'.$q.'%')
+                    ->orWhereHas('vendor', fn ($v) => $v->where('name', 'like', '%'.$q.'%'));
+            });
+        }
+
+        return Inertia::render('ERP/Purchasing/PurchaseOrders', [
+            'purchaseOrders' => $query->get()->map(fn (PurchaseOrder $po) => [
+                'number' => $po->number,
+                'supplier' => $po->vendor?->name,
+                'supplier_code' => $po->vendor?->code,
+                'eta' => $po->eta_date?->toDateString(),
+                'amount' => (float) $po->total_amount,
+                'status' => $po->status->value,
+            ]),
+            'supplierFilter' => $request->query('supplier'),
+            'filters' => $request->only(['supplier', 'status', 'q']),
+            'suppliers' => Vendor::query()->orderBy('name')->get(['code', 'name']),
+        ]);
+    }
+
+    public function storePurchaseOrder(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'vendor_code' => 'required|string|exists:vendors,code',
+            'eta_date' => 'nullable|date',
+            'order_date' => 'required|date',
+            'notes' => 'nullable|string',
+            'product_id' => 'required|integer|exists:master_products,id',
+            'qty' => 'required|numeric|min:0.01',
+            'unit_price' => 'required|numeric|min:0.01',
+        ]);
+
+        $vendor = Vendor::query()->where('code', $validated['vendor_code'])->firstOrFail();
+        $product = MasterProduct::query()->findOrFail($validated['product_id']);
+        $lineTotal = (float) $validated['qty'] * (float) $validated['unit_price'];
+
+        DB::transaction(function () use ($validated, $vendor, $product, $lineTotal): void {
+            $number = 'PO-'.now()->format('Ymd-His').'-'.random_int(10, 99);
+            $po = PurchaseOrder::query()->create([
+                'number' => $number,
+                'vendor_id' => $vendor->id,
+                'order_date' => $validated['order_date'],
+                'eta_date' => $validated['eta_date'] ?? null,
+                'total_amount' => $lineTotal,
+                'status' => DocumentStatus::Draft,
+                'notes' => $validated['notes'] ?? null,
+            ]);
+
+            $po->lines()->create([
+                'master_product_id' => $product->id,
+                'qty' => $validated['qty'],
+                'unit_price' => $validated['unit_price'],
+                'line_total' => $lineTotal,
+            ]);
+        });
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Purchase Order berhasil ditambahkan.']);
+    }
+
+    public function purchaseOrderShow(PurchaseOrder $purchaseOrder): Response
+    {
+        $purchaseOrder->load(['vendor', 'lines.product']);
+
+        return Inertia::render('ERP/Purchasing/PurchaseOrderShow', [
+            'detail' => [
+                'number' => $purchaseOrder->number,
+                'supplier_code' => $purchaseOrder->vendor?->code,
+                'supplier_name' => $purchaseOrder->vendor?->name,
+                'eta' => $purchaseOrder->eta_date?->toDateString(),
+                'amount' => (float) $purchaseOrder->total_amount,
+                'status' => $purchaseOrder->status->value,
+                'created_at' => $purchaseOrder->order_date?->toDateString(),
+                'lines' => $purchaseOrder->lines->map(fn ($line) => [
+                    'sku' => $line->product?->sku,
+                    'name' => $line->product?->name,
+                    'qty' => (float) $line->qty,
+                    'uom' => $line->product?->uom,
+                    'unit_price' => (float) $line->unit_price,
+                    'subtotal' => (float) $line->line_total,
+                ]),
+            ],
+        ]);
+    }
+
+    public function goodsReceipts(Request $request): Response
+    {
+        $query = GoodsReceipt::query()
+            ->with('purchaseOrder')
+            ->orderByDesc('received_date')
+            ->orderByDesc('id');
+
+        if ($request->filled('po')) {
+            $query->whereHas('purchaseOrder', fn ($q) => $q->where('number', $request->string('po')));
+        }
+        if ($request->filled('status')) {
+            $query->where('status', $request->string('status')->toString());
+        }
+        if ($request->filled('q')) {
+            $q = $request->string('q')->toString();
+            $query->where(function ($inner) use ($q): void {
+                $inner->where('number', 'like', '%'.$q.'%')
+                    ->orWhereHas('purchaseOrder', fn ($po) => $po->where('number', 'like', '%'.$q.'%'));
+            });
+        }
+
+        return Inertia::render('ERP/Purchasing/GoodsReceipts', [
+            'receipts' => $query->get()->map(fn (GoodsReceipt $receipt) => [
+                'number' => $receipt->number,
+                'po_number' => $receipt->purchaseOrder?->number,
+                'received_date' => $receipt->received_date?->toDateString(),
+                'items' => $receipt->lines()->count(),
+                'status' => $receipt->status->value,
+            ]),
+            'poFilter' => $request->query('po'),
+            'filters' => $request->only(['po', 'status', 'q']),
+            'purchaseOrders' => PurchaseOrder::query()->orderByDesc('order_date')->get(['number']),
+        ]);
+    }
+
+    public function storeGoodsReceipt(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'purchase_order_number' => 'required|string|exists:purchase_orders,number',
+            'received_date' => 'required|date',
+            'warehouse_name' => 'required|string|max:120',
+            'status' => 'required|in:approved,posted',
+        ]);
+
+        $purchaseOrder = PurchaseOrder::query()
+            ->with('lines')
+            ->where('number', $validated['purchase_order_number'])
+            ->firstOrFail();
+
+        DB::transaction(function () use ($validated, $purchaseOrder): void {
+            $number = 'GRN-'.now()->format('Ymd-His').'-'.random_int(10, 99);
+            $receipt = GoodsReceipt::query()->create([
+                'number' => $number,
+                'purchase_order_id' => $purchaseOrder->id,
+                'received_date' => $validated['received_date'],
+                'warehouse_name' => $validated['warehouse_name'],
+                'status' => $validated['status'],
+            ]);
+
+            foreach ($purchaseOrder->lines as $line) {
+                $receipt->lines()->create([
+                    'master_product_id' => $line->master_product_id,
+                    'qty_received' => $line->qty,
+                ]);
+            }
+        });
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Penerimaan barang berhasil ditambahkan.']);
+    }
+
+    public function goodsReceiptShow(GoodsReceipt $goodsReceipt): Response
+    {
+        $goodsReceipt->load(['purchaseOrder', 'lines.product']);
+
+        return Inertia::render('ERP/Purchasing/GoodsReceiptShow', [
+            'detail' => [
+                'number' => $goodsReceipt->number,
+                'po_number' => $goodsReceipt->purchaseOrder?->number,
+                'received_date' => $goodsReceipt->received_date?->toDateString(),
+                'warehouse' => $goodsReceipt->warehouse_name,
+                'status' => $goodsReceipt->status->value,
+                'lines' => $goodsReceipt->lines->map(fn ($line) => [
+                    'sku' => $line->product?->sku,
+                    'name' => $line->product?->name,
+                    'qty_received' => (float) $line->qty_received,
+                    'uom' => $line->product?->uom,
+                ]),
+            ],
+        ]);
+    }
+
+    public function reorderPlanning(Request $request): Response
+    {
+        $products = MasterProduct::query()
+            ->when($request->filled('q'), fn ($q) => $q->where('name', 'like', '%'.$request->string('q')->toString().'%')
+                ->orWhere('sku', 'like', '%'.$request->string('q')->toString().'%'))
+            ->orderBy('name')
+            ->get();
+
+        $reorderSuggestions = $products
+            ->map(function (MasterProduct $item) {
+                $dailyUsage = $item->total_sold > 0 ? $item->total_sold / 30 : 0;
+                $leadDemand = (int) ceil($dailyUsage * max($item->lead_time_days, 1));
+                $targetStock = $item->min_stock + $leadDemand;
+                $suggestedQty = max($targetStock - $item->stock, 0);
+
+                return [
+                    'id' => $item->id,
+                    'sku' => $item->sku,
+                    'name' => $item->name,
+                    'stock' => $item->stock,
+                    'min_stock' => $item->min_stock,
+                    'lead_time_days' => $item->lead_time_days,
+                    'total_sold' => $item->total_sold,
+                    'suggested_qty' => $suggestedQty,
+                ];
+            })
+            ->filter(fn (array $row) => $row['suggested_qty'] > 0)
+            ->sortByDesc('suggested_qty')
+            ->take(20)
+            ->values();
+
+        return Inertia::render('ERP/Purchasing/ReorderPlanning', [
+            'reorderSuggestions' => $reorderSuggestions,
+            'filters' => $request->only(['q']),
+        ]);
+    }
+
+    public function reorderShow(MasterProduct $masterProduct): Response
+    {
+        $item = $masterProduct;
+        $dailyUsage = $item->total_sold > 0 ? $item->total_sold / 30 : 0;
+        $leadDemand = (int) ceil($dailyUsage * max($item->lead_time_days, 1));
+        $targetStock = $item->min_stock + $leadDemand;
+        $suggestedQty = max($targetStock - $item->stock, 0);
+
+        $detail = [
+            'id' => $item->id,
+            'sku' => $item->sku,
+            'name' => $item->name,
+            'stock' => $item->stock,
+            'min_stock' => $item->min_stock,
+            'lead_time_days' => $item->lead_time_days,
+            'total_sold' => $item->total_sold,
+            'uom' => $item->uom,
+            'suggested_qty' => $suggestedQty,
+            'target_stock' => $targetStock,
+            'daily_usage_est' => round($dailyUsage, 2),
+        ];
+
+        return Inertia::render('ERP/Purchasing/ReorderShow', [
+            'detail' => $detail,
+        ]);
+    }
+
+    public function advancePurchaseOrder(Request $request, string $purchaseOrder): RedirectResponse
+    {
+        $po = PurchaseOrder::query()->where('number', $purchaseOrder)->firstOrFail();
+
+        $action = $request->input('action', 'submit');
+        $status = $po->status->value;
+
+        if ($action === 'submit' && $status === DocumentStatus::Draft->value) {
+            $po->update([
+                'status' => DocumentStatus::Approved,
+                'approved_at' => now(),
+                'approved_by' => Auth::id(),
+            ]);
+
+            $this->systemLogger->info('purchasing.po.approved', 'PO approved', [
+                'user_id' => Auth::id(),
+                'path' => $request->path(),
+                'method' => $request->method(),
+                'po_number' => $po->number,
+            ]);
+
+            return redirect()
+                ->route('erp.purchasing.purchase-orders.show', $purchaseOrder)
+                ->with('flash', ['type' => 'success', 'message' => 'PO diajukan dan disetujui.']);
+        }
+
+        if ($action === 'void' && in_array($status, [DocumentStatus::Draft->value, DocumentStatus::Approved->value], true)) {
+            $po->update([
+                'status' => DocumentStatus::Void,
+            ]);
+
+            $this->systemLogger->warning('purchasing.po.void', 'PO voided', [
+                'user_id' => Auth::id(),
+                'path' => $request->path(),
+                'method' => $request->method(),
+                'po_number' => $po->number,
+            ]);
+
+            return redirect()
+                ->route('erp.purchasing.purchase-orders.show', $purchaseOrder)
+                ->with('flash', ['type' => 'warning', 'message' => 'PO dibatalkan.']);
+        }
+
+        return redirect()
+            ->route('erp.purchasing.purchase-orders.show', $purchaseOrder)
+            ->with('flash', ['type' => 'info', 'message' => 'Tidak ada perubahan status.']);
+    }
+
+    public function advanceGoodsReceipt(Request $request, string $goodsReceipt): RedirectResponse
+    {
+        $receipt = GoodsReceipt::query()
+            ->with(['purchaseOrder.vendor', 'lines.product'])
+            ->where('number', $goodsReceipt)
+            ->firstOrFail();
+
+        $action = $request->input('action', 'post_stock');
+        $status = $receipt->status->value;
+
+        if ($action === 'post_stock' && $status === DocumentStatus::Approved->value) {
+            DB::transaction(function () use ($receipt): void {
+                $receipt->update([
+                    'status' => DocumentStatus::Posted,
+                    'posted_at' => now(),
+                    'posted_by' => Auth::id(),
+                ]);
+
+                foreach ($receipt->lines as $line) {
+                    $product = $line->product;
+                    if (! $product) {
+                        continue;
+                    }
+
+                    $product->increment('stock', (float) $line->qty_received);
+
+                    ProductStockMovement::query()->create([
+                        'master_product_id' => $product->id,
+                        'movement_date' => now()->toDateString(),
+                        'movement_type' => 'purchase_receipt',
+                        'qty' => $line->qty_received,
+                        'note' => 'Receipt '.$receipt->number,
+                    ]);
+                }
+
+                $inventoryAccount = Account::query()->where('code', '1201')->firstOrFail();
+                $payableAccount = Account::query()->where('code', '2001')->firstOrFail();
+                $amount = (float) $receipt->purchaseOrder->total_amount;
+
+                $entry = $this->glPostingService->post(
+                    sourceModule: 'purchasing',
+                    sourceReference: $receipt->number,
+                    description: 'Posting penerimaan barang '.$receipt->number,
+                    entryDate: $receipt->received_date->toDateString(),
+                    lines: [
+                        ['account_id' => $inventoryAccount->id, 'debit' => $amount, 'credit' => 0],
+                        ['account_id' => $payableAccount->id, 'debit' => 0, 'credit' => $amount],
+                    ]
+                );
+
+                Payable::query()->create([
+                    'vendor_id' => $receipt->purchaseOrder->vendor_id,
+                    'purchase_order_id' => $receipt->purchase_order_id,
+                    'goods_receipt_id' => $receipt->id,
+                    'bill_no' => 'BILL-'.$receipt->number,
+                    'bill_date' => $receipt->received_date->toDateString(),
+                    'due_date' => $receipt->received_date->copy()->addDays(14)->toDateString(),
+                    'amount' => $amount,
+                    'paid_amount' => 0,
+                    'status' => DocumentStatus::Posted,
+                    'journal_entry_id' => $entry->id,
+                ]);
+            });
+
+            $this->systemLogger->info('purchasing.grn.posted', 'Goods receipt posted to stock and AP', [
+                'user_id' => Auth::id(),
+                'path' => $request->path(),
+                'method' => $request->method(),
+                'receipt_number' => $receipt->number,
+                'purchase_order' => $receipt->purchaseOrder?->number,
+            ]);
+
+            return redirect()
+                ->route('erp.purchasing.goods-receipts.show', $goodsReceipt)
+                ->with('flash', ['type' => 'success', 'message' => 'Penerimaan diposting ke stok dan hutang usaha.']);
+        }
+
+        return redirect()
+            ->route('erp.purchasing.goods-receipts.show', $goodsReceipt)
+            ->with('flash', ['type' => 'info', 'message' => 'Tidak ada perubahan status.']);
+    }
+}

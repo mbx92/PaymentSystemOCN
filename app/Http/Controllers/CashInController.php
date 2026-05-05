@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\ERP\Accounting\Models\Account;
+use App\ERP\Accounting\Services\GlPostingService;
+use App\ERP\Shared\Enums\DocumentStatus;
 use App\Models\CashIn;
 use App\Models\Project;
 use Illuminate\Http\Request;
@@ -11,6 +14,8 @@ use Inertia\Inertia;
 
 class CashInController extends Controller
 {
+    public function __construct(private readonly GlPostingService $glPostingService) {}
+
     public function index(Request $request)
     {
         $query = CashIn::with('project', 'creator')
@@ -26,22 +31,24 @@ class CashInController extends Controller
 
         $cashIns = $query->latest('date')->paginate(15)->withQueryString()
             ->through(fn ($c) => [
-                'id'           => $c->id,
+                'id' => $c->id,
                 'project_name' => $c->project->name,
-                'category'     => $c->category,
-                'amount'       => (float) $c->amount,
-                'date'         => $c->date->format('Y-m-d'),
-                'note'         => $c->note,
+                'category' => $c->category,
+                'amount' => (float) $c->amount,
+                'date' => $c->date->format('Y-m-d'),
+                'note' => $c->note,
                 'creator_name' => $c->creator->name,
+                'document_status' => $c->document_status,
+                'journal_entry_id' => $c->journal_entry_id,
             ]);
 
         $projects = Project::orderBy('name')->get(['id', 'name']);
 
         return Inertia::render('CashIn/Index', [
-            'cashIns'  => $cashIns,
-            'total'    => $total,
+            'cashIns' => $cashIns,
+            'total' => $total,
             'projects' => $projects,
-            'filters'  => $request->only(['project_id', 'category', 'date_from', 'date_to']),
+            'filters' => $request->only(['project_id', 'category', 'date_from', 'date_to']),
         ]);
     }
 
@@ -49,14 +56,35 @@ class CashInController extends Controller
     {
         $validated = $request->validate([
             'project_id' => 'required|uuid|exists:projects,id',
-            'category'   => 'required|in:pendapatan_jasa,lainnya',
-            'amount'     => 'required|numeric|min:1',
-            'date'       => 'required|date',
-            'note'       => 'nullable|string',
+            'category' => 'required|in:pendapatan_jasa,lainnya',
+            'amount' => 'required|numeric|min:1',
+            'date' => 'required|date',
+            'note' => 'nullable|string',
         ]);
 
         $validated['created_by'] = Auth::id();
-        CashIn::create($validated);
+        $validated['document_status'] = DocumentStatus::Posted->value;
+        $validated['approved_at'] = now();
+        $validated['approved_by'] = Auth::id();
+        $validated['posted_at'] = now();
+        $validated['posted_by'] = Auth::id();
+        $cashIn = CashIn::create($validated);
+
+        $cashAccount = Account::query()->where('code', '1001')->firstOrFail();
+        $revenueAccount = Account::query()->where('code', '4001')->firstOrFail();
+
+        $entry = $this->glPostingService->post(
+            sourceModule: 'cash_in',
+            sourceReference: (string) $cashIn->id,
+            description: 'Kas masuk proyek '.$cashIn->project_id,
+            entryDate: $validated['date'],
+            lines: [
+                ['account_id' => $cashAccount->id, 'debit' => $validated['amount'], 'credit' => 0],
+                ['account_id' => $revenueAccount->id, 'debit' => 0, 'credit' => $validated['amount']],
+            ]
+        );
+
+        $cashIn->update(['journal_entry_id' => $entry->id]);
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Kas masuk berhasil ditambahkan.']);
     }
@@ -65,10 +93,10 @@ class CashInController extends Controller
     {
         $validated = $request->validate([
             'project_id' => 'required|uuid|exists:projects,id',
-            'category'   => 'required|in:pendapatan_jasa,lainnya',
-            'amount'     => 'required|numeric|min:1',
-            'date'       => 'required|date',
-            'note'       => 'nullable|string',
+            'category' => 'required|in:pendapatan_jasa,lainnya',
+            'amount' => 'required|numeric|min:1',
+            'date' => 'required|date',
+            'note' => 'nullable|string',
         ]);
 
         $cashIn->update($validated);
@@ -79,6 +107,7 @@ class CashInController extends Controller
     public function destroy(CashIn $cashIn)
     {
         $cashIn->delete();
+
         return back()->with('flash', ['type' => 'success', 'message' => 'Kas masuk berhasil dihapus.']);
     }
 }

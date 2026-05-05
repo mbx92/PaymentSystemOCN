@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\ERP\Shared\Concerns\Auditable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -9,7 +10,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Project extends Model
 {
-    use HasFactory, HasUuids, SoftDeletes;
+    use Auditable, HasFactory, HasUuids, SoftDeletes;
 
     protected $fillable = [
         'name',
@@ -17,6 +18,11 @@ class Project extends Model
         'client_contact',
         'total_value',
         'status',
+        'document_status',
+        'approved_at',
+        'approved_by',
+        'posted_at',
+        'posted_by',
         'started_at',
         'finished_at',
         'description',
@@ -24,7 +30,9 @@ class Project extends Model
 
     protected $casts = [
         'total_value' => 'decimal:2',
-        'started_at'  => 'date',
+        'approved_at' => 'datetime',
+        'posted_at' => 'datetime',
+        'started_at' => 'date',
         'finished_at' => 'date',
     ];
 

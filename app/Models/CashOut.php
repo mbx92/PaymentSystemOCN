@@ -2,12 +2,13 @@
 
 namespace App\Models;
 
+use App\ERP\Shared\Concerns\Auditable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 
 class CashOut extends Model
 {
-    use HasUuids;
+    use Auditable, HasUuids;
 
     protected $table = 'cash_out';
 
@@ -15,6 +16,12 @@ class CashOut extends Model
         'project_id',
         'category',
         'amount',
+        'document_status',
+        'approved_at',
+        'approved_by',
+        'posted_at',
+        'posted_by',
+        'journal_entry_id',
         'date',
         'note',
         'recipient_name',
@@ -23,7 +30,9 @@ class CashOut extends Model
 
     protected $casts = [
         'amount' => 'decimal:2',
-        'date'   => 'date',
+        'approved_at' => 'datetime',
+        'posted_at' => 'datetime',
+        'date' => 'date',
     ];
 
     public function project()

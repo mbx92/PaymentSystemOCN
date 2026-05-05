@@ -2,6 +2,7 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
 import ConfirmModal from '@/Components/ConfirmModal.vue';
+import StatusBadge from '@/Components/StatusBadge.vue';
 import { useForm, router } from '@inertiajs/vue3';
 import { ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
@@ -74,7 +75,7 @@ const doDelete = () => { router.delete(route('cash-in.destroy', deletingId.value
                 <div class="overflow-x-auto">
                     <table class="table table-zebra">
                         <thead>
-                            <tr><th>Tanggal</th><th>Project</th><th>Kategori</th><th>Jumlah</th><th>Keterangan</th><th>Oleh</th><th></th></tr>
+                            <tr><th>Tanggal</th><th>Project</th><th>Kategori</th><th>Jumlah</th><th>Status</th><th>Jurnal</th><th>Keterangan</th><th>Oleh</th><th></th></tr>
                         </thead>
                         <tbody>
                             <tr v-for="c in cashIns.data" :key="c.id">
@@ -82,6 +83,8 @@ const doDelete = () => { router.delete(route('cash-in.destroy', deletingId.value
                                 <td class="font-medium">{{ c.project_name }}</td>
                                 <td><span class="badge badge-sm badge-ghost">{{ c.category }}</span></td>
                                 <td class="font-semibold text-success">{{ format(c.amount) }}</td>
+                                <td><StatusBadge :status="c.document_status" /></td>
+                                <td class="font-mono text-xs">{{ c.journal_entry_id ?? '-' }}</td>
                                 <td class="text-sm text-base-content/70 max-w-xs truncate">{{ c.note ?? '-' }}</td>
                                 <td class="text-sm text-base-content/60">{{ c.creator_name }}</td>
                                 <td>
@@ -92,7 +95,7 @@ const doDelete = () => { router.delete(route('cash-in.destroy', deletingId.value
                                 </td>
                             </tr>
                             <tr v-if="!cashIns.data.length">
-                                <td colspan="7" class="text-center py-10 text-base-content/50">Tidak ada data</td>
+                                <td colspan="9" class="text-center py-10 text-base-content/50">Tidak ada data</td>
                             </tr>
                         </tbody>
                     </table>

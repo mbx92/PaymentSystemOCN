@@ -1,10 +1,45 @@
 <script setup>
 import { useForm } from '@inertiajs/vue3';
+import { ref } from 'vue';
 
-defineProps({ canResetPassword: Boolean, status: String });
+const props = defineProps({ canResetPassword: Boolean, status: String, isDevMode: Boolean });
 
 const form = useForm({ email: '', password: '', remember: false });
+const devSeedForm = useForm({});
 const submit = () => form.post(route('login'));
+const devLoading = ref(false);
+const devMessage = ref('');
+const devError = ref('');
+
+const seedAndFillDevLogin = async () => {
+    if (!props.isDevMode) return;
+
+    devLoading.value = true;
+    devMessage.value = '';
+    devError.value = '';
+
+    devSeedForm.post(route('dev.seed-login'), {
+        preserveScroll: true,
+        onSuccess: (page) => {
+            const payload = page?.props?.devLoginSeed;
+
+            if (!payload) {
+                devError.value = 'Seeder selesai, tetapi respons login dev tidak ditemukan.';
+                return;
+            }
+
+            form.email = payload.email ?? '';
+            form.password = payload.password ?? '';
+            devMessage.value = payload.message ?? 'Seeder berhasil dijalankan.';
+        },
+        onError: () => {
+            devError.value = 'Gagal menjalankan seeder.';
+        },
+        onFinish: () => {
+            devLoading.value = false;
+        },
+    });
+};
 </script>
 
 <template>
@@ -47,6 +82,8 @@ const submit = () => form.post(route('login'));
                 </div>
 
                 <div v-if="status" class="alert alert-success text-sm mb-3">{{ status }}</div>
+                <div v-if="isDevMode && devMessage" class="alert alert-info text-sm mb-3">{{ devMessage }}</div>
+                <div v-if="isDevMode && devError" class="alert alert-error text-sm mb-3">{{ devError }}</div>
 
                 <form @submit.prevent="submit" class="space-y-4">
                     <div>
@@ -84,6 +121,17 @@ const submit = () => form.post(route('login'));
                     <button type="submit" class="btn btn-primary w-full" :disabled="form.processing">
                         <span v-if="form.processing" class="loading loading-spinner loading-sm" />
                         Masuk
+                    </button>
+
+                    <button
+                        v-if="isDevMode"
+                        type="button"
+                        class="btn btn-outline w-full"
+                        :disabled="devLoading"
+                        @click="seedAndFillDevLogin"
+                    >
+                        <span v-if="devLoading" class="loading loading-spinner loading-sm" />
+                        Seed DB + Isi Login Dev
                     </button>
                 </form>
             </div>
