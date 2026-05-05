@@ -1,0 +1,173 @@
+@import "tailwindcss";
+@plugin "daisyui" {
+    themes: ocn --default, corporate, dark --prefersdark;
+}
+@plugin "daisyui/theme" {
+    name: "ocn";
+    default: true;
+    prefersdark: false;
+    color-scheme: light;
+
+    --color-base-100: #ffffff;
+    --color-base-200: #f3f6fb;
+    --color-base-300: #dbe3ef;
+    --color-base-content: #111827;
+
+    --color-primary: #1d4ed8;
+    --color-primary-content: #ffffff;
+    --color-secondary: #0f172a;
+    --color-secondary-content: #ffffff;
+    --color-accent: #0ea5e9;
+    --color-accent-content: #ffffff;
+    --color-neutral: #111827;
+    --color-neutral-content: #f8fafc;
+
+    --color-info: #0284c7;
+    --color-info-content: #ffffff;
+    --color-success: #15803d;
+    --color-success-content: #ffffff;
+    --color-warning: #b45309;
+    --color-warning-content: #ffffff;
+    --color-error: #b91c1c;
+    --color-error-content: #ffffff;
+
+    --radius-selector: 0.5rem;
+    --radius-field: 0.625rem;
+    --radius-box: 1rem;
+    --size-selector: 0.25rem;
+    --size-field: 0.25rem;
+    --border: 1px;
+    --depth: 1;
+    --noise: 0;
+}
+
+@theme {
+    --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Assertive OCN admin UI */
+:root {
+    --rounded-box: 1rem;
+    --rounded-btn: 0.625rem;
+    --rounded-badge: 1.9rem;
+}
+
+html {
+    background:
+        radial-gradient(circle at top left, rgba(29, 78, 216, 0.10), transparent 28rem),
+        linear-gradient(180deg, #f8fafc 0%, #eef3fb 100%);
+}
+
+body {
+    color: #111827;
+}
+
+.ocn-shell {
+    background:
+        radial-gradient(circle at top left, rgba(29, 78, 216, 0.12), transparent 30rem),
+        linear-gradient(180deg, #f8fafc 0%, #eef3fb 100%);
+}
+
+.ocn-sidebar {
+    background:
+        linear-gradient(180deg, #08111f 0%, #0f172a 52%, #111827 100%);
+    color: #e5e7eb;
+    border-right: 1px solid rgba(148, 163, 184, 0.18);
+    box-shadow: 16px 0 40px rgba(15, 23, 42, 0.18);
+}
+
+.ocn-brand-mark {
+    background: linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%);
+    box-shadow: 0 12px 26px rgba(37, 99, 235, 0.35);
+}
+
+.ocn-nav-item {
+    color: rgba(226, 232, 240, 0.72);
+}
+
+.ocn-nav-item:hover {
+    background: rgba(148, 163, 184, 0.12);
+    color: #ffffff;
+}
+
+.ocn-nav-active {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    color: #ffffff;
+    box-shadow: 0 14px 28px rgba(37, 99, 235, 0.30);
+}
+
+.ocn-subnav-active {
+    background: rgba(59, 130, 246, 0.18);
+    color: #bfdbfe;
+    font-weight: 700;
+}
+
+.ocn-topbar {
+    background: rgba(255, 255, 255, 0.86);
+    border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+    box-shadow: 0 8px 28px rgba(15, 23, 42, 0.06);
+    backdrop-filter: blur(18px);
+}
+
+.card {
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.07), 0 2px 8px rgba(15, 23, 42, 0.04) !important;
+}
+
+.card-title {
+    letter-spacing: -0.02em;
+}
+
+.ocn-stat-card {
+    position: relative;
+    overflow: hidden;
+}
+
+.ocn-stat-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 4px;
+    background: linear-gradient(90deg, #2563eb, #0ea5e9);
+}
+
+.ocn-stat-card::after {
+    content: "";
+    position: absolute;
+    top: -3rem;
+    right: -3rem;
+    width: 8rem;
+    height: 8rem;
+    border-radius: 999px;
+    background: rgba(37, 99, 235, 0.08);
+}
+
+.table :where(thead, tfoot) {
+    color: #475569;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: linear-gradient(180deg, #f8fafc 0%, #eef3fb 100%);
+}
+
+.table :where(th, td) {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+}
+
+.input, .select, .textarea {
+    border-color: rgba(148, 163, 184, 0.40);
+    border-radius: 0.5rem;
+    background-color: #ffffff;
+}
+.input:focus, .select:focus, .textarea:focus {
+    outline-color: rgba(37, 99, 235, 0.16);
+    outline-width: 2px;
+    outline-offset: 1px;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    border-color: transparent;
+    box-shadow: 0 10px 24px rgba(37, 99, 235, 0.22);
+}

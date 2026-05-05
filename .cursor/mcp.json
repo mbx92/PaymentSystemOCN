@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "daisyui": {
+      "type": "stdio",
+      "command": "D:\\dev\\daisyui-mcp\\venv\\Scripts\\python.exe",
+      "args": ["D:\\dev\\daisyui-mcp\\mcp_server.py"]
+    }
+  }
+}
