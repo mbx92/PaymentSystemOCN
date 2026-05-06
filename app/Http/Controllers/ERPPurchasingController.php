@@ -5,15 +5,18 @@ namespace App\Http\Controllers;
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\Payable;
 use App\ERP\Accounting\Services\GlPostingService;
+use App\ERP\Inventory\Models\Warehouse;
 use App\ERP\Purchasing\Models\GoodsReceipt;
 use App\ERP\Purchasing\Models\PurchaseOrder;
 use App\ERP\Purchasing\Models\Vendor;
 use App\ERP\Shared\Enums\DocumentStatus;
 use App\ERP\Shared\Services\ErpSystemLogger;
 use App\Models\MasterProduct;
+use App\Models\MasterProductWarehouseStock;
 use App\Models\ProductStockMovement;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -132,43 +135,71 @@ class ERPPurchasingController extends Controller
             'supplierFilter' => $request->query('supplier'),
             'filters' => $request->only(['supplier', 'status', 'q']),
             'suppliers' => Vendor::query()->orderBy('name')->get(['code', 'name']),
+            'products' => MasterProduct::query()->where('status', 'active')->orderBy('name')->get(['id', 'sku', 'name', 'uom', 'selling_price']),
         ]);
     }
 
     public function storePurchaseOrder(Request $request): RedirectResponse
     {
-        $validated = $request->validate([
+        $baseValidated = $request->validate([
             'vendor_code' => 'required|string|exists:vendors,code',
             'eta_date' => 'nullable|date',
             'order_date' => 'required|date',
             'notes' => 'nullable|string',
-            'product_id' => 'required|integer|exists:master_products,id',
-            'qty' => 'required|numeric|min:0.01',
-            'unit_price' => 'required|numeric|min:0.01',
         ]);
 
-        $vendor = Vendor::query()->where('code', $validated['vendor_code'])->firstOrFail();
-        $product = MasterProduct::query()->findOrFail($validated['product_id']);
-        $lineTotal = (float) $validated['qty'] * (float) $validated['unit_price'];
+        $validatedLines = $request->validate([
+            'lines' => 'required|array|min:1',
+            'lines.*.product_id' => 'required|integer|exists:master_products,id',
+            'lines.*.qty' => 'required|numeric|min:0.01',
+            'lines.*.unit_price' => 'required|numeric|min:0.01',
+        ]);
 
-        DB::transaction(function () use ($validated, $vendor, $product, $lineTotal): void {
+        $vendor = Vendor::query()->where('code', $baseValidated['vendor_code'])->firstOrFail();
+        $lines = collect($validatedLines['lines'])
+            ->map(function (array $line): array {
+                $product = MasterProduct::query()->findOrFail((int) $line['product_id']);
+                $qty = (float) $line['qty'];
+                $unitPrice = (float) $line['unit_price'];
+                $lineTotal = $qty * $unitPrice;
+
+                return [
+                    'master_product_id' => $product->id,
+                    'qty' => $qty,
+                    'line_total' => $lineTotal,
+                ];
+            })
+            ->groupBy('master_product_id')
+            ->map(function ($group) {
+                $qty = (float) $group->sum('qty');
+                $lineTotal = (float) $group->sum('line_total');
+                $unitPrice = $qty > 0 ? $lineTotal / $qty : 0;
+
+                return [
+                    'master_product_id' => $group->first()['master_product_id'],
+                    'qty' => $qty,
+                    'unit_price' => $unitPrice,
+                    'line_total' => $lineTotal,
+                ];
+            })
+            ->values();
+        $totalAmount = (float) $lines->sum('line_total');
+
+        DB::transaction(function () use ($baseValidated, $vendor, $lines, $totalAmount): void {
             $number = 'PO-'.now()->format('Ymd-His').'-'.random_int(10, 99);
             $po = PurchaseOrder::query()->create([
                 'number' => $number,
                 'vendor_id' => $vendor->id,
-                'order_date' => $validated['order_date'],
-                'eta_date' => $validated['eta_date'] ?? null,
-                'total_amount' => $lineTotal,
+                'order_date' => $baseValidated['order_date'],
+                'eta_date' => $baseValidated['eta_date'] ?? null,
+                'total_amount' => $totalAmount,
                 'status' => DocumentStatus::Draft,
-                'notes' => $validated['notes'] ?? null,
+                'notes' => $baseValidated['notes'] ?? null,
             ]);
 
-            $po->lines()->create([
-                'master_product_id' => $product->id,
-                'qty' => $validated['qty'],
-                'unit_price' => $validated['unit_price'],
-                'line_total' => $lineTotal,
-            ]);
+            foreach ($lines as $line) {
+                $po->lines()->create($line);
+            }
         });
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Purchase Order berhasil ditambahkan.']);
@@ -188,21 +219,94 @@ class ERPPurchasingController extends Controller
                 'status' => $purchaseOrder->status->value,
                 'created_at' => $purchaseOrder->order_date?->toDateString(),
                 'lines' => $purchaseOrder->lines->map(fn ($line) => [
+                    'product_id' => $line->master_product_id,
                     'sku' => $line->product?->sku,
                     'name' => $line->product?->name,
                     'qty' => (float) $line->qty,
+                    'received_qty' => (float) $line->received_qty,
+                    'remaining_qty' => max((float) $line->qty - (float) $line->received_qty, 0),
                     'uom' => $line->product?->uom,
                     'unit_price' => (float) $line->unit_price,
                     'subtotal' => (float) $line->line_total,
                 ]),
             ],
+            'suppliers' => Vendor::query()->orderBy('name')->get(['code', 'name']),
+            'products' => MasterProduct::query()->where('status', 'active')->orderBy('name')->get(['id', 'sku', 'name', 'selling_price']),
         ]);
+    }
+
+    public function updatePurchaseOrder(Request $request, PurchaseOrder $purchaseOrder): RedirectResponse
+    {
+        if (! in_array($purchaseOrder->status->value, [DocumentStatus::Draft->value, DocumentStatus::Submitted->value], true)) {
+            return back()->with('flash', ['type' => 'warning', 'message' => 'PO hanya bisa diubah saat status draft/submitted.']);
+        }
+
+        $baseValidated = $request->validate([
+            'vendor_code' => 'required|string|exists:vendors,code',
+            'eta_date' => 'nullable|date',
+            'order_date' => 'required|date',
+            'notes' => 'nullable|string',
+        ]);
+
+        $validatedLines = $request->validate([
+            'lines' => 'required|array|min:1',
+            'lines.*.product_id' => 'required|integer|exists:master_products,id',
+            'lines.*.qty' => 'required|numeric|min:0.01',
+            'lines.*.unit_price' => 'required|numeric|min:0.01',
+        ]);
+
+        $vendor = Vendor::query()->where('code', $baseValidated['vendor_code'])->firstOrFail();
+        $lines = collect($validatedLines['lines'])
+            ->map(function (array $line): array {
+                $qty = (float) $line['qty'];
+                $unitPrice = (float) $line['unit_price'];
+                $lineTotal = $qty * $unitPrice;
+
+                return [
+                    'master_product_id' => (int) $line['product_id'],
+                    'qty' => $qty,
+                    'line_total' => $lineTotal,
+                ];
+            })
+            ->groupBy('master_product_id')
+            ->map(function ($group) {
+                $qty = (float) $group->sum('qty');
+                $lineTotal = (float) $group->sum('line_total');
+                $unitPrice = $qty > 0 ? $lineTotal / $qty : 0;
+
+                return [
+                    'master_product_id' => $group->first()['master_product_id'],
+                    'qty' => $qty,
+                    'unit_price' => $unitPrice,
+                    'line_total' => $lineTotal,
+                ];
+            })
+            ->values();
+
+        $totalAmount = (float) $lines->sum('line_total');
+
+        DB::transaction(function () use ($purchaseOrder, $baseValidated, $vendor, $lines, $totalAmount): void {
+            $purchaseOrder->update([
+                'vendor_id' => $vendor->id,
+                'order_date' => $baseValidated['order_date'],
+                'eta_date' => $baseValidated['eta_date'] ?? null,
+                'total_amount' => $totalAmount,
+                'notes' => $baseValidated['notes'] ?? null,
+            ]);
+
+            $purchaseOrder->lines()->delete();
+            foreach ($lines as $line) {
+                $purchaseOrder->lines()->create($line);
+            }
+        });
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Data Purchase Order berhasil diperbarui.']);
     }
 
     public function goodsReceipts(Request $request): Response
     {
         $query = GoodsReceipt::query()
-            ->with('purchaseOrder')
+            ->with(['purchaseOrder', 'warehouse'])
             ->orderByDesc('received_date')
             ->orderByDesc('id');
 
@@ -230,7 +334,25 @@ class ERPPurchasingController extends Controller
             ]),
             'poFilter' => $request->query('po'),
             'filters' => $request->only(['po', 'status', 'q']),
-            'purchaseOrders' => PurchaseOrder::query()->orderByDesc('order_date')->get(['number']),
+            'purchaseOrders' => PurchaseOrder::query()
+                ->where('status', DocumentStatus::Approved->value)
+                ->whereHas('lines', fn ($q) => $q->whereRaw('qty > received_qty'))
+                ->with('lines.product')
+                ->orderByDesc('order_date')
+                ->get()
+                ->map(fn (PurchaseOrder $po) => [
+                    'number' => $po->number,
+                    'lines' => $po->lines->map(fn ($line) => [
+                        'product_id' => $line->master_product_id,
+                        'sku' => $line->product?->sku,
+                        'name' => $line->product?->name,
+                        'uom' => $line->product?->uom,
+                        'ordered_qty' => (float) $line->qty,
+                        'received_qty' => (float) $line->received_qty,
+                        'remaining_qty' => max((float) $line->qty - (float) $line->received_qty, 0),
+                    ])->values(),
+                ]),
+            'warehouses' => Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']),
         ]);
     }
 
@@ -239,29 +361,60 @@ class ERPPurchasingController extends Controller
         $validated = $request->validate([
             'purchase_order_number' => 'required|string|exists:purchase_orders,number',
             'received_date' => 'required|date',
-            'warehouse_name' => 'required|string|max:120',
-            'status' => 'required|in:approved,posted',
+            'warehouse_id' => 'required|exists:warehouses,id',
+            'status' => 'required|in:approved',
+            'lines' => 'required|array|min:1',
+            'lines.*.product_id' => 'required|integer|exists:master_products,id',
+            'lines.*.qty_received' => 'required|numeric|min:0',
         ]);
 
         $purchaseOrder = PurchaseOrder::query()
-            ->with('lines')
+            ->with('lines.product')
             ->where('number', $validated['purchase_order_number'])
             ->firstOrFail();
 
-        DB::transaction(function () use ($validated, $purchaseOrder): void {
+        $requestedLines = collect($validated['lines'])
+            ->keyBy(fn (array $line) => (int) $line['product_id']);
+
+        $linePayloads = $purchaseOrder->lines
+            ->map(function ($poLine) use ($requestedLines) {
+                $requestedQty = (float) ($requestedLines->get($poLine->master_product_id)['qty_received'] ?? 0);
+                $remaining = max((float) $poLine->qty - (float) $poLine->received_qty, 0);
+
+                if ($requestedQty > $remaining) {
+                    throw ValidationException::withMessages([
+                        'lines' => 'Qty penerimaan melebihi sisa PO untuk produk '.$poLine->product?->name.'.',
+                    ]);
+                }
+
+                return [
+                    'master_product_id' => $poLine->master_product_id,
+                    'qty_received' => $requestedQty,
+                ];
+            })
+            ->filter(fn (array $line) => $line['qty_received'] > 0)
+            ->values();
+
+        if ($linePayloads->isEmpty()) {
+            return back()->with('flash', ['type' => 'warning', 'message' => 'Isi minimal satu item dengan qty terima > 0.']);
+        }
+
+        DB::transaction(function () use ($validated, $purchaseOrder, $linePayloads): void {
             $number = 'GRN-'.now()->format('Ymd-His').'-'.random_int(10, 99);
+            $warehouse = Warehouse::query()->find($validated['warehouse_id']);
             $receipt = GoodsReceipt::query()->create([
                 'number' => $number,
                 'purchase_order_id' => $purchaseOrder->id,
                 'received_date' => $validated['received_date'],
-                'warehouse_name' => $validated['warehouse_name'],
+                'warehouse_id' => $validated['warehouse_id'],
+                'warehouse_name' => $warehouse?->name ?? 'Warehouse',
                 'status' => $validated['status'],
             ]);
 
-            foreach ($purchaseOrder->lines as $line) {
+            foreach ($linePayloads as $line) {
                 $receipt->lines()->create([
-                    'master_product_id' => $line->master_product_id,
-                    'qty_received' => $line->qty,
+                    'master_product_id' => $line['master_product_id'],
+                    'qty_received' => $line['qty_received'],
                 ]);
             }
         });
@@ -271,14 +424,15 @@ class ERPPurchasingController extends Controller
 
     public function goodsReceiptShow(GoodsReceipt $goodsReceipt): Response
     {
-        $goodsReceipt->load(['purchaseOrder', 'lines.product']);
+        $goodsReceipt->load(['purchaseOrder', 'warehouse', 'lines.product']);
 
         return Inertia::render('ERP/Purchasing/GoodsReceiptShow', [
             'detail' => [
                 'number' => $goodsReceipt->number,
                 'po_number' => $goodsReceipt->purchaseOrder?->number,
                 'received_date' => $goodsReceipt->received_date?->toDateString(),
-                'warehouse' => $goodsReceipt->warehouse_name,
+                'warehouse' => $goodsReceipt->warehouse?->name ?? $goodsReceipt->warehouse_name,
+                'warehouse_id' => $goodsReceipt->warehouse_id,
                 'status' => $goodsReceipt->status->value,
                 'lines' => $goodsReceipt->lines->map(fn ($line) => [
                     'sku' => $line->product?->sku,
@@ -287,6 +441,7 @@ class ERPPurchasingController extends Controller
                     'uom' => $line->product?->uom,
                 ]),
             ],
+            'warehouses' => Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']),
         ]);
     }
 
@@ -314,6 +469,7 @@ class ERPPurchasingController extends Controller
                     'lead_time_days' => $item->lead_time_days,
                     'total_sold' => $item->total_sold,
                     'suggested_qty' => $suggestedQty,
+                    'selling_price' => (float) $item->selling_price,
                 ];
             })
             ->filter(fn (array $row) => $row['suggested_qty'] > 0)
@@ -324,6 +480,7 @@ class ERPPurchasingController extends Controller
         return Inertia::render('ERP/Purchasing/ReorderPlanning', [
             'reorderSuggestions' => $reorderSuggestions,
             'filters' => $request->only(['q']),
+            'suppliers' => Vendor::query()->where('is_active', true)->orderBy('name')->get(['code', 'name']),
         ]);
     }
 
@@ -363,6 +520,23 @@ class ERPPurchasingController extends Controller
 
         if ($action === 'submit' && $status === DocumentStatus::Draft->value) {
             $po->update([
+                'status' => DocumentStatus::Submitted,
+            ]);
+
+            $this->systemLogger->info('purchasing.po.submitted', 'PO submitted', [
+                'user_id' => Auth::id(),
+                'path' => $request->path(),
+                'method' => $request->method(),
+                'po_number' => $po->number,
+            ]);
+
+            return redirect()
+                ->route('erp.purchasing.purchase-orders.show', $purchaseOrder)
+                ->with('flash', ['type' => 'success', 'message' => 'PO berhasil diajukan.']);
+        }
+
+        if ($action === 'approve' && $status === DocumentStatus::Submitted->value) {
+            $po->update([
                 'status' => DocumentStatus::Approved,
                 'approved_at' => now(),
                 'approved_by' => Auth::id(),
@@ -377,10 +551,10 @@ class ERPPurchasingController extends Controller
 
             return redirect()
                 ->route('erp.purchasing.purchase-orders.show', $purchaseOrder)
-                ->with('flash', ['type' => 'success', 'message' => 'PO diajukan dan disetujui.']);
+                ->with('flash', ['type' => 'success', 'message' => 'PO berhasil disetujui.']);
         }
 
-        if ($action === 'void' && in_array($status, [DocumentStatus::Draft->value, DocumentStatus::Approved->value], true)) {
+        if ($action === 'void' && in_array($status, [DocumentStatus::Draft->value, DocumentStatus::Submitted->value], true)) {
             $po->update([
                 'status' => DocumentStatus::Void,
             ]);
@@ -405,7 +579,7 @@ class ERPPurchasingController extends Controller
     public function advanceGoodsReceipt(Request $request, string $goodsReceipt): RedirectResponse
     {
         $receipt = GoodsReceipt::query()
-            ->with(['purchaseOrder.vendor', 'lines.product'])
+            ->with(['purchaseOrder.vendor', 'warehouse', 'lines.product'])
             ->where('number', $goodsReceipt)
             ->firstOrFail();
 
@@ -413,7 +587,20 @@ class ERPPurchasingController extends Controller
         $status = $receipt->status->value;
 
         if ($action === 'post_stock' && $status === DocumentStatus::Approved->value) {
-            DB::transaction(function () use ($receipt): void {
+            $validated = $request->validate([
+                'warehouse_id' => 'nullable|exists:warehouses,id',
+            ]);
+
+            DB::transaction(function () use ($receipt, $validated): void {
+                if (! empty($validated['warehouse_id'])) {
+                    $warehouse = Warehouse::query()->find((int) $validated['warehouse_id']);
+                    $receipt->update([
+                        'warehouse_id' => (int) $validated['warehouse_id'],
+                        'warehouse_name' => $warehouse?->name ?? $receipt->warehouse_name,
+                    ]);
+                    $receipt->refresh();
+                }
+
                 $receipt->update([
                     'status' => DocumentStatus::Posted,
                     'posted_at' => now(),
@@ -426,10 +613,32 @@ class ERPPurchasingController extends Controller
                         continue;
                     }
 
+                    $poLine = $receipt->purchaseOrder
+                        ->lines()
+                        ->where('master_product_id', $product->id)
+                        ->lockForUpdate()
+                        ->first();
+                    $remaining = $poLine ? max((float) $poLine->qty - (float) $poLine->received_qty, 0) : 0;
+                    if ($remaining < (float) $line->qty_received) {
+                        throw ValidationException::withMessages([
+                            'action' => 'Qty GRN melebihi sisa PO untuk produk '.$product->name.'.',
+                        ]);
+                    }
+
+                    $warehouseId = $receipt->warehouse_id;
+                    if ($warehouseId) {
+                        $row = MasterProductWarehouseStock::query()->firstOrCreate(
+                            ['master_product_id' => $product->id, 'warehouse_id' => $warehouseId],
+                            ['qty' => 0]
+                        );
+                        $row->increment('qty', (float) $line->qty_received);
+                    }
                     $product->increment('stock', (float) $line->qty_received);
+                    $poLine?->increment('received_qty', (float) $line->qty_received);
 
                     ProductStockMovement::query()->create([
                         'master_product_id' => $product->id,
+                        'warehouse_id' => $warehouseId,
                         'movement_date' => now()->toDateString(),
                         'movement_type' => 'purchase_receipt',
                         'qty' => $line->qty_received,

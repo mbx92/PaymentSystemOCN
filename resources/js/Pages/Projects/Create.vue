@@ -12,6 +12,7 @@ const form = useForm({
     name: '',
     client_name: '',
     client_contact: '',
+    project_type: 'system_website_development',
     total_value: 0,
     status: 'negosiasi',
     started_at: '',
@@ -87,6 +88,15 @@ const submit = () => form.post(route('projects.store'));
                         <div>
                             <label class="label"><span class="label-text font-medium">Kontak Klien</span></label>
                             <input v-model="form.client_contact" type="text" class="input input-bordered w-full" placeholder="08xx / email" />
+                        </div>
+
+                        <div>
+                            <label class="label"><span class="label-text font-medium">Tipe Project <span class="text-error">*</span></span></label>
+                            <select v-model="form.project_type" class="select select-bordered w-full" :class="form.errors.project_type ? 'select-error' : ''">
+                                <option value="system_website_development">System/Website Development</option>
+                                <option value="cctv_installation">CCTV Installation</option>
+                            </select>
+                            <p v-if="form.errors.project_type" class="text-error text-xs mt-1">{{ form.errors.project_type }}</p>
                         </div>
 
                         <div>

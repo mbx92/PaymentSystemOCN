@@ -12,6 +12,7 @@ class PurchaseOrderLine extends Model
         'purchase_order_id',
         'master_product_id',
         'qty',
+        'received_qty',
         'unit_price',
         'line_total',
     ];
@@ -20,6 +21,7 @@ class PurchaseOrderLine extends Model
     {
         return [
             'qty' => 'decimal:2',
+            'received_qty' => 'decimal:2',
             'unit_price' => 'decimal:2',
             'line_total' => 'decimal:2',
         ];

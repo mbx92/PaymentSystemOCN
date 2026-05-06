@@ -7,7 +7,6 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
-use Illuminate\Http\Request;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 use Spatie\Permission\Middleware\RoleMiddleware;
 use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
@@ -35,13 +34,14 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        $exceptions->report(function (\Throwable $exception, Request $request): void {
+        $exceptions->report(function (\Throwable $exception): void {
+            $request = app()->bound('request') ? request() : null;
             app(ErpSystemLogger::class)->exception($exception, [
                 'channel' => 'errors',
-                'user_id' => $request->user()?->id,
-                'ip_address' => $request->ip(),
-                'method' => $request->method(),
-                'path' => $request->path(),
+                'user_id' => $request?->user()?->id,
+                'ip_address' => $request?->ip(),
+                'method' => $request?->method(),
+                'path' => $request?->path(),
             ]);
         });
     })->create();

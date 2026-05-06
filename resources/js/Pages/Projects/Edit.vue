@@ -18,6 +18,7 @@ const form = useForm({
     name: props.project.name,
     client_name: props.project.client_name,
     client_contact: props.project.client_contact ?? '',
+    project_type: props.project.project_type ?? 'system_website_development',
     total_value: props.project.total_value,
     status: props.project.status,
     started_at: props.project.started_at ?? '',
@@ -95,6 +96,14 @@ const submit = () => {
                         <div>
                             <label class="label"><span class="label-text font-medium">Kontak Klien</span></label>
                             <input v-model="form.client_contact" type="text" class="input input-bordered w-full" />
+                        </div>
+                        <div>
+                            <label class="label"><span class="label-text font-medium">Tipe Project</span></label>
+                            <select v-model="form.project_type" class="select select-bordered w-full" :class="form.errors.project_type ? 'select-error' : ''">
+                                <option value="system_website_development">System/Website Development</option>
+                                <option value="cctv_installation">CCTV Installation</option>
+                            </select>
+                            <p v-if="form.errors.project_type" class="text-error text-xs mt-1">{{ form.errors.project_type }}</p>
                         </div>
                         <div>
                             <CurrencyInput v-model="form.total_value" label="Nilai Kontrak" :required="true" :error="form.errors.total_value" />

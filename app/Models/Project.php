@@ -16,6 +16,7 @@ class Project extends Model
         'name',
         'client_name',
         'client_contact',
+        'project_type',
         'total_value',
         'status',
         'document_status',
@@ -59,6 +60,11 @@ class Project extends Model
     public function referrals()
     {
         return $this->hasMany(Referral::class);
+    }
+
+    public function materials()
+    {
+        return $this->hasMany(ProjectMaterial::class);
     }
 
     public function getTotalCashInAttribute(): float

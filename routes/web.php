@@ -53,12 +53,14 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/inventory/stock-opname', [ERPInventoryController::class, 'stockOpname'])->name('erp.inventory.stock-opname');
         Route::post('erp/inventory/stock-opname', [ERPInventoryController::class, 'storeStockOpname'])->name('erp.inventory.stock-opname.store');
         Route::get('erp/inventory/stock-report', [ERPInventoryController::class, 'stockReport'])->name('erp.inventory.stock-report');
+        Route::get('erp/inventory/stock-movements', [ERPInventoryController::class, 'stockMovements'])->name('erp.inventory.stock-movements');
         Route::get('erp/purchasing/suppliers', [ERPPurchasingController::class, 'suppliers'])->name('erp.purchasing.suppliers');
         Route::post('erp/purchasing/suppliers', [ERPPurchasingController::class, 'storeSupplier'])->name('erp.purchasing.suppliers.store');
         Route::get('erp/purchasing/suppliers/{supplier}', [ERPPurchasingController::class, 'supplierShow'])->name('erp.purchasing.suppliers.show');
         Route::get('erp/purchasing/purchase-orders', [ERPPurchasingController::class, 'purchaseOrders'])->name('erp.purchasing.purchase-orders');
         Route::post('erp/purchasing/purchase-orders', [ERPPurchasingController::class, 'storePurchaseOrder'])->name('erp.purchasing.purchase-orders.store');
         Route::get('erp/purchasing/purchase-orders/{purchaseOrder}', [ERPPurchasingController::class, 'purchaseOrderShow'])->name('erp.purchasing.purchase-orders.show');
+        Route::put('erp/purchasing/purchase-orders/{purchaseOrder}', [ERPPurchasingController::class, 'updatePurchaseOrder'])->name('erp.purchasing.purchase-orders.update');
         Route::post('erp/purchasing/purchase-orders/{purchaseOrder}/advance', [ERPPurchasingController::class, 'advancePurchaseOrder'])->name('erp.purchasing.purchase-orders.advance');
         Route::get('erp/purchasing/goods-receipts', [ERPPurchasingController::class, 'goodsReceipts'])->name('erp.purchasing.goods-receipts');
         Route::post('erp/purchasing/goods-receipts', [ERPPurchasingController::class, 'storeGoodsReceipt'])->name('erp.purchasing.goods-receipts.store');
@@ -70,6 +72,8 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/sales/project-invoices', [ERPSalesController::class, 'projectInvoices'])->name('erp.sales.project-invoices');
 
         Route::resource('projects', ProjectController::class);
+        Route::post('projects/{project}/materials', [ProjectController::class, 'storeMaterial'])->name('projects.materials.store');
+        Route::delete('projects/{project}/materials/{material}', [ProjectController::class, 'destroyMaterial'])->name('projects.materials.destroy');
 
         // Termin
         Route::patch('project-payments/{payment}/mark-paid', [ProjectPaymentController::class, 'markPaid'])->name('project-payments.mark-paid');

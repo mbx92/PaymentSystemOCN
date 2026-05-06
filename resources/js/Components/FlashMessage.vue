@@ -1,16 +1,50 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { CheckCircleIcon, ExclamationCircleIcon, XMarkIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ flash: Object });
 const visible = ref(false);
+const localAlert = ref(null);
+let hideTimer = null;
+
+const currentAlert = computed(() => localAlert.value ?? props.flash);
+
+const hideWithDelay = () => {
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => { visible.value = false; }, 4000);
+};
+
+const showAlert = (payload) => {
+    localAlert.value = payload;
+    visible.value = true;
+    hideWithDelay();
+};
 
 watch(() => props.flash, (val) => {
     if (val) {
+        localAlert.value = null;
         visible.value = true;
-        setTimeout(() => { visible.value = false; }, 4000);
+        hideWithDelay();
     }
 }, { immediate: true });
+
+const onGlobalAlert = (event) => {
+    const detail = event?.detail ?? {};
+    if (!detail?.message) return;
+    showAlert({
+        type: detail.type ?? 'info',
+        message: detail.message,
+    });
+};
+
+onMounted(() => {
+    window.addEventListener('ocn:alert', onGlobalAlert);
+});
+
+onBeforeUnmount(() => {
+    window.removeEventListener('ocn:alert', onGlobalAlert);
+    clearTimeout(hideTimer);
+});
 
 const typeClass = {
     success: 'alert-success',
@@ -22,11 +56,11 @@ const typeClass = {
 
 <template>
     <Transition name="slide-down">
-        <div v-if="visible && flash" class="fixed top-4 right-4 z-50 max-w-sm w-full">
-            <div :class="['alert shadow-lg', typeClass[flash.type] ?? 'alert-info']">
-                <CheckCircleIcon v-if="flash.type === 'success'" class="w-5 h-5 shrink-0" />
+        <div v-if="visible && currentAlert" class="fixed top-4 right-4 z-50 max-w-sm w-full">
+            <div :class="['alert shadow-lg', typeClass[currentAlert.type] ?? 'alert-info']">
+                <CheckCircleIcon v-if="currentAlert.type === 'success'" class="w-5 h-5 shrink-0" />
                 <ExclamationCircleIcon v-else class="w-5 h-5 shrink-0" />
-                <span>{{ flash.message }}</span>
+                <span>{{ currentAlert.message }}</span>
                 <button class="btn btn-ghost btn-xs ml-auto" @click="visible = false">
                     <XMarkIcon class="w-4 h-4" />
                 </button>

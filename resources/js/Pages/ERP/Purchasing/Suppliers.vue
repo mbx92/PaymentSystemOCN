@@ -55,6 +55,10 @@ const submitAdd = () => {
     },
   });
 };
+
+const openAddModal = () => {
+  document.getElementById('modal-add-supplier')?.showModal();
+};
 </script>
 
 <template>
@@ -91,7 +95,7 @@ const submitAdd = () => {
                 <option value="void">Non Active</option>
               </select>
             </div>
-            <button class="btn btn-primary btn-sm ml-auto" onclick="modal-add-supplier.showModal()">+ Add Supplier</button>
+            <button class="btn btn-primary btn-sm ml-auto" @click="openAddModal">+ Add Supplier</button>
           </div>
         </div>
       </div>

@@ -2,7 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\ERP\Inventory\Models\Warehouse;
+use App\Models\MasterProduct;
+use App\Models\MasterProductWarehouseStock;
 use App\Models\Project;
+use App\Models\ProjectMaterial;
 use App\Models\ProjectPayment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,13 +20,15 @@ class ProjectController extends Controller
         $query = Project::with(['payments'])
             ->when($request->search, fn ($q) => $q->where('name', 'ilike', "%{$request->search}%")
                 ->orWhere('client_name', 'ilike', "%{$request->search}%"))
-            ->when($request->status, fn ($q) => $q->where('status', $request->status));
+            ->when($request->status, fn ($q) => $q->where('status', $request->status))
+            ->when($request->project_type, fn ($q) => $q->where('project_type', $request->project_type));
 
         $projects = $query->latest()->paginate(15)->withQueryString()
             ->through(fn ($p) => [
                 'id'          => $p->id,
                 'name'        => $p->name,
                 'client_name' => $p->client_name,
+                'project_type'=> $p->project_type,
                 'status'      => $p->status,
                 'total_value' => (float) $p->total_value,
                 'started_at'  => $p->started_at?->format('Y-m-d'),
@@ -32,7 +38,7 @@ class ProjectController extends Controller
 
         return Inertia::render('Projects/Index', [
             'projects' => $projects,
-            'filters'  => $request->only(['search', 'status']),
+            'filters'  => $request->only(['search', 'status', 'project_type']),
         ]);
     }
 
@@ -47,6 +53,7 @@ class ProjectController extends Controller
             'name'           => 'required|string|max:255',
             'client_name'    => 'required|string|max:255',
             'client_contact' => 'nullable|string|max:255',
+            'project_type'   => 'nullable|in:cctv_installation,system_website_development',
             'total_value'    => 'required|numeric|min:0.01',
             'status'         => 'required|in:negosiasi,berjalan,selesai,dibatalkan',
             'started_at'     => 'nullable|date',
@@ -58,6 +65,7 @@ class ProjectController extends Controller
         ]);
 
         $this->assertPaymentsTotalHundredPercent($validated['payments']);
+        $validated['project_type'] = $validated['project_type'] ?? 'system_website_development';
 
         DB::transaction(function () use ($validated) {
             $project = Project::create(collect($validated)->except('payments')->all());
@@ -70,6 +78,7 @@ class ProjectController extends Controller
     public function show(Project $project)
     {
         $project->load(['payments', 'cashIns.creator', 'cashOuts.creator', 'teamDistributions.user', 'referrals']);
+        $project->load(['materials.product', 'materials.warehouse']);
 
         return Inertia::render('Projects/Show', [
             'project' => [
@@ -77,11 +86,13 @@ class ProjectController extends Controller
                 'name'          => $project->name,
                 'client_name'   => $project->client_name,
                 'client_contact'=> $project->client_contact,
+                'project_type'  => $project->project_type,
                 'total_value'   => (float) $project->total_value,
                 'status'        => $project->status,
                 'started_at'    => $project->started_at?->format('Y-m-d'),
                 'finished_at'   => $project->finished_at?->format('Y-m-d'),
                 'description'   => $project->description,
+                'project_type'  => $project->project_type,
                 'payments'      => $project->payments->map(fn ($p) => [
                     'id'          => $p->id,
                     'term_number' => $p->term_number,
@@ -132,7 +143,24 @@ class ProjectController extends Controller
                     'total_operational'        => $project->total_operational,
                     'net_team_value'           => $project->net_team_value,
                 ],
+                'materials' => $project->materials->map(fn ($m) => [
+                    'id' => $m->id,
+                    'product' => $m->product?->name,
+                    'sku' => $m->product?->sku,
+                    'uom' => $m->product?->uom,
+                    'warehouse' => $m->warehouse?->name,
+                    'planned_qty' => (float) $m->planned_qty,
+                    'reserved_qty' => (float) $m->reserved_qty,
+                    'issued_qty' => (float) $m->issued_qty,
+                    'status' => $m->status,
+                    'notes' => $m->notes,
+                ]),
             ],
+            'material_products' => MasterProduct::query()
+                ->where('status', 'active')
+                ->orderBy('name')
+                ->get(['id', 'sku', 'name', 'uom']),
+            'warehouses' => Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']),
         ]);
     }
 
@@ -148,6 +176,7 @@ class ProjectController extends Controller
                 'name'           => $project->name,
                 'client_name'    => $project->client_name,
                 'client_contact' => $project->client_contact,
+                'project_type'   => $project->project_type,
                 'total_value'    => (float) $project->total_value,
                 'status'         => $project->status,
                 'started_at'     => $project->started_at?->format('Y-m-d') ?? '',
@@ -180,6 +209,7 @@ class ProjectController extends Controller
             'name'           => 'required|string|max:255',
             'client_name'    => 'required|string|max:255',
             'client_contact' => 'nullable|string|max:255',
+            'project_type'   => 'nullable|in:cctv_installation,system_website_development',
             'total_value'    => 'required|numeric|min:0.01',
             'status'         => 'required|in:negosiasi,berjalan,selesai,dibatalkan',
             'started_at'     => 'nullable|date',
@@ -194,6 +224,7 @@ class ProjectController extends Controller
         }
 
         $validated = $request->validate($rules);
+        $validated['project_type'] = $validated['project_type'] ?? $project->project_type ?? 'system_website_development';
 
         if ($canEditPayments) {
             $this->assertPaymentsTotalHundredPercent($validated['payments']);
@@ -215,6 +246,84 @@ class ProjectController extends Controller
         $project->delete();
 
         return redirect()->route('projects.index')->with('flash', ['type' => 'success', 'message' => 'Project berhasil dihapus.']);
+    }
+
+    public function storeMaterial(Request $request, Project $project)
+    {
+        $validated = $request->validate([
+            'master_product_id' => 'required|exists:master_products,id',
+            'warehouse_id' => 'required|exists:warehouses,id',
+            'planned_qty' => 'required|numeric|min:0.01',
+            'notes' => 'nullable|string|max:500',
+        ]);
+
+        DB::transaction(function () use ($project, $validated): void {
+            $stock = MasterProductWarehouseStock::query()
+                ->lockForUpdate()
+                ->firstOrCreate(
+                    [
+                        'master_product_id' => (int) $validated['master_product_id'],
+                        'warehouse_id' => (int) $validated['warehouse_id'],
+                    ],
+                    ['qty' => 0, 'reserved_qty' => 0],
+                );
+
+            $available = (float) $stock->qty - (float) $stock->reserved_qty;
+            $toReserve = (float) $validated['planned_qty'];
+            if ($toReserve > $available) {
+                throw ValidationException::withMessages([
+                    'planned_qty' => 'Stok tersedia tidak mencukupi. Tersedia: '.max($available, 0),
+                ]);
+            }
+
+            $material = ProjectMaterial::query()->firstOrNew([
+                'project_id' => $project->id,
+                'master_product_id' => (int) $validated['master_product_id'],
+                'warehouse_id' => (int) $validated['warehouse_id'],
+            ]);
+
+            if (! $material->exists) {
+                $material->planned_qty = 0;
+                $material->reserved_qty = 0;
+                $material->issued_qty = 0;
+                $material->status = 'reserved';
+            }
+
+            $material->planned_qty = (float) $material->planned_qty + $toReserve;
+            $material->reserved_qty = (float) $material->reserved_qty + $toReserve;
+            $material->notes = $validated['notes'] ?? $material->notes;
+            $material->save();
+
+            $stock->increment('reserved_qty', $toReserve);
+        });
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Material project berhasil ditambahkan dan stok di-reserve.']);
+    }
+
+    public function destroyMaterial(Project $project, ProjectMaterial $material)
+    {
+        if ($material->project_id !== $project->id) {
+            abort(404);
+        }
+
+        DB::transaction(function () use ($material): void {
+            $toRelease = max((float) $material->reserved_qty - (float) $material->issued_qty, 0);
+            if ($toRelease > 0) {
+                $stock = MasterProductWarehouseStock::query()
+                    ->lockForUpdate()
+                    ->where('master_product_id', $material->master_product_id)
+                    ->where('warehouse_id', $material->warehouse_id)
+                    ->first();
+                if ($stock) {
+                    $newReserved = max((float) $stock->reserved_qty - $toRelease, 0);
+                    $stock->update(['reserved_qty' => $newReserved]);
+                }
+            }
+
+            $material->delete();
+        });
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Material project dihapus dan reserve dikembalikan.']);
     }
 
     protected function assertPaymentsTotalHundredPercent(array $payments): void

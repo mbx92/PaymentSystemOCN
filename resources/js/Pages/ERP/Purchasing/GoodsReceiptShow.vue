@@ -5,9 +5,10 @@ import { Head, Link, router, useForm } from '@inertiajs/vue3';
 
 const props = defineProps({
   detail: Object,
+  warehouses: Array,
 });
 
-const advanceForm = useForm({ action: 'post_stock' });
+const advanceForm = useForm({ action: 'post_stock', warehouse_id: props.detail?.warehouse_id ?? '' });
 
 const postToStock = () => {
   advanceForm.action = 'post_stock';
@@ -79,13 +80,20 @@ const goBack = () => {
             <p class="text-sm text-base-content/70">Setelah posting, stok dapat diperbarui (integrasi penuh menyusul).</p>
             <div class="card-actions mt-4 flex-col items-stretch gap-2">
               <template v-if="detail.status === 'approved'">
+                <div>
+                  <label class="label"><span class="label-text text-xs uppercase tracking-wide">Posting ke Warehouse</span></label>
+                  <select v-model="advanceForm.warehouse_id" class="select select-bordered select-sm w-full">
+                    <option value="">Pilih warehouse</option>
+                    <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }} - {{ w.name }}</option>
+                  </select>
+                </div>
                 <button
                   type="button"
                   class="btn btn-primary btn-sm"
                   :disabled="advanceForm.processing"
                   @click="postToStock"
                 >
-                  Posting ke stok (simulasi)
+                  Posting ke stok
                 </button>
               </template>
               <template v-else-if="detail.status === 'posted'">

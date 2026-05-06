@@ -6,22 +6,20 @@ use App\ERP\Inventory\Models\Warehouse;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class ProductStockMovement extends Model
+class MasterProductWarehouseStock extends Model
 {
     protected $fillable = [
         'master_product_id',
         'warehouse_id',
-        'movement_date',
-        'movement_type',
         'qty',
-        'note',
+        'reserved_qty',
     ];
 
     protected function casts(): array
     {
         return [
-            'movement_date' => 'date',
             'qty' => 'decimal:2',
+            'reserved_qty' => 'decimal:2',
         ];
     }
 
@@ -35,3 +33,4 @@ class ProductStockMovement extends Model
         return $this->belongsTo(Warehouse::class);
     }
 }
+

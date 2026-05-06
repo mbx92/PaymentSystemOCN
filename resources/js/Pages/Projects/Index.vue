@@ -11,14 +11,21 @@ const { format } = useCurrency();
 
 const search = ref(props.filters.search ?? '');
 const status = ref(props.filters.status ?? '');
+const projectType = ref(props.filters.project_type ?? '');
 
 let timer;
-watch([search, status], () => {
+watch([search, status, projectType], () => {
     clearTimeout(timer);
     timer = setTimeout(() => {
-        router.get(route('projects.index'), { search: search.value, status: status.value }, { preserveState: true, replace: true });
+        router.get(route('projects.index'), { search: search.value, status: status.value, project_type: projectType.value }, { preserveState: true, replace: true });
     }, 400);
 });
+
+const projectTypeLabel = (value) => {
+    if (value === 'cctv_installation') return 'CCTV Installation';
+    if (value === 'system_website_development') return 'System/Website Development';
+    return value;
+};
 </script>
 
 <template>
@@ -44,6 +51,11 @@ watch([search, status], () => {
                     <option value="selesai">Selesai</option>
                     <option value="dibatalkan">Dibatalkan</option>
                 </select>
+                <select v-model="projectType" class="select select-bordered select-sm">
+                    <option value="">Semua Tipe</option>
+                    <option value="cctv_installation">CCTV Installation</option>
+                    <option value="system_website_development">System/Website Development</option>
+                </select>
             </div>
 
             <!-- Table -->
@@ -55,21 +67,27 @@ watch([search, status], () => {
                                 <tr>
                                     <th>Nama Project</th>
                                     <th>Klien</th>
+                                    <th>Tipe</th>
                                     <th>Status</th>
                                     <th>Nilai Kontrak</th>
                                     <th>Mulai</th>
                                     <th>Termin</th>
-                                    <th class="text-right">Aksi</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="p in projects.data" :key="p.id">
-                                    <td>
-                                        <Link :href="route('projects.show', p.id)" class="link link-hover font-medium">
-                                            {{ p.name }}
-                                        </Link>
-                                    </td>
+                                <tr
+                                    v-for="p in projects.data"
+                                    :key="p.id"
+                                    class="cursor-pointer hover"
+                                    tabindex="0"
+                                    @click="router.visit(route('projects.show', p.id))"
+                                    @keydown.enter.prevent="router.visit(route('projects.show', p.id))"
+                                >
+                                    <td class="font-medium">{{ p.name }}</td>
                                     <td>{{ p.client_name }}</td>
+                                    <td>
+                                        <span class="badge badge-ghost badge-sm">{{ projectTypeLabel(p.project_type) }}</span>
+                                    </td>
                                     <td><StatusBadge :status="p.status" /></td>
                                     <td class="font-medium">{{ format(p.total_value) }}</td>
                                     <td class="text-sm text-base-content/70">{{ p.started_at ?? '-' }}</td>
@@ -77,12 +95,6 @@ watch([search, status], () => {
                                         <div class="flex items-center gap-2">
                                             <progress class="progress progress-success w-16" :value="p.paid_terms" :max="p.total_terms || 3" />
                                             <span class="text-xs text-base-content/60">{{ p.paid_terms }}/{{ p.total_terms }}</span>
-                                        </div>
-                                    </td>
-                                    <td class="text-right">
-                                        <div class="flex justify-end gap-1">
-                                            <Link :href="route('projects.edit', p.id)" class="btn btn-ghost btn-xs">Edit</Link>
-                                            <Link :href="route('projects.show', p.id)" class="btn btn-ghost btn-xs">Detail</Link>
                                         </div>
                                     </td>
                                 </tr>

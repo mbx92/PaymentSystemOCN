@@ -6,26 +6,55 @@ use App\ERP\Shared\Services\ErpSystemLogger;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 class LogErpActivity
 {
     public function __construct(private readonly ErpSystemLogger $logger) {}
 
+    private function shouldTrack(Request $request): bool
+    {
+        return $request->is([
+            'erp/*',
+            'kas-*',
+            'projects*',
+            'project-payments*',
+            'team-distribution*',
+            'referrals*',
+            'laporan/*',
+            'export/*',
+            '/',
+        ]);
+    }
+
     public function handle(Request $request, Closure $next): Response
     {
-        $response = $next($request);
-
-        if (! $request->is('erp/*') && ! $request->is('kas-*') && ! $request->is('/')) {
-            return $response;
+        if (! $this->shouldTrack($request)) {
+            return $next($request);
         }
 
-        $user = $request->user();
+        try {
+            $response = $next($request);
+        } catch (Throwable $e) {
+            $this->logger->exception($e, [
+                'channel' => 'errors',
+                'user_id' => $request->user()?->id,
+                'ip_address' => $request->ip(),
+                'method' => $request->method(),
+                'path' => $request->path(),
+                'route_name' => $request->route()?->getName(),
+                'query' => $request->query(),
+            ]);
+
+            throw $e;
+        }
+
         $statusCode = $response->getStatusCode();
         $level = $statusCode >= 500 ? 'error' : ($statusCode >= 400 ? 'warning' : 'info');
 
         $payload = [
             'channel' => 'activity',
-            'user_id' => $user?->id,
+            'user_id' => $request->user()?->id,
             'ip_address' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
@@ -34,12 +63,7 @@ class LogErpActivity
             'query' => $request->query(),
         ];
 
-        $message = sprintf(
-            '%s %s [%s]',
-            $request->method(),
-            $request->path(),
-            $statusCode
-        );
+        $message = sprintf('%s %s [%s]', $request->method(), $request->path(), $statusCode);
 
         if ($level === 'error') {
             $this->logger->error('activity.http', $message, $payload);

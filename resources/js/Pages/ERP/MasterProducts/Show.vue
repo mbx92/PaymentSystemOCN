@@ -1,5 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import ConfirmModal from '@/Components/ConfirmModal.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { useCurrency } from '@/composables/useCurrency';
@@ -10,9 +11,11 @@ const props = defineProps({
 
 const { format } = useCurrency();
 
-const deleteProduct = () => {
-  if (!confirm(`Hapus produk "${props.product.name}"?`)) return;
+const confirmDeleteProduct = () => {
+  document.getElementById('modal-delete-product')?.showModal();
+};
 
+const deleteProduct = () => {
   router.delete(route('erp.master-products.destroy', props.product.id));
 };
 
@@ -37,7 +40,7 @@ const typeLabel = (value) => (value === 'project_material' ? 'Material Project' 
         </div>
         <div class="flex gap-2">
           <Link class="btn btn-ghost" :href="route('erp.master-products.index')">Kembali</Link>
-          <button class="btn btn-error" @click="deleteProduct">Delete Product</button>
+          <button class="btn btn-error" @click="confirmDeleteProduct">Delete Product</button>
         </div>
       </div>
 
@@ -81,6 +84,14 @@ const typeLabel = (value) => (value === 'project_material' ? 'Material Project' 
           </div>
         </div>
       </div>
+
+      <ConfirmModal
+        id="modal-delete-product"
+        title="Hapus Produk"
+        :message="`Yakin hapus produk \\\"${product.name}\\\"?`"
+        confirm-text="Hapus"
+        @confirm="deleteProduct"
+      />
     </div>
   </AppLayout>
 </template>

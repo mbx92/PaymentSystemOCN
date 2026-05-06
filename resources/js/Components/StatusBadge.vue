@@ -7,6 +7,7 @@ const map = {
     selesai:   'badge-success',
     dibatalkan:'badge-error',
     draft: 'badge-ghost',
+    submitted: 'badge-info',
     approved: 'badge-warning',
     posted: 'badge-success',
     void: 'badge-error',

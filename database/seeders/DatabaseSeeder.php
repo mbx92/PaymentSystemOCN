@@ -6,12 +6,14 @@ use App\ERP\Accounting\Models\Account;
 use App\ERP\Core\Models\Company;
 use App\ERP\Core\Models\Currency;
 use App\ERP\Core\Models\FiscalPeriod;
+use App\ERP\Inventory\Models\Warehouse;
 use App\ERP\Purchasing\Models\GoodsReceipt;
 use App\ERP\Purchasing\Models\GoodsReceiptLine;
 use App\ERP\Purchasing\Models\PurchaseOrder;
 use App\ERP\Purchasing\Models\PurchaseOrderLine;
 use App\ERP\Purchasing\Models\Vendor;
 use App\Models\MasterProduct;
+use App\Models\MasterProductWarehouseStock;
 use App\Models\ProductCategory;
 use App\Models\ProductStockMovement;
 use App\Models\Uom;
@@ -101,6 +103,29 @@ class DatabaseSeeder extends Seeder
 
         foreach ($masterProducts as $product) {
             MasterProduct::query()->firstOrCreate(['sku' => $product['sku']], $product);
+        }
+
+        $warehouseToko = Warehouse::query()->firstOrCreate(
+            ['code' => 'TOKO'],
+            ['name' => 'Warehouse Toko', 'address' => 'Toko', 'is_active' => true]
+        );
+        $warehouseCctv = Warehouse::query()->firstOrCreate(
+            ['code' => 'CCTV'],
+            ['name' => 'Warehouse CCTV', 'address' => 'CCTV', 'is_active' => true]
+        );
+
+        $allProducts = MasterProduct::query()->get();
+        foreach ($allProducts as $p) {
+            $targetWarehouseId = $p->product_type === 'project_material' ? $warehouseCctv->id : $warehouseToko->id;
+            MasterProductWarehouseStock::query()->updateOrCreate(
+                ['master_product_id' => $p->id, 'warehouse_id' => $targetWarehouseId],
+                ['qty' => $p->stock]
+            );
+            $otherWarehouseId = $targetWarehouseId === $warehouseToko->id ? $warehouseCctv->id : $warehouseToko->id;
+            MasterProductWarehouseStock::query()->firstOrCreate(
+                ['master_product_id' => $p->id, 'warehouse_id' => $otherWarehouseId],
+                ['qty' => 0]
+            );
         }
 
         $movementTemplates = [

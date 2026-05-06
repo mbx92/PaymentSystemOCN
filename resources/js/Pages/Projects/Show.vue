@@ -4,13 +4,17 @@ import StatusBadge from '@/Components/StatusBadge.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
 import ConfirmModal from '@/Components/ConfirmModal.vue';
 import { Link, useForm, router } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 
-const props = defineProps({ project: Object });
+const props = defineProps({
+    project: Object,
+    material_products: Array,
+    warehouses: Array,
+});
 const { format } = useCurrency();
-
 const activeTab = ref('info');
+const deletingMaterialId = ref(null);
 
 // Mark term paid
 const payForm = useForm({ paid_at: new Date().toISOString().slice(0, 10), note: '' });
@@ -28,6 +32,68 @@ const submitPay = () => {
 const markUnpaid = (term) => {
     router.patch(route('project-payments.mark-unpaid', term.id));
 };
+
+const materialForm = useForm({
+    master_product_id: '',
+    warehouse_id: '',
+    planned_qty: 1,
+    notes: '',
+});
+
+const submitMaterial = () => {
+    materialForm.post(route('projects.materials.store', props.project.id), {
+        preserveScroll: true,
+        onSuccess: () => materialForm.reset('master_product_id', 'warehouse_id', 'planned_qty', 'notes'),
+    });
+};
+
+const confirmDeleteMaterial = (id) => {
+    deletingMaterialId.value = id;
+    document.getElementById('modal-delete-material')?.showModal();
+};
+
+const deleteMaterial = () => {
+    if (!deletingMaterialId.value) return;
+    router.delete(route('projects.materials.destroy', { project: props.project.id, material: deletingMaterialId.value }));
+};
+
+const projectTypeLabel = (value) => {
+    if (value === 'cctv_installation') return 'CCTV Installation';
+    if (value === 'system_website_development') return 'System/Website Development';
+    return value;
+};
+
+const ganttPhases = computed(() => {
+    if (!props.project?.started_at || !props.project?.finished_at) return [];
+    const start = new Date(props.project.started_at);
+    const end = new Date(props.project.finished_at);
+    const templates = props.project.project_type === 'cctv_installation'
+        ? [
+            { name: 'Survey & Design', from: 0, to: 20 },
+            { name: 'Procurement', from: 20, to: 45 },
+            { name: 'Installation', from: 45, to: 85 },
+            { name: 'Testing & Handover', from: 85, to: 100 },
+        ]
+        : [
+            { name: 'Discovery', from: 0, to: 20 },
+            { name: 'Development', from: 20, to: 75 },
+            { name: 'UAT', from: 75, to: 90 },
+            { name: 'Go-Live', from: 90, to: 100 },
+        ];
+
+    const totalMs = Math.max(end.getTime() - start.getTime(), 1);
+    return templates.map((phase) => {
+        const phaseStart = new Date(start.getTime() + (totalMs * phase.from) / 100);
+        const phaseEnd = new Date(start.getTime() + (totalMs * phase.to) / 100);
+        return {
+            ...phase,
+            start: phaseStart.toISOString().slice(0, 10),
+            end: phaseEnd.toISOString().slice(0, 10),
+            left: `${phase.from}%`,
+            width: `${phase.to - phase.from}%`,
+        };
+    });
+});
 
 // Cash forms
 const cashInForm = useForm({ project_id: props.project.id, category: 'pendapatan_jasa', amount: 0, date: new Date().toISOString().slice(0, 10), note: '' });
@@ -53,6 +119,7 @@ const deleteProject = () => {
                     </div>
                     <h1 class="text-2xl font-bold">{{ project.name }}</h1>
                     <p class="text-base-content/60">{{ project.client_name }}</p>
+                    <span class="badge badge-ghost badge-sm mt-1">{{ projectTypeLabel(project.project_type) }}</span>
                 </div>
                 <div class="flex gap-2">
                     <StatusBadge :status="project.status" />
@@ -110,6 +177,7 @@ const deleteProject = () => {
             <!-- Tabs -->
             <div class="tabs tabs-boxed bg-base-100">
                 <button :class="['tab', activeTab === 'info' ? 'tab-active' : '']" @click="activeTab = 'info'">Info & Termin</button>
+                <button :class="['tab', activeTab === 'materials' ? 'tab-active' : '']" @click="activeTab = 'materials'">Material / BOM</button>
                 <button :class="['tab', activeTab === 'kas' ? 'tab-active' : '']" @click="activeTab = 'kas'">Kas Masuk / Keluar</button>
                 <button :class="['tab', activeTab === 'tim' ? 'tab-active' : '']" @click="activeTab = 'tim'">Tim & Referral</button>
             </div>
@@ -121,6 +189,7 @@ const deleteProject = () => {
                         <h2 class="card-title text-base">Detail Project</h2>
                         <div class="grid grid-cols-2 gap-2 text-sm">
                             <div class="text-base-content/60">Kontak Klien</div><div>{{ project.client_contact ?? '-' }}</div>
+                            <div class="text-base-content/60">Tipe Project</div><div>{{ projectTypeLabel(project.project_type) }}</div>
                             <div class="text-base-content/60">Tanggal Mulai</div><div>{{ project.started_at ?? '-' }}</div>
                             <div class="text-base-content/60">Tanggal Selesai</div><div>{{ project.finished_at ?? '-' }}</div>
                             <div class="text-base-content/60">Deskripsi</div><div>{{ project.description ?? '-' }}</div>
@@ -150,6 +219,82 @@ const deleteProject = () => {
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <div class="card bg-base-100 shadow">
+                    <div class="card-body">
+                        <h2 class="card-title text-base">Gantt Timeline Project</h2>
+                        <p class="text-xs text-base-content/60">Timeline otomatis berdasarkan tanggal mulai-selesai dan tipe project.</p>
+                        <div v-if="project.started_at && project.finished_at" class="mt-3 space-y-3">
+                            <div v-for="(phase, idx) in ganttPhases" :key="idx" class="space-y-1">
+                                <div class="flex items-center justify-between text-xs">
+                                    <span class="font-medium">{{ phase.name }}</span>
+                                    <span class="text-base-content/60">{{ phase.start }} → {{ phase.end }}</span>
+                                </div>
+                                <div class="relative h-6 rounded bg-base-200">
+                                    <div class="absolute top-0 h-6 rounded bg-primary/80" :style="{ left: phase.left, width: phase.width }" />
+                                </div>
+                            </div>
+                        </div>
+                        <p v-else class="text-sm text-base-content/60">Isi tanggal mulai dan selesai untuk menampilkan Gantt.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="activeTab === 'materials'" class="space-y-4">
+                <div class="card bg-base-100 shadow">
+                    <div class="card-body">
+                        <h2 class="card-title text-base">Tambah Material Project</h2>
+                        <div class="grid grid-cols-1 gap-3 md:grid-cols-5">
+                            <div class="md:col-span-2">
+                                <label class="label"><span class="label-text">Produk</span></label>
+                                <select v-model="materialForm.master_product_id" class="select select-bordered w-full">
+                                    <option value="">Pilih produk</option>
+                                    <option v-for="p in material_products" :key="p.id" :value="p.id">{{ p.sku }} - {{ p.name }} ({{ p.uom }})</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="label"><span class="label-text">Warehouse</span></label>
+                                <select v-model="materialForm.warehouse_id" class="select select-bordered w-full">
+                                    <option value="">Pilih warehouse</option>
+                                    <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }} - {{ w.name }}</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="label"><span class="label-text">Qty Reserve</span></label>
+                                <input v-model.number="materialForm.planned_qty" type="number" min="1" step="1" class="input input-bordered w-full" />
+                            </div>
+                            <div>
+                                <label class="label"><span class="label-text">Catatan</span></label>
+                                <input v-model="materialForm.notes" type="text" class="input input-bordered w-full" />
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <button class="btn btn-primary btn-sm" :disabled="materialForm.processing" @click="submitMaterial">Tambah & Reserve</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card bg-base-100 shadow">
+                    <div class="card-body p-0">
+                        <div class="p-4 border-b border-base-300"><h2 class="font-semibold">Daftar Material (BOM Reserved)</h2></div>
+                        <table class="table table-sm">
+                            <thead><tr><th>SKU</th><th>Produk</th><th>Warehouse</th><th>Planned</th><th>Reserved</th><th>Issued</th><th>Status</th><th></th></tr></thead>
+                            <tbody>
+                                <tr v-for="m in project.materials" :key="m.id">
+                                    <td class="font-mono text-xs">{{ m.sku }}</td>
+                                    <td>{{ m.product }}</td>
+                                    <td>{{ m.warehouse }}</td>
+                                    <td>{{ m.planned_qty }} {{ m.uom }}</td>
+                                    <td>{{ m.reserved_qty }} {{ m.uom }}</td>
+                                    <td>{{ m.issued_qty }} {{ m.uom }}</td>
+                                    <td><span class="badge badge-ghost badge-sm">{{ m.status }}</span></td>
+                                    <td class="text-right"><button class="btn btn-ghost btn-xs text-error" @click="confirmDeleteMaterial(m.id)">Hapus</button></td>
+                                </tr>
+                                <tr v-if="!project.materials.length"><td colspan="8" class="text-center py-6 text-base-content/50">Belum ada material project.</td></tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -341,6 +486,12 @@ const deleteProject = () => {
             title="Hapus Project"
             :message="`Apakah Anda yakin ingin menghapus project '${project.name}'? Data akan dihapus sementara (soft delete).`"
             @confirm="deleteProject"
+        />
+        <ConfirmModal
+            id="modal-delete-material"
+            title="Hapus Material Project"
+            message="Hapus material ini dan kembalikan reserve stok ke warehouse?"
+            @confirm="deleteMaterial"
         />
     </AppLayout>
 </template>
