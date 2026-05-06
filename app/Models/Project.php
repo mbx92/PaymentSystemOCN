@@ -62,6 +62,11 @@ class Project extends Model
         return $this->hasMany(Referral::class);
     }
 
+    public function tasks()
+    {
+        return $this->hasMany(ProjectTask::class)->orderBy('sort_order')->orderBy('id');
+    }
+
     public function materials()
     {
         return $this->hasMany(ProjectMaterial::class);

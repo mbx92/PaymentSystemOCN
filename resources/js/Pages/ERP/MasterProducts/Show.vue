@@ -33,14 +33,25 @@ const typeLabel = (value) => (value === 'project_material' ? 'Material Project' 
   <Head :title="`Master Produk - ${product.name}`" />
   <AppLayout>
     <div class="space-y-5">
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Master Product Detail</p>
-          <h1 class="mt-1 text-3xl font-bold tracking-tight">{{ product.name }}</h1>
+      <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Inventory Workspace</p>
+        <div class="mt-2 flex items-center justify-between gap-3">
+          <h1 class="text-3xl font-bold tracking-tight">Master Produk Detail</h1>
+          <Link class="btn btn-ghost btn-sm" :href="route('erp.master-products.index')">Back</Link>
         </div>
-        <div class="flex gap-2">
-          <Link class="btn btn-ghost" :href="route('erp.master-products.index')">Kembali</Link>
-          <button class="btn btn-error" @click="confirmDeleteProduct">Delete Product</button>
+        <p class="mt-2 text-sm text-base-content/70">Detail informasi produk master untuk kebutuhan POS dan material project.</p>
+      </div>
+
+      <div class="card bg-base-100 shadow">
+        <div class="card-body flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p class="text-xs uppercase text-base-content/50">Nama Produk</p>
+            <p class="text-lg font-semibold">{{ product.name }}</p>
+          </div>
+          <div class="flex gap-2">
+            <StatusBadge :status="product.status" />
+            <button class="btn btn-error btn-sm" @click="confirmDeleteProduct">Delete Product</button>
+          </div>
         </div>
       </div>
 

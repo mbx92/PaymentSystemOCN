@@ -24,6 +24,7 @@ import {
   InboxArrowDownIcon,
   SparklesIcon,
   Squares2X2Icon,
+  IdentificationIcon,
 } from '@heroicons/vue/24/outline';
 
 defineProps({
@@ -53,6 +54,7 @@ const iconMap = {
   'clipboard-list': ClipboardDocumentListIcon,
   'inbox-arrow-down': InboxArrowDownIcon,
   sparkles: SparklesIcon,
+  identification: IdentificationIcon,
 };
 
 const iconFor = (menu) => iconMap[menu.icon] ?? Squares2X2Icon;

@@ -31,31 +31,44 @@ const projectTypeLabel = (value) => {
 <template>
     <AppLayout>
         <div class="space-y-5">
-            <div class="flex flex-wrap items-center justify-between gap-3">
-                <h1 class="text-2xl font-bold">Projects</h1>
-                <Link :href="route('projects.create')" class="btn btn-primary btn-sm gap-2">
-                    <PlusIcon class="w-4 h-4" /> Tambah Project
-                </Link>
+            <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Projects Workspace</p>
+                        <h1 class="mt-2 text-3xl font-bold tracking-tight">Projects</h1>
+                        <p class="mt-2 text-sm text-base-content/70">Kelola daftar project aktif dari tahap negosiasi sampai selesai.</p>
+                    </div>
+                    <Link :href="route('erp.projects')" class="btn btn-ghost btn-sm">Back</Link>
+                </div>
             </div>
 
-            <!-- Filters -->
-            <div class="flex flex-wrap gap-3">
-                <label class="input input-bordered input-sm flex items-center gap-2 max-w-xs">
-                    <MagnifyingGlassIcon class="w-4 h-4 opacity-50" />
-                    <input v-model="search" type="text" placeholder="Cari project / klien…" class="grow" />
-                </label>
-                <select v-model="status" class="select select-bordered select-sm">
-                    <option value="">Semua Status</option>
-                    <option value="negosiasi">Negosiasi</option>
-                    <option value="berjalan">Berjalan</option>
-                    <option value="selesai">Selesai</option>
-                    <option value="dibatalkan">Dibatalkan</option>
-                </select>
-                <select v-model="projectType" class="select select-bordered select-sm">
-                    <option value="">Semua Tipe</option>
-                    <option value="cctv_installation">CCTV Installation</option>
-                    <option value="system_website_development">System/Website Development</option>
-                </select>
+            <!-- Utility Card -->
+            <div class="card bg-base-100 shadow">
+                <div class="card-body">
+                    <div class="flex flex-wrap gap-3 items-center">
+                        <label class="input input-bordered input-sm flex items-center gap-2 max-w-xs">
+                            <MagnifyingGlassIcon class="w-4 h-4 opacity-50" />
+                            <input v-model="search" type="text" placeholder="Cari project / klien…" class="grow" />
+                        </label>
+                        <select v-model="status" class="select select-bordered select-sm">
+                            <option value="">Semua Status</option>
+                            <option value="negosiasi">Negosiasi</option>
+                            <option value="berjalan">Berjalan</option>
+                            <option value="selesai">Selesai</option>
+                            <option value="dibatalkan">Dibatalkan</option>
+                        </select>
+                        <select v-model="projectType" class="select select-bordered select-sm">
+                            <option value="">Semua Tipe</option>
+                            <option value="cctv_installation">CCTV Installation</option>
+                            <option value="system_website_development">System/Website Development</option>
+                        </select>
+                        <div class="ml-auto">
+                            <Link :href="route('projects.create')" class="btn btn-primary btn-sm gap-2">
+                                <PlusIcon class="w-4 h-4" /> Tambah Project
+                            </Link>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Table -->

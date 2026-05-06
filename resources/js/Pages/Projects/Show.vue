@@ -11,6 +11,8 @@ const props = defineProps({
     project: Object,
     material_products: Array,
     warehouses: Array,
+    team_members: Array,
+    team_roles: Array,
 });
 const { format } = useCurrency();
 const activeTab = ref('info');
@@ -57,10 +59,148 @@ const deleteMaterial = () => {
     router.delete(route('projects.materials.destroy', { project: props.project.id, material: deletingMaterialId.value }));
 };
 
+const teamForm = useForm({
+    user_id: '',
+    team_role_id: '',
+});
+
+const submitTeamMember = () => {
+    teamForm.post(route('projects.team-members.store', props.project.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            teamForm.reset('user_id', 'team_role_id');
+            document.getElementById('modal-assign-team')?.close();
+        },
+    });
+};
+
+const removeTeamMember = (id) => {
+    router.delete(route('projects.team-members.destroy', { project: props.project.id, teamDistribution: id }), {
+        preserveScroll: true,
+    });
+};
+
+const openAssignTeamModal = () => {
+    if (!teamForm.team_role_id && props.team_roles?.length) {
+        teamForm.team_role_id = props.team_roles[0].id;
+    }
+    document.getElementById('modal-assign-team')?.showModal();
+};
+
+const referralForm = useForm({
+    project_id: props.project.id,
+    referrer_name: '',
+    commission_amount: 0,
+    paid_at: '',
+    note: '',
+});
+
+const submitReferral = () => {
+    referralForm.post(route('referrals.store'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            referralForm.reset('referrer_name', 'commission_amount', 'paid_at', 'note');
+            referralForm.project_id = props.project.id;
+            document.getElementById('modal-add-referral')?.close();
+        },
+    });
+};
+
+const openAddReferralModal = () => {
+    document.getElementById('modal-add-referral')?.showModal();
+};
+
+const taskForm = useForm({
+    title: '',
+    description: '',
+    status: 'todo',
+    assigned_user_id: '',
+    due_date: '',
+});
+
+const submitTask = () => {
+    taskForm.post(route('projects.tasks.store', props.project.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            taskForm.reset('title', 'description', 'assigned_user_id', 'due_date');
+            taskForm.status = 'todo';
+            document.getElementById('modal-add-task')?.close();
+        },
+    });
+};
+
+const openTaskModal = () => {
+    document.getElementById('modal-add-task')?.showModal();
+};
+
+const updateTaskStatus = (task, status) => {
+    router.patch(route('projects.tasks.update', { project: props.project.id, task: task.id }), { status }, { preserveScroll: true });
+};
+
+const deleteTask = (task) => {
+    router.delete(route('projects.tasks.destroy', { project: props.project.id, task: task.id }), { preserveScroll: true });
+};
+
 const projectTypeLabel = (value) => {
     if (value === 'cctv_installation') return 'CCTV Installation';
     if (value === 'system_website_development') return 'System/Website Development';
     return value;
+};
+
+const roleLabel = (role) => role;
+
+const statusLabel = (status) => {
+    if (status === 'todo') return 'To Do';
+    if (status === 'in_progress') return 'In Progress';
+    if (status === 'done') return 'Done';
+    return status;
+};
+
+const taskCardClass = (status) => {
+    if (status === 'todo') return 'border-slate-300 bg-slate-50';
+    if (status === 'in_progress') return 'border-amber-300 bg-amber-50';
+    if (status === 'done') return 'border-emerald-300 bg-emerald-50';
+    return 'border-base-300';
+};
+
+const canShowKanban = computed(() => props.project?.project_type === 'system_website_development');
+const draggingTaskId = ref(null);
+const dropColumnKey = ref(null);
+
+const kanbanColumns = computed(() => {
+    const tasks = props.project?.tasks ?? [];
+    return [
+        { key: 'todo', label: 'To Do', tasks: tasks.filter((task) => task.status === 'todo') },
+        { key: 'in_progress', label: 'In Progress', tasks: tasks.filter((task) => task.status === 'in_progress') },
+        { key: 'done', label: 'Done', tasks: tasks.filter((task) => task.status === 'done') },
+    ];
+});
+
+const onTaskDragStart = (task) => {
+    draggingTaskId.value = task.id;
+};
+
+const onTaskDragEnd = () => {
+    draggingTaskId.value = null;
+    dropColumnKey.value = null;
+};
+
+const onColumnDragOver = (columnKey, event) => {
+    event.preventDefault();
+    dropColumnKey.value = columnKey;
+};
+
+const onColumnDrop = (columnKey, event) => {
+    event.preventDefault();
+    dropColumnKey.value = null;
+    if (!draggingTaskId.value) return;
+    const task = (props.project?.tasks ?? []).find((item) => item.id === draggingTaskId.value);
+    if (!task || task.status === columnKey) {
+        draggingTaskId.value = null;
+        return;
+    }
+    updateTaskStatus(task, columnKey);
+    draggingTaskId.value = null;
 };
 
 const ganttPhases = computed(() => {
@@ -112,19 +252,23 @@ const deleteProject = () => {
     <AppLayout>
         <div class="space-y-5">
             <!-- Header -->
-            <div class="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                    <div class="flex items-center gap-2 mb-1">
-                        <Link :href="route('projects.index')" class="btn btn-ghost btn-xs">← Projects</Link>
+            <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <Link :href="route('projects.index')" class="btn btn-ghost btn-xs">← Projects</Link>
+                        </div>
+                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Projects Workspace</p>
+                        <h1 class="mt-2 text-3xl font-bold tracking-tight">{{ project.name }}</h1>
+                        <p class="text-base-content/60">{{ project.client_name }}</p>
+                        <p class="mt-1 text-sm text-base-content/70">Pantau progres project, keuangan, material, tim, dan task dalam satu halaman.</p>
+                        <span class="badge badge-ghost badge-sm mt-1">{{ projectTypeLabel(project.project_type) }}</span>
                     </div>
-                    <h1 class="text-2xl font-bold">{{ project.name }}</h1>
-                    <p class="text-base-content/60">{{ project.client_name }}</p>
-                    <span class="badge badge-ghost badge-sm mt-1">{{ projectTypeLabel(project.project_type) }}</span>
-                </div>
-                <div class="flex gap-2">
-                    <StatusBadge :status="project.status" />
-                    <Link :href="route('projects.edit', project.id)" class="btn btn-outline btn-sm">Edit</Link>
-                    <button class="btn btn-error btn-outline btn-sm" onclick="document.getElementById('modal-delete-project').showModal()">Hapus</button>
+                    <div class="flex gap-2">
+                        <StatusBadge :status="project.status" />
+                        <Link :href="route('projects.edit', project.id)" class="btn btn-outline btn-sm">Edit</Link>
+                        <button class="btn btn-error btn-outline btn-sm" onclick="document.getElementById('modal-delete-project').showModal()">Hapus</button>
+                    </div>
                 </div>
             </div>
 
@@ -180,6 +324,7 @@ const deleteProject = () => {
                 <button :class="['tab', activeTab === 'materials' ? 'tab-active' : '']" @click="activeTab = 'materials'">Material / BOM</button>
                 <button :class="['tab', activeTab === 'kas' ? 'tab-active' : '']" @click="activeTab = 'kas'">Kas Masuk / Keluar</button>
                 <button :class="['tab', activeTab === 'tim' ? 'tab-active' : '']" @click="activeTab = 'tim'">Tim & Referral</button>
+                <button v-if="canShowKanban" :class="['tab', activeTab === 'kanban' ? 'tab-active' : '']" @click="activeTab = 'kanban'">Kanban Task</button>
             </div>
 
             <!-- Tab: Info -->
@@ -351,22 +496,26 @@ const deleteProject = () => {
                     <div class="card-body">
                         <div class="flex items-center justify-between mb-3">
                             <h2 class="card-title text-base">Pembagian Tim</h2>
-                            <Link :href="route('team-distribution.calculator') + '?project_id=' + project.id" class="btn btn-primary btn-sm">
-                                Kalkulator
-                            </Link>
+                            <div class="flex gap-2">
+                                <button class="btn btn-outline btn-sm" @click="openAssignTeamModal">Assign Tim</button>
+                                <Link :href="route('team-distribution.calculator') + '?project_id=' + project.id" class="btn btn-primary btn-sm">
+                                    Kalkulator
+                                </Link>
+                            </div>
                         </div>
                         <table class="table table-sm">
-                            <thead><tr><th>Nama</th><th>Peran</th><th>%</th><th>Base Pay</th><th>Bonus</th><th>Total</th></tr></thead>
+                            <thead><tr><th>Nama</th><th>Peran</th><th>%</th><th>Base Pay</th><th>Bonus</th><th>Total</th><th></th></tr></thead>
                             <tbody>
                                 <tr v-for="d in project.team_distributions" :key="d.id">
                                     <td class="font-medium">{{ d.user_name }}</td>
-                                    <td class="capitalize">{{ d.role_in_project }}</td>
+                                    <td>{{ roleLabel(d.role_in_project) }}</td>
                                     <td>{{ d.percentage }}%</td>
                                     <td>{{ format(d.base_pay) }}</td>
                                     <td>{{ format(d.bonus) }}</td>
                                     <td class="font-semibold text-primary">{{ format(d.total_pay) }}</td>
+                                    <td class="text-right"><button class="btn btn-ghost btn-xs text-error" @click="removeTeamMember(d.id)">Lepas</button></td>
                                 </tr>
-                                <tr v-if="!project.team_distributions.length"><td colspan="6" class="text-center py-6 text-base-content/50">Belum ada pembagian tim</td></tr>
+                                <tr v-if="!project.team_distributions.length"><td colspan="7" class="text-center py-6 text-base-content/50">Belum ada pembagian tim</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -374,7 +523,10 @@ const deleteProject = () => {
 
                 <div class="card bg-base-100 shadow">
                     <div class="card-body">
-                        <h2 class="card-title text-base">Komisi Referral</h2>
+                        <div class="flex items-center justify-between mb-3">
+                            <h2 class="card-title text-base">Komisi Referral</h2>
+                            <button class="btn btn-outline btn-sm" @click="openAddReferralModal">Add Referral</button>
+                        </div>
                         <table class="table table-sm">
                             <thead><tr><th>Nama Referrer</th><th>Komisi</th><th>Tgl Bayar</th><th>Catatan</th></tr></thead>
                             <tbody>
@@ -390,7 +542,165 @@ const deleteProject = () => {
                     </div>
                 </div>
             </div>
+
+            <div v-if="activeTab === 'kanban' && canShowKanban" class="space-y-4">
+                <div class="card bg-base-100 shadow">
+                    <div class="card-body flex flex-row items-center justify-between gap-3">
+                        <div>
+                            <h2 class="card-title text-base">Kanban Task</h2>
+                            <p class="text-sm text-base-content/60">Kelola task development menggunakan drag & drop antar kolom.</p>
+                        </div>
+                        <button class="btn btn-primary btn-sm" @click="openTaskModal">+ Tambah Task</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <div
+                        v-for="column in kanbanColumns"
+                        :key="column.key"
+                        :class="[
+                            'card shadow transition-colors',
+                            dropColumnKey === column.key ? 'bg-primary/10 ring-2 ring-primary/30' : 'bg-base-100',
+                        ]"
+                        @dragover="onColumnDragOver(column.key, $event)"
+                        @drop="onColumnDrop(column.key, $event)"
+                        @dragleave="dropColumnKey = null"
+                    >
+                        <div class="card-body p-4">
+                            <div class="flex items-center justify-between mb-2">
+                                <h3 class="font-semibold">{{ column.label }}</h3>
+                                <span class="badge badge-ghost badge-sm">{{ column.tasks.length }}</span>
+                            </div>
+                            <div class="space-y-3">
+                                <div
+                                    v-for="task in column.tasks"
+                                    :key="task.id"
+                                    :class="[
+                                        'rounded-lg border p-3 space-y-2 cursor-grab active:cursor-grabbing transition-colors',
+                                        taskCardClass(task.status),
+                                    ]"
+                                    draggable="true"
+                                    @dragstart="onTaskDragStart(task)"
+                                    @dragend="onTaskDragEnd"
+                                >
+                                    <div class="font-medium">{{ task.title }}</div>
+                                    <p v-if="task.description" class="text-sm text-base-content/70">{{ task.description }}</p>
+                                    <div class="text-xs text-base-content/60">PIC: {{ task.assigned_user_name ?? '-' }}</div>
+                                    <div class="text-xs text-base-content/60">Due: {{ task.due_date ?? '-' }}</div>
+                                    <div class="flex gap-2">
+                                        <select class="select select-bordered select-xs" :value="task.status" @change="updateTaskStatus(task, $event.target.value)">
+                                            <option value="todo">To Do</option>
+                                            <option value="in_progress">In Progress</option>
+                                            <option value="done">Done</option>
+                                        </select>
+                                        <button class="btn btn-ghost btn-xs text-error" @click="deleteTask(task)">Hapus</button>
+                                    </div>
+                                </div>
+                                <div v-if="!column.tasks.length" class="text-xs text-base-content/50 py-3">Belum ada task {{ statusLabel(column.key) }}.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
+
+        <dialog id="modal-add-task" class="modal">
+            <div class="modal-box max-w-2xl">
+                <h3 class="font-bold text-lg">Tambah Task</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                    <div class="md:col-span-2">
+                        <label class="label"><span class="label-text">Judul Task</span></label>
+                        <input v-model="taskForm.title" type="text" class="input input-bordered w-full" />
+                        <p v-if="taskForm.errors.title" class="text-error text-xs mt-1">{{ taskForm.errors.title }}</p>
+                    </div>
+                    <div>
+                        <label class="label"><span class="label-text">Assignee</span></label>
+                        <select v-model="taskForm.assigned_user_id" class="select select-bordered w-full">
+                            <option value="">Unassigned</option>
+                            <option v-for="user in team_members" :key="user.id" :value="user.id">{{ user.name }}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="label"><span class="label-text">Status</span></label>
+                        <select v-model="taskForm.status" class="select select-bordered w-full">
+                            <option value="todo">To Do</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="done">Done</option>
+                        </select>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="label"><span class="label-text">Due Date</span></label>
+                        <input v-model="taskForm.due_date" type="date" class="input input-bordered w-full" />
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="label"><span class="label-text">Deskripsi</span></label>
+                        <textarea v-model="taskForm.description" class="textarea textarea-bordered w-full" rows="3" />
+                    </div>
+                </div>
+                <div class="modal-action">
+                    <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
+                    <button class="btn btn-primary" :disabled="taskForm.processing" @click="submitTask">Tambah Task</button>
+                </div>
+            </div>
+        </dialog>
+
+        <dialog id="modal-assign-team" class="modal">
+            <div class="modal-box max-w-xl">
+                <h3 class="font-bold text-lg">Assign Tim Project</h3>
+                <div class="space-y-3 mt-3">
+                    <div>
+                        <label class="label"><span class="label-text">Pilih Anggota</span></label>
+                        <select v-model="teamForm.user_id" class="select select-bordered w-full">
+                            <option value="">Pilih user</option>
+                            <option v-for="user in team_members" :key="user.id" :value="user.id">{{ user.name }} ({{ user.email }})</option>
+                        </select>
+                        <p v-if="teamForm.errors.user_id" class="text-error text-xs mt-1">{{ teamForm.errors.user_id }}</p>
+                    </div>
+                    <div>
+                        <label class="label"><span class="label-text">Role</span></label>
+                        <select v-model="teamForm.team_role_id" class="select select-bordered w-full">
+                            <option value="">Pilih role</option>
+                            <option v-for="role in team_roles" :key="role.id" :value="role.id">{{ role.name }}</option>
+                        </select>
+                        <p v-if="teamForm.errors.team_role_id" class="text-error text-xs mt-1">{{ teamForm.errors.team_role_id }}</p>
+                    </div>
+                </div>
+                <div class="modal-action">
+                    <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
+                    <button class="btn btn-primary" :disabled="teamForm.processing" @click="submitTeamMember">Assign Tim</button>
+                </div>
+            </div>
+        </dialog>
+
+        <dialog id="modal-add-referral" class="modal">
+            <div class="modal-box max-w-2xl">
+                <h3 class="font-bold text-lg">Tambah Referral</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                    <div class="md:col-span-2">
+                        <label class="label"><span class="label-text">Nama Referrer</span></label>
+                        <input v-model="referralForm.referrer_name" type="text" class="input input-bordered w-full" />
+                        <p v-if="referralForm.errors.referrer_name" class="text-error text-xs mt-1">{{ referralForm.errors.referrer_name }}</p>
+                    </div>
+                    <div>
+                        <CurrencyInput v-model="referralForm.commission_amount" label="Komisi" :required="true" :error="referralForm.errors.commission_amount" />
+                    </div>
+                    <div>
+                        <label class="label"><span class="label-text">Tanggal Bayar</span></label>
+                        <input v-model="referralForm.paid_at" type="date" class="input input-bordered w-full" />
+                        <p v-if="referralForm.errors.paid_at" class="text-error text-xs mt-1">{{ referralForm.errors.paid_at }}</p>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="label"><span class="label-text">Catatan</span></label>
+                        <textarea v-model="referralForm.note" class="textarea textarea-bordered w-full" rows="3" />
+                        <p v-if="referralForm.errors.note" class="text-error text-xs mt-1">{{ referralForm.errors.note }}</p>
+                    </div>
+                </div>
+                <div class="modal-action">
+                    <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
+                    <button class="btn btn-primary" :disabled="referralForm.processing" @click="submitReferral">Simpan Referral</button>
+                </div>
+            </div>
+        </dialog>
 
         <!-- Modal: Mark Paid -->
         <dialog id="modal-pay-term" class="modal">

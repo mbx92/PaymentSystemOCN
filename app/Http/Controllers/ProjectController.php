@@ -8,6 +8,10 @@ use App\Models\MasterProductWarehouseStock;
 use App\Models\Project;
 use App\Models\ProjectMaterial;
 use App\Models\ProjectPayment;
+use App\Models\ProjectTask;
+use App\Models\TeamRole;
+use App\Models\TeamDistribution;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -77,8 +81,17 @@ class ProjectController extends Controller
 
     public function show(Project $project)
     {
-        $project->load(['payments', 'cashIns.creator', 'cashOuts.creator', 'teamDistributions.user', 'referrals']);
+        $project->load(['payments', 'cashIns.creator', 'cashOuts.creator', 'teamDistributions.user', 'referrals', 'tasks.assignee']);
         $project->load(['materials.product', 'materials.warehouse']);
+        if (! TeamRole::query()->exists()) {
+            foreach (['Lead', 'Developer', 'Designer', 'QA'] as $name) {
+                TeamRole::query()->create([
+                    'name' => $name,
+                    'is_active' => true,
+                ]);
+            }
+        }
+        $teamRoles = TeamRole::query()->where('is_active', true)->orderBy('name')->get();
 
         return Inertia::render('Projects/Show', [
             'project' => [
@@ -128,6 +141,15 @@ class ProjectController extends Controller
                     'bonus'           => (float) $d->bonus,
                     'total_pay'       => (float) $d->total_pay,
                 ]),
+                'tasks' => $project->tasks->map(fn ($task) => [
+                    'id' => $task->id,
+                    'title' => $task->title,
+                    'description' => $task->description,
+                    'status' => $task->status,
+                    'assigned_user_id' => $task->assigned_user_id,
+                    'assigned_user_name' => $task->assignee?->name,
+                    'due_date' => $task->due_date?->format('Y-m-d'),
+                ]),
                 'referrals' => $project->referrals->map(fn ($r) => [
                     'id'                => $r->id,
                     'referrer_name'     => $r->referrer_name,
@@ -161,7 +183,112 @@ class ProjectController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'sku', 'name', 'uom']),
             'warehouses' => Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']),
+            'team_members' => User::query()->orderBy('name')->get(['id', 'name', 'email']),
+            'team_roles' => $teamRoles->map(fn (TeamRole $role) => [
+                'id' => $role->id,
+                'name' => $role->name,
+            ]),
         ]);
+    }
+
+    public function storeTeamMember(Request $request, Project $project)
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|exists:users,id',
+            'team_role_id' => 'required|integer|exists:team_roles,id',
+        ]);
+
+        $role = TeamRole::query()->findOrFail((int) $validated['team_role_id']);
+
+        TeamDistribution::query()->updateOrCreate(
+            [
+                'project_id' => $project->id,
+                'user_id' => (int) $validated['user_id'],
+            ],
+            [
+                'role_in_project' => $role->name,
+                'percentage' => 0,
+                'base_pay' => 0,
+                'bonus' => 0,
+                'total_pay' => 0,
+            ]
+        );
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Anggota tim berhasil di-assign.']);
+    }
+
+    public function destroyTeamMember(Project $project, TeamDistribution $teamDistribution)
+    {
+        if ($teamDistribution->project_id !== $project->id) {
+            abort(404);
+        }
+
+        $teamDistribution->delete();
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Anggota tim berhasil dilepas dari project.']);
+    }
+
+    public function storeTask(Request $request, Project $project)
+    {
+        if ($project->project_type !== 'system_website_development') {
+            throw ValidationException::withMessages([
+                'project' => 'Kanban task hanya tersedia untuk project System/Website Development.',
+            ]);
+        }
+
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'description' => 'nullable|string|max:1000',
+            'status' => 'nullable|in:todo,in_progress,done',
+            'assigned_user_id' => 'nullable|exists:users,id',
+            'due_date' => 'nullable|date',
+        ]);
+
+        $nextSortOrder = (int) ProjectTask::query()
+            ->where('project_id', $project->id)
+            ->max('sort_order') + 1;
+
+        ProjectTask::query()->create([
+            'project_id' => $project->id,
+            'title' => $validated['title'],
+            'description' => $validated['description'] ?? null,
+            'status' => $validated['status'] ?? 'todo',
+            'assigned_user_id' => $validated['assigned_user_id'] ?? null,
+            'due_date' => $validated['due_date'] ?? null,
+            'sort_order' => $nextSortOrder,
+        ]);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Task berhasil ditambahkan.']);
+    }
+
+    public function updateTask(Request $request, Project $project, ProjectTask $task)
+    {
+        if ($task->project_id !== $project->id) {
+            abort(404);
+        }
+
+        $validated = $request->validate([
+            'title' => 'sometimes|required|string|max:255',
+            'description' => 'nullable|string|max:1000',
+            'status' => 'sometimes|required|in:todo,in_progress,done',
+            'assigned_user_id' => 'nullable|exists:users,id',
+            'due_date' => 'nullable|date',
+        ]);
+
+        $task->update($validated);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Task berhasil diperbarui.']);
+    }
+
+    public function destroyTask(Project $project, ProjectTask $task)
+    {
+        if ($task->project_id !== $project->id) {
+            abort(404);
+        }
+
+        $task->delete();
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Task berhasil dihapus.']);
     }
 
     public function edit(Project $project)

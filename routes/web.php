@@ -12,6 +12,8 @@ use App\Http\Controllers\ERPReportingController;
 use App\Http\Controllers\ERPSalesController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\ProjectBudgetController;
+use App\Http\Controllers\ProjectRoleController;
 use App\Http\Controllers\ProjectPaymentController;
 use App\Http\Controllers\ReferralController;
 use App\Http\Controllers\ReportController;
@@ -72,8 +74,23 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/sales/project-invoices', [ERPSalesController::class, 'projectInvoices'])->name('erp.sales.project-invoices');
 
         Route::resource('projects', ProjectController::class);
+        Route::get('erp/projects/budgets', [ProjectBudgetController::class, 'index'])->name('erp.projects.budgets.index');
+        Route::post('erp/projects/budgets', [ProjectBudgetController::class, 'store'])->name('erp.projects.budgets.store');
+        Route::get('erp/projects/budgets/{budget}', [ProjectBudgetController::class, 'show'])->name('erp.projects.budgets.show');
+        Route::put('erp/projects/budgets/{budget}', [ProjectBudgetController::class, 'update'])->name('erp.projects.budgets.update');
+        Route::patch('erp/projects/budgets/{budget}/deal', [ProjectBudgetController::class, 'markDeal'])->name('erp.projects.budgets.deal');
+        Route::post('erp/projects/budgets/{budget}/convert', [ProjectBudgetController::class, 'convert'])->name('erp.projects.budgets.convert');
+        Route::get('erp/projects/budgets/{budget}/pdf', [ProjectBudgetController::class, 'pdf'])->name('erp.projects.budgets.pdf');
         Route::post('projects/{project}/materials', [ProjectController::class, 'storeMaterial'])->name('projects.materials.store');
         Route::delete('projects/{project}/materials/{material}', [ProjectController::class, 'destroyMaterial'])->name('projects.materials.destroy');
+        Route::post('projects/{project}/team-members', [ProjectController::class, 'storeTeamMember'])->name('projects.team-members.store');
+        Route::delete('projects/{project}/team-members/{teamDistribution}', [ProjectController::class, 'destroyTeamMember'])->name('projects.team-members.destroy');
+        Route::post('projects/{project}/tasks', [ProjectController::class, 'storeTask'])->name('projects.tasks.store');
+        Route::patch('projects/{project}/tasks/{task}', [ProjectController::class, 'updateTask'])->name('projects.tasks.update');
+        Route::delete('projects/{project}/tasks/{task}', [ProjectController::class, 'destroyTask'])->name('projects.tasks.destroy');
+        Route::get('erp/projects/team-roles', [ProjectRoleController::class, 'index'])->name('erp.projects.team-roles.index');
+        Route::post('erp/projects/team-roles', [ProjectRoleController::class, 'store'])->name('erp.projects.team-roles.store');
+        Route::delete('erp/projects/team-roles/{teamRole}', [ProjectRoleController::class, 'destroy'])->name('erp.projects.team-roles.destroy');
 
         // Termin
         Route::patch('project-payments/{payment}/mark-paid', [ProjectPaymentController::class, 'markPaid'])->name('project-payments.mark-paid');
