@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
 import { useForm, Link } from '@inertiajs/vue3';
@@ -18,12 +18,26 @@ const form = useForm({
     started_at: '',
     finished_at: '',
     description: '',
+    payment_scheme: 'terms',
     payments: [
         { percentage: 30, note: '' },
         { percentage: 40, note: '' },
         { percentage: 30, note: '' },
     ],
 });
+
+const isFinalPayment = computed(() => form.payment_scheme === 'final');
+
+watch(
+    () => form.payment_scheme,
+    (scheme) => {
+        if (scheme === 'final') {
+            form.payments = [{ percentage: 100, note: 'Pelunasan di akhir' }];
+        } else if (!form.payments?.length) {
+            form.payments = [{ percentage: 100, note: '' }];
+        }
+    },
+);
 
 /** Preview jumlah per termin (sama logika dengan server: pembulatan per baris, sisa ke termin terakhir) */
 const previewAmounts = computed(() => {
@@ -51,10 +65,12 @@ const totalPercent = computed(() =>
 const percentOk = computed(() => Math.abs(totalPercent.value - 100) < 0.02);
 
 const addTerm = () => {
+    if (isFinalPayment.value) return;
     form.payments.push({ percentage: 0, note: '' });
 };
 
 const removeTerm = (index) => {
+    if (isFinalPayment.value) return;
     if (form.payments.length <= 1) return;
     form.payments.splice(index, 1);
 };
@@ -141,12 +157,18 @@ const submit = () => form.post(route('projects.store'));
 
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <div>
-                            <p class="text-sm font-semibold">Atur termin secara manual</p>
-                            <p class="text-xs text-base-content/60">Total persentase harus 100%. Jumlah per termin dihitung otomatis dari nilai kontrak.</p>
+                            <p class="text-sm font-semibold">Skema pembayaran</p>
+                            <p class="text-xs text-base-content/60">Skema ini tergantung kesepakatan dengan klien (bisa termin atau pelunasan di akhir).</p>
                         </div>
-                        <button type="button" class="btn btn-outline btn-sm gap-1" @click="addTerm">
-                            <PlusIcon class="w-4 h-4" /> Tambah termin
-                        </button>
+                        <div class="flex items-center gap-2">
+                            <select v-model="form.payment_scheme" class="select select-bordered select-sm">
+                                <option value="terms">Termin (custom)</option>
+                                <option value="final">Tanpa termin — lunas di akhir</option>
+                            </select>
+                            <button v-if="!isFinalPayment" type="button" class="btn btn-outline btn-sm gap-1" @click="addTerm">
+                                <PlusIcon class="w-4 h-4" /> Tambah termin
+                            </button>
+                        </div>
                     </div>
 
                     <div v-if="form.errors.payments" class="alert alert-error text-sm">
@@ -176,6 +198,7 @@ const submit = () => form.post(route('projects.store'));
                                             step="0.5"
                                             class="input input-bordered input-sm w-full max-w-[8rem]"
                                             :class="form.errors[`payments.${index}.percentage`] ? 'input-error' : ''"
+                                            :disabled="isFinalPayment"
                                         />
                                         <p v-if="form.errors[`payments.${index}.percentage`]" class="text-error text-xs mt-1">
                                             {{ form.errors[`payments.${index}.percentage`] }}
@@ -183,7 +206,7 @@ const submit = () => form.post(route('projects.store'));
                                     </td>
                                     <td class="font-semibold whitespace-nowrap">{{ format(previewAmounts[index]) }}</td>
                                     <td>
-                                        <input v-model="row.note" type="text" class="input input-bordered input-sm w-full" placeholder="Opsional" />
+                                        <input v-model="row.note" type="text" class="input input-bordered input-sm w-full" placeholder="Opsional" :disabled="isFinalPayment" />
                                     </td>
                                     <td>
                                         <button

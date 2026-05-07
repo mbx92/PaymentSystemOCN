@@ -5,6 +5,7 @@ use App\Http\Controllers\CashOutController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ERPInventoryController;
 use App\Http\Controllers\ERPInventoryMasterDataController;
+use App\Http\Controllers\ERPAdministrationMasterDataController;
 use App\Http\Controllers\ERPMasterProductController;
 use App\Http\Controllers\ERPModuleController;
 use App\Http\Controllers\ERPPurchasingController;
@@ -20,6 +21,7 @@ use App\Http\Controllers\ReportController;
 use App\Http\Controllers\TeamDistributionController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\ErpSystemLogController;
+use App\Http\Controllers\ErpChatbotController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('auth')->group(function () {
@@ -30,6 +32,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+    Route::post('erp/chatbot/ask', [ErpChatbotController::class, 'ask'])->name('erp.chatbot.ask');
 
     // Projects (Admin + Manajer)
     Route::middleware('role:admin|manajer')->group(function () {
@@ -44,9 +47,16 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/master-products', [ERPMasterProductController::class, 'index'])->name('erp.master-products.index');
         Route::post('erp/master-products', [ERPMasterProductController::class, 'store'])->name('erp.master-products.store');
         Route::get('erp/master-products/{masterProduct}', [ERPMasterProductController::class, 'show'])->name('erp.master-products.show');
+        Route::patch('erp/master-products/{masterProduct}', [ERPMasterProductController::class, 'update'])->name('erp.master-products.update');
         Route::delete('erp/master-products/{masterProduct}', [ERPMasterProductController::class, 'destroy'])->name('erp.master-products.destroy');
+        Route::post('erp/master-products/{masterProduct}/uom-mappings', [ERPMasterProductController::class, 'storeUomMapping'])->name('erp.master-products.uom-mappings.store');
+        Route::patch('erp/master-products/{masterProduct}/uom-mappings/{mapping}', [ERPMasterProductController::class, 'updateUomMapping'])->name('erp.master-products.uom-mappings.update');
+        Route::delete('erp/master-products/{masterProduct}/uom-mappings/{mapping}', [ERPMasterProductController::class, 'destroyUomMapping'])->name('erp.master-products.uom-mappings.destroy');
         Route::get('erp/inventory/categories', [ERPInventoryMasterDataController::class, 'categories'])->name('erp.inventory.categories');
         Route::post('erp/inventory/categories', [ERPInventoryMasterDataController::class, 'storeCategory'])->name('erp.inventory.categories.store');
+        Route::get('erp/inventory/warehouses', [ERPInventoryMasterDataController::class, 'warehouses'])->name('erp.inventory.warehouses');
+        Route::post('erp/inventory/warehouses', [ERPInventoryMasterDataController::class, 'storeWarehouse'])->name('erp.inventory.warehouses.store');
+        Route::patch('erp/inventory/warehouses/{warehouse}', [ERPInventoryMasterDataController::class, 'updateWarehouse'])->name('erp.inventory.warehouses.update');
         Route::get('erp/inventory/uoms', [ERPInventoryMasterDataController::class, 'uoms'])->name('erp.inventory.uoms');
         Route::post('erp/inventory/uoms', [ERPInventoryMasterDataController::class, 'storeUom'])->name('erp.inventory.uoms.store');
         Route::post('erp/inventory/uom-conversions', [ERPInventoryMasterDataController::class, 'storeConversion'])->name('erp.inventory.uom-conversions.store');
@@ -71,7 +81,18 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/purchasing/reorder-planning', [ERPPurchasingController::class, 'reorderPlanning'])->name('erp.purchasing.reorder-planning');
         Route::get('erp/purchasing/reorder-planning/{masterProduct}', [ERPPurchasingController::class, 'reorderShow'])->name('erp.purchasing.reorder-planning.show');
         Route::get('erp/sales/pos', [ERPSalesController::class, 'pos'])->name('erp.sales.pos');
+        Route::post('erp/sales/pos/checkout', [ERPSalesController::class, 'checkoutPos'])->name('erp.sales.pos.checkout');
+        Route::get('erp/sales/transactions', [ERPSalesController::class, 'posTransactions'])->name('erp.sales.pos.transactions');
+        Route::get('erp/sales/transactions/{posSale}', [ERPSalesController::class, 'posTransactionShow'])->name('erp.sales.pos.transactions.show');
+        Route::patch('erp/sales/transactions/{posSale}/payment-method', [ERPSalesController::class, 'updatePosTransactionPaymentMethod'])->name('erp.sales.pos.transactions.payment-method.update');
+        Route::post('erp/sales/transactions/{posSale}/refund', [ERPSalesController::class, 'refundPosTransaction'])->name('erp.sales.pos.transactions.refund');
+        Route::post('erp/sales/transactions/{posSale}/reopen', [ERPSalesController::class, 'reopenPosTransaction'])->name('erp.sales.pos.transactions.reopen');
         Route::get('erp/sales/project-invoices', [ERPSalesController::class, 'projectInvoices'])->name('erp.sales.project-invoices');
+        Route::get('erp/sales/project-invoices/{project}', [ERPSalesController::class, 'projectInvoiceShow'])->name('erp.sales.project-invoices.show');
+        Route::post('erp/sales/project-invoices/{project}/payments', [ERPSalesController::class, 'storeProjectInvoicePayment'])->name('erp.sales.project-invoices.payments.store');
+        Route::patch('erp/sales/project-invoices/{project}/payments/{cashIn}', [ERPSalesController::class, 'updateProjectInvoicePayment'])->name('erp.sales.project-invoices.payments.update');
+        Route::get('erp/sales/project-invoices/{project}/download', [ERPSalesController::class, 'downloadProjectInvoice'])->name('erp.sales.project-invoices.download');
+        Route::get('erp/sales/project-invoices/{project}/payments/{cashIn}/receipt', [ERPSalesController::class, 'downloadProjectReceipt'])->name('erp.sales.project-invoices.receipt');
 
         Route::resource('projects', ProjectController::class);
         Route::get('erp/projects/budgets', [ProjectBudgetController::class, 'index'])->name('erp.projects.budgets.index');
@@ -83,6 +104,7 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/projects/budgets/{budget}/pdf', [ProjectBudgetController::class, 'pdf'])->name('erp.projects.budgets.pdf');
         Route::post('projects/{project}/materials', [ProjectController::class, 'storeMaterial'])->name('projects.materials.store');
         Route::delete('projects/{project}/materials/{material}', [ProjectController::class, 'destroyMaterial'])->name('projects.materials.destroy');
+        Route::patch('projects/{project}/status', [ProjectController::class, 'updateStatus'])->name('projects.status.update');
         Route::post('projects/{project}/team-members', [ProjectController::class, 'storeTeamMember'])->name('projects.team-members.store');
         Route::delete('projects/{project}/team-members/{teamDistribution}', [ProjectController::class, 'destroyTeamMember'])->name('projects.team-members.destroy');
         Route::post('projects/{project}/tasks', [ProjectController::class, 'storeTask'])->name('projects.tasks.store');
@@ -121,6 +143,7 @@ Route::middleware('auth')->group(function () {
         Route::get('laporan/project-profit', [ReportController::class, 'projectProfit'])->name('reports.project-profit');
         Route::get('laporan/bulanan', [ReportController::class, 'monthly'])->name('reports.monthly');
         Route::get('laporan/anggota', [ReportController::class, 'memberPayments'])->name('reports.member-payments');
+        Route::get('erp/accounting/chart-of-accounts', [ERPReportingController::class, 'chartOfAccounts'])->name('erp.accounting.coa');
         Route::get('laporan/general-ledger', [ERPReportingController::class, 'generalLedger'])->name('reports.general-ledger');
         Route::get('laporan/neraca-saldo', [ERPReportingController::class, 'trialBalance'])->name('reports.trial-balance');
 
@@ -137,6 +160,16 @@ Route::middleware('auth')->group(function () {
         Route::put('users/{user}', [UserController::class, 'update'])->name('users.update');
         Route::delete('users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
         Route::get('erp/administration', [ERPModuleController::class, 'administration'])->name('erp.administration');
+        Route::get('erp/admin/document-sequences', [ERPAdministrationMasterDataController::class, 'documentSequences'])->name('erp.admin.document-sequences');
+        Route::post('erp/admin/document-sequences', [ERPAdministrationMasterDataController::class, 'storeDocumentSequence'])->name('erp.admin.document-sequences.store');
+        Route::patch('erp/admin/document-sequences/{documentSequence}', [ERPAdministrationMasterDataController::class, 'updateDocumentSequence'])->name('erp.admin.document-sequences.update');
+        Route::get('erp/admin/payment-methods', [ERPAdministrationMasterDataController::class, 'paymentMethods'])->name('erp.admin.payment-methods');
+        Route::post('erp/admin/payment-methods', [ERPAdministrationMasterDataController::class, 'storePaymentMethod'])->name('erp.admin.payment-methods.store');
+        Route::patch('erp/admin/payment-methods/{paymentMethod}', [ERPAdministrationMasterDataController::class, 'updatePaymentMethod'])->name('erp.admin.payment-methods.update');
+        Route::get('erp/admin/parser-rules', [ERPAdministrationMasterDataController::class, 'parserRules'])->name('erp.admin.parser-rules');
+        Route::post('erp/admin/parser-rules', [ERPAdministrationMasterDataController::class, 'storeParserRule'])->name('erp.admin.parser-rules.store');
+        Route::patch('erp/admin/parser-rules/{parserRule}', [ERPAdministrationMasterDataController::class, 'updateParserRule'])->name('erp.admin.parser-rules.update');
+        Route::post('erp/admin/parser-rules/test', [ERPAdministrationMasterDataController::class, 'testParserRule'])->name('erp.admin.parser-rules.test');
         Route::get('erp/admin/system-logs', [ErpSystemLogController::class, 'index'])->name('erp.admin.system-logs.index');
     });
 });

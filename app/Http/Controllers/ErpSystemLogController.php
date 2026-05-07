@@ -25,6 +25,10 @@ class ErpSystemLogController extends Controller
             $query->where('event', 'like', '%'.$event.'%');
         }
 
+        if ($method = $request->string('method')->toString()) {
+            $query->where('method', strtoupper($method));
+        }
+
         if ($q = $request->string('q')->toString()) {
             $query->where(function ($inner) use ($q): void {
                 $inner->where('message', 'like', '%'.$q.'%')
@@ -73,7 +77,7 @@ class ErpSystemLogController extends Controller
 
         return Inertia::render('ERP/Admin/SystemLogs', [
             'logs' => $logs,
-            'filters' => $request->only(['level', 'channel', 'event', 'q', 'date_from', 'date_to']),
+            'filters' => $request->only(['level', 'channel', 'event', 'method', 'q', 'date_from', 'date_to']),
             'levels' => $levels,
             'channels' => $channels,
         ]);

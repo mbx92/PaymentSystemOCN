@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
+import ProductPickerModal from '@/Components/ProductPickerModal.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, reactive, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
@@ -50,14 +51,7 @@ const addForm = useForm({
   lines: [{ product_id: '', product_search: '', qty: 1, unit_price: 0 }],
 });
 
-const productSearch = reactive({ q: '' });
-const productPicker = reactive({ lineIndex: null });
-
-const filteredProducts = computed(() => {
-  const q = String(productSearch.q || '').trim().toLowerCase();
-  if (!q) return props.products ?? [];
-  return (props.products ?? []).filter((p) => String(p.sku || '').toLowerCase().includes(q) || String(p.name || '').toLowerCase().includes(q));
-});
+const productPicker = reactive({ lineIndex: null, show: false });
 
 const attemptedSubmit = ref(false);
 
@@ -75,8 +69,7 @@ const openAddModal = () => {
 
 const openProductPicker = (index) => {
   productPicker.lineIndex = index;
-  productSearch.q = '';
-  document.getElementById('modal-select-product-po')?.showModal();
+  productPicker.show = true;
 };
 
 const mergeDuplicateLine = (index) => {
@@ -105,7 +98,7 @@ const chooseProduct = (product) => {
   if (productPicker.lineIndex === null) return;
   selectProductForLine(productPicker.lineIndex, product);
   productPicker.lineIndex = null;
-  document.getElementById('modal-select-product-po')?.close();
+  productPicker.show = false;
 };
 
 const onUnitPriceInput = (event, line) => {
@@ -154,8 +147,8 @@ const submitAdd = () => {
       addForm.reset();
       addForm.order_date = new Date().toISOString().slice(0, 10);
       addForm.lines = [{ product_id: '', product_search: '', qty: 1, unit_price: 0 }];
-      productSearch.q = '';
       productPicker.lineIndex = null;
+      productPicker.show = false;
       document.getElementById('modal-add-po')?.close();
     },
   });
@@ -320,34 +313,18 @@ const submitAdd = () => {
         </div>
       </dialog>
 
-      <dialog id="modal-select-product-po" class="modal">
-        <div class="modal-box max-w-3xl">
-          <h3 class="font-bold text-lg">Pilih Produk</h3>
-          <div class="mt-3">
-            <input v-model="productSearch.q" type="text" class="input input-bordered input-sm w-full" placeholder="Cari SKU / nama produk" />
-          </div>
-          <div class="mt-3 max-h-[420px] overflow-auto rounded-xl border border-base-200">
-            <table class="table table-sm">
-              <thead><tr><th>SKU</th><th>Nama Produk</th><th>UoM</th><th class="text-right">Harga</th><th></th></tr></thead>
-              <tbody>
-                <tr v-for="product in filteredProducts" :key="product.id">
-                  <td class="font-mono text-xs">{{ product.sku }}</td>
-                  <td>{{ product.name }}</td>
-                  <td class="text-xs uppercase">{{ product.uom || '-' }}</td>
-                  <td class="text-right">{{ formatIdr(product.selling_price) }}</td>
-                  <td class="text-right"><button class="btn btn-primary btn-xs" type="button" @click="chooseProduct(product)">Pilih</button></td>
-                </tr>
-                <tr v-if="!filteredProducts.length">
-                  <td colspan="5" class="py-6 text-center text-sm text-base-content/60">Tidak ada produk sesuai pencarian.</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="modal-action">
-            <form method="dialog"><button class="btn btn-ghost">Tutup</button></form>
-          </div>
-        </div>
-      </dialog>
+      <ProductPickerModal
+        :show="productPicker.show"
+        :products="products"
+        title="Pilih Produk untuk PO"
+        subtitle="Gunakan katalog produk global agar PO konsisten dengan modul inventory dan POS."
+        search-label="Cari SKU / Barcode / Nama Produk"
+        search-placeholder="Contoh: PKG-SP-12X20"
+        confirm-text="Pilih Produk"
+        radio-name="selected_product_po_add"
+        @close="productPicker.show = false"
+        @confirm="chooseProduct"
+      />
     </div>
   </AppLayout>
 </template>

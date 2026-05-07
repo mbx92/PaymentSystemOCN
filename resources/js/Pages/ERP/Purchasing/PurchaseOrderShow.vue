@@ -1,8 +1,9 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
+import ProductPickerModal from '@/Components/ProductPickerModal.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { computed, reactive } from 'vue';
 
 const props = defineProps({
   detail: Object,
@@ -49,10 +50,12 @@ const editForm = useForm({
   notes: '',
   lines: props.detail.lines.map((line) => ({
     product_id: line.product_id,
+    product_search: `${line.sku || ''} - ${line.name || ''}`.trim(),
     qty: Number(line.qty || 0),
     unit_price: Number(line.unit_price || 0),
   })),
 });
+const editProductPicker = reactive({ lineIndex: null, show: false });
 
 const canEdit = computed(() => ['draft', 'submitted'].includes(props.detail.status));
 const lineSubtotal = (line) => Number(line.qty || 0) * Number(line.unit_price || 0);
@@ -71,7 +74,7 @@ const receiptBadgeClass = (status) => {
 };
 
 const addLine = () => {
-  editForm.lines.push({ product_id: '', qty: 1, unit_price: 0 });
+  editForm.lines.push({ product_id: '', product_search: '', qty: 1, unit_price: 0 });
 };
 
 const removeLine = (idx) => {
@@ -79,12 +82,24 @@ const removeLine = (idx) => {
   editForm.lines.splice(idx, 1);
 };
 
-const onProductChange = (idx) => {
+const selectProductForEditLine = (idx, product) => {
   const line = editForm.lines[idx];
-  const product = props.products.find((p) => String(p.id) === String(line.product_id));
-  if (product) {
-    line.unit_price = Number(product.selling_price || 0);
-  }
+  if (!line || !product) return;
+  line.product_id = product.id;
+  line.product_search = `${product.sku} - ${product.name}`;
+  line.unit_price = Number(product.selling_price || 0);
+};
+
+const openEditProductPicker = (idx) => {
+  editProductPicker.lineIndex = idx;
+  editProductPicker.show = true;
+};
+
+const chooseEditProduct = (product) => {
+  if (editProductPicker.lineIndex === null) return;
+  selectProductForEditLine(editProductPicker.lineIndex, product);
+  editProductPicker.lineIndex = null;
+  editProductPicker.show = false;
 };
 
 const submitEdit = () => {
@@ -258,6 +273,7 @@ const submitEdit = () => {
                 <thead>
                   <tr>
                     <th>Produk</th>
+                    <th>UoM</th>
                     <th>Qty</th>
                     <th>Harga</th>
                     <th>Subtotal</th>
@@ -267,12 +283,17 @@ const submitEdit = () => {
                 <tbody>
                   <tr v-for="(line, idx) in editForm.lines" :key="idx">
                     <td>
-                      <select v-model="line.product_id" class="select select-bordered select-sm w-full" @change="onProductChange(idx)">
-                        <option value="">Pilih produk</option>
-                        <option v-for="product in products" :key="product.id" :value="product.id">
-                          {{ product.sku }} - {{ product.name }}
-                        </option>
-                      </select>
+                      <input
+                        :value="line.product_search || `${products.find((p) => String(p.id) === String(line.product_id))?.sku || ''} - ${products.find((p) => String(p.id) === String(line.product_id))?.name || ''}`"
+                        type="text"
+                        class="input input-bordered input-sm w-full"
+                        placeholder="Klik untuk pilih produk"
+                        readonly
+                        @click="openEditProductPicker(idx)"
+                      />
+                    </td>
+                    <td class="text-xs font-semibold uppercase text-base-content/70">
+                      {{ products.find((p) => String(p.id) === String(line.product_id))?.uom || '-' }}
                     </td>
                     <td><input v-model.number="line.qty" type="number" min="0.01" step="0.01" class="input input-bordered input-sm w-24" /></td>
                     <td><input v-model.number="line.unit_price" type="number" min="0.01" step="0.01" class="input input-bordered input-sm w-32" /></td>
@@ -293,6 +314,19 @@ const submitEdit = () => {
           </div>
         </div>
       </dialog>
+
+      <ProductPickerModal
+        :show="editProductPicker.show"
+        :products="products"
+        title="Pilih Produk untuk Edit PO"
+        subtitle="Pilih dari katalog produk global."
+        search-label="Cari SKU / Barcode / Nama Produk"
+        search-placeholder="Contoh: PKG-SP-12X20"
+        confirm-text="Pilih Produk"
+        radio-name="selected_product_po_edit"
+        @close="editProductPicker.show = false"
+        @confirm="chooseEditProduct"
+      />
     </div>
   </AppLayout>
 </template>

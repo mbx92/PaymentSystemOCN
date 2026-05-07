@@ -21,6 +21,7 @@ const conversionForm = useForm({
 });
 
 const submitUom = () => {
+  uomForm.status = uomForm.status === 'active' ? 'active' : 'inactive';
   uomForm.post(route('erp.inventory.uoms.store'), {
     preserveScroll: true,
     onSuccess: () => uomForm.reset(),
@@ -53,10 +54,15 @@ const submitConversion = () => {
             <h2 class="card-title text-lg">Tambah UoM</h2>
             <input v-model="uomForm.code" class="input input-bordered" placeholder="Code (pcs, pack, dus)" />
             <input v-model="uomForm.name" class="input input-bordered" placeholder="Nama satuan" />
-            <select v-model="uomForm.status" class="select select-bordered">
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
+            <label class="label cursor-pointer justify-start gap-3 rounded-lg border border-base-300 px-3">
+              <input
+                :checked="uomForm.status === 'active'"
+                type="checkbox"
+                class="toggle toggle-success"
+                @change="uomForm.status = $event.target.checked ? 'active' : 'inactive'"
+              />
+              <span class="label-text">{{ uomForm.status === 'active' ? 'Active' : 'Inactive' }}</span>
+            </label>
             <button class="btn btn-primary" @click="submitUom">Simpan UoM</button>
           </div>
         </div>

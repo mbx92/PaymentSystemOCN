@@ -19,6 +19,8 @@ class Project extends Model
         'project_type',
         'total_value',
         'status',
+        'invoice_number',
+        'invoiced_at',
         'document_status',
         'approved_at',
         'approved_by',
@@ -33,6 +35,7 @@ class Project extends Model
         'total_value' => 'decimal:2',
         'approved_at' => 'datetime',
         'posted_at' => 'datetime',
+        'invoiced_at' => 'datetime',
         'started_at' => 'date',
         'finished_at' => 'date',
     ];

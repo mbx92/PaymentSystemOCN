@@ -62,13 +62,21 @@ const deleteMaterial = () => {
 const teamForm = useForm({
     user_id: '',
     team_role_id: '',
+    percentage: 0,
+    base_pay: 0,
+    bonus: 0,
+    total_pay: 0,
 });
 
 const submitTeamMember = () => {
     teamForm.post(route('projects.team-members.store', props.project.id), {
         preserveScroll: true,
         onSuccess: () => {
-            teamForm.reset('user_id', 'team_role_id');
+            teamForm.reset('user_id', 'team_role_id', 'percentage', 'base_pay', 'bonus', 'total_pay');
+            teamForm.percentage = 0;
+            teamForm.base_pay = 0;
+            teamForm.bonus = 0;
+            teamForm.total_pay = 0;
             document.getElementById('modal-assign-team')?.close();
         },
     });
@@ -84,6 +92,7 @@ const openAssignTeamModal = () => {
     if (!teamForm.team_role_id && props.team_roles?.length) {
         teamForm.team_role_id = props.team_roles[0].id;
     }
+    teamForm.total_pay = (Number(teamForm.base_pay) || 0) + (Number(teamForm.bonus) || 0);
     document.getElementById('modal-assign-team')?.showModal();
 };
 
@@ -242,6 +251,45 @@ const cashOutForm = useForm({ project_id: props.project.id, category: 'biaya_tim
 const submitCashIn = () => cashInForm.post(route('cash-in.store'), { onSuccess: () => { cashInForm.reset('amount', 'note'); document.getElementById('modal-cash-in').close(); } });
 const submitCashOut = () => cashOutForm.post(route('cash-out.store'), { onSuccess: () => { cashOutForm.reset('amount', 'note', 'recipient_name'); document.getElementById('modal-cash-out').close(); } });
 
+const canMoveToBerjalan = computed(() => props.project?.status === 'negosiasi');
+const canMoveToSelesai = computed(() => props.project?.status === 'berjalan');
+
+const statusStartForm = useForm({
+    target_status: 'berjalan',
+    started_at: props.project.started_at || new Date().toISOString().slice(0, 10),
+});
+
+const statusFinishForm = useForm({
+    target_status: 'selesai',
+    finished_at: props.project.finished_at || new Date().toISOString().slice(0, 10),
+});
+
+const openStartStatusModal = () => {
+    statusStartForm.target_status = 'berjalan';
+    statusStartForm.started_at = props.project.started_at || new Date().toISOString().slice(0, 10);
+    document.getElementById('modal-project-start')?.showModal();
+};
+
+const openFinishStatusModal = () => {
+    statusFinishForm.target_status = 'selesai';
+    statusFinishForm.finished_at = props.project.finished_at || new Date().toISOString().slice(0, 10);
+    document.getElementById('modal-project-finish')?.showModal();
+};
+
+const submitMoveToBerjalan = () => {
+    statusStartForm.patch(route('projects.status.update', props.project.id), {
+        preserveScroll: true,
+        onSuccess: () => document.getElementById('modal-project-start')?.close(),
+    });
+};
+
+const submitMoveToSelesai = () => {
+    statusFinishForm.patch(route('projects.status.update', props.project.id), {
+        preserveScroll: true,
+        onSuccess: () => document.getElementById('modal-project-finish')?.close(),
+    });
+};
+
 // Delete project
 const deleteProject = () => {
     router.delete(route('projects.destroy', props.project.id));
@@ -266,6 +314,8 @@ const deleteProject = () => {
                     </div>
                     <div class="flex gap-2">
                         <StatusBadge :status="project.status" />
+                        <button v-if="canMoveToBerjalan" class="btn btn-success btn-sm" @click="openStartStatusModal">Mulai Project</button>
+                        <button v-if="canMoveToSelesai" class="btn btn-primary btn-sm" @click="openFinishStatusModal">Selesaikan Project</button>
                         <Link :href="route('projects.edit', project.id)" class="btn btn-outline btn-sm">Edit</Link>
                         <button class="btn btn-error btn-outline btn-sm" onclick="document.getElementById('modal-delete-project').showModal()">Hapus</button>
                     </div>
@@ -664,6 +714,27 @@ const deleteProject = () => {
                         </select>
                         <p v-if="teamForm.errors.team_role_id" class="text-error text-xs mt-1">{{ teamForm.errors.team_role_id }}</p>
                     </div>
+                    <div>
+                        <label class="label"><span class="label-text">Persentase (%)</span></label>
+                        <input v-model.number="teamForm.percentage" type="number" min="0" max="100" step="0.01" class="input input-bordered w-full" />
+                        <p v-if="teamForm.errors.percentage" class="text-error text-xs mt-1">{{ teamForm.errors.percentage }}</p>
+                    </div>
+                    <div>
+                        <label class="label"><span class="label-text">Base Pay</span></label>
+                        <input v-model.number="teamForm.base_pay" type="number" min="0" step="1000" class="input input-bordered w-full" @input="teamForm.total_pay = (Number(teamForm.base_pay) || 0) + (Number(teamForm.bonus) || 0)" />
+                        <p v-if="teamForm.errors.base_pay" class="text-error text-xs mt-1">{{ teamForm.errors.base_pay }}</p>
+                    </div>
+                    <div>
+                        <label class="label"><span class="label-text">Bonus</span></label>
+                        <input v-model.number="teamForm.bonus" type="number" min="0" step="1000" class="input input-bordered w-full" @input="teamForm.total_pay = (Number(teamForm.base_pay) || 0) + (Number(teamForm.bonus) || 0)" />
+                        <p v-if="teamForm.errors.bonus" class="text-error text-xs mt-1">{{ teamForm.errors.bonus }}</p>
+                    </div>
+                    <div>
+                        <label class="label"><span class="label-text">Total Pay</span></label>
+                        <input v-model.number="teamForm.total_pay" type="number" min="0" step="1000" class="input input-bordered w-full" />
+                        <p class="text-xs text-base-content/60 mt-1">Default dihitung dari Base Pay + Bonus.</p>
+                        <p v-if="teamForm.errors.total_pay" class="text-error text-xs mt-1">{{ teamForm.errors.total_pay }}</p>
+                    </div>
                 </div>
                 <div class="modal-action">
                     <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
@@ -786,6 +857,38 @@ const deleteProject = () => {
                 <div class="modal-action">
                     <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
                     <button class="btn btn-error" :disabled="cashOutForm.processing" @click="submitCashOut">Simpan</button>
+                </div>
+            </div>
+        </dialog>
+
+        <dialog id="modal-project-start" class="modal">
+            <div class="modal-box max-w-lg">
+                <h3 class="font-bold text-lg">Ubah Status ke Berjalan</h3>
+                <div class="mt-4">
+                    <label class="label"><span class="label-text">Tanggal Mulai</span></label>
+                    <input v-model="statusStartForm.started_at" type="date" class="input input-bordered w-full" />
+                    <p v-if="statusStartForm.errors.started_at" class="text-error text-xs mt-1">{{ statusStartForm.errors.started_at }}</p>
+                    <p v-if="statusStartForm.errors.target_status" class="text-error text-xs mt-1">{{ statusStartForm.errors.target_status }}</p>
+                </div>
+                <div class="modal-action">
+                    <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
+                    <button class="btn btn-success" :disabled="statusStartForm.processing" @click="submitMoveToBerjalan">Simpan</button>
+                </div>
+            </div>
+        </dialog>
+
+        <dialog id="modal-project-finish" class="modal">
+            <div class="modal-box max-w-lg">
+                <h3 class="font-bold text-lg">Ubah Status ke Selesai</h3>
+                <div class="mt-4">
+                    <label class="label"><span class="label-text">Tanggal Selesai</span></label>
+                    <input v-model="statusFinishForm.finished_at" type="date" class="input input-bordered w-full" />
+                    <p v-if="statusFinishForm.errors.finished_at" class="text-error text-xs mt-1">{{ statusFinishForm.errors.finished_at }}</p>
+                    <p v-if="statusFinishForm.errors.target_status" class="text-error text-xs mt-1">{{ statusFinishForm.errors.target_status }}</p>
+                </div>
+                <div class="modal-action">
+                    <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
+                    <button class="btn btn-primary" :disabled="statusFinishForm.processing" @click="submitMoveToSelesai">Simpan</button>
                 </div>
             </div>
         </dialog>

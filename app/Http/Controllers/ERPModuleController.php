@@ -10,6 +10,7 @@ class ERPModuleController extends Controller
     public function accounting(): Response
     {
         return $this->renderModule('Accounting', [
+            ['title' => 'CoA / Chart Of Account', 'description' => 'Daftar akun chart of accounts untuk semua posting akuntansi.', 'route' => 'erp.accounting.coa', 'icon' => 'book-open'],
             ['title' => 'Kas Masuk', 'description' => 'Pencatatan penerimaan kas dan posting jurnal otomatis.', 'route' => 'cash-in.index', 'icon' => 'arrow-down-circle'],
             ['title' => 'Kas Keluar', 'description' => 'Pencatatan pengeluaran kas dan kontrol biaya.', 'route' => 'cash-out.index', 'icon' => 'arrow-up-circle'],
             ['title' => 'General Ledger', 'description' => 'Lihat jurnal umum yang sudah diposting.', 'route' => 'reports.general-ledger', 'icon' => 'book-open'],
@@ -21,6 +22,7 @@ class ERPModuleController extends Controller
     {
         return $this->renderModule('Sales', [
             ['title' => 'POS Produk', 'description' => 'Kasir untuk penjualan produk kemasan plastik dan makanan.', 'route' => 'erp.sales.pos', 'icon' => 'shopping-cart', 'newTab' => true, 'url' => route('erp.sales.pos', ['fullscreen' => 1])],
+            ['title' => 'Transaksi', 'description' => 'Riwayat transaksi POS yang sudah diproses.', 'route' => 'erp.sales.pos.transactions', 'icon' => 'document-text'],
             ['title' => 'Invoice Project', 'description' => 'Pembuatan invoice untuk project software, CCTV, dan jaringan.', 'route' => 'erp.sales.project-invoices', 'icon' => 'document-text'],
         ]);
     }
@@ -40,6 +42,7 @@ class ERPModuleController extends Controller
         return $this->renderModule('Inventory', [
             ['title' => 'Master Produk', 'description' => 'Kelola produk kemasan, channel POS, dan material project.', 'route' => 'erp.master-products.index', 'icon' => 'cube'],
             ['title' => 'Manajemen Kategori', 'description' => 'Kelola kategori produk untuk inventory.', 'route' => 'erp.inventory.categories', 'icon' => 'tag'],
+            ['title' => 'Warehouse', 'description' => 'Kelola gudang aktif untuk operasional stok, POS, dan purchasing.', 'route' => 'erp.inventory.warehouses', 'icon' => 'archive-box'],
             ['title' => 'UoM & Konversi', 'description' => 'Kelola satuan unit dan konversi antar satuan.', 'route' => 'erp.inventory.uoms', 'icon' => 'arrows-right-left'],
             ['title' => 'Manajemen Stok', 'description' => 'Atur stok minimum, total terjual, dan kontrol stok.', 'route' => 'erp.inventory.stock-management', 'icon' => 'archive-box'],
             ['title' => 'Stock Movement', 'description' => 'Lihat histori pergerakan stok per produk dan warehouse.', 'route' => 'erp.inventory.stock-movements', 'icon' => 'arrows-up-down'],
@@ -80,6 +83,9 @@ class ERPModuleController extends Controller
     public function administration(): Response
     {
         return $this->renderModule('Administration', [
+            ['title' => 'Setting Nomor Dokumen', 'description' => 'Atur prefix dan sequence nomor dokumen agar konsisten lintas modul.', 'route' => 'erp.admin.document-sequences', 'icon' => 'document-text'],
+            ['title' => 'Metode Pembayaran', 'description' => 'Kelola daftar metode pembayaran global untuk POS dan invoice.', 'route' => 'erp.admin.payment-methods', 'icon' => 'credit-card'],
+            ['title' => 'Parser Rules Chatbot', 'description' => 'Atur rule parser berbasis keyword untuk chatbot ERP tanpa LLM.', 'route' => 'erp.admin.parser-rules', 'icon' => 'sparkles'],
             ['title' => 'Monitoring Log', 'description' => 'Pantau aktivitas ERP, transaksi, dan error aplikasi secara terpusat.', 'route' => 'erp.admin.system-logs.index', 'icon' => 'circle-stack'],
         ]);
     }

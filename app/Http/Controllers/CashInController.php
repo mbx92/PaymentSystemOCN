@@ -56,6 +56,7 @@ class CashInController extends Controller
     {
         $validated = $request->validate([
             'project_id' => 'required|uuid|exists:projects,id',
+            'payment_method_id' => 'nullable|exists:payment_methods,id',
             'category' => 'required|in:pendapatan_jasa,lainnya',
             'amount' => 'required|numeric|min:1',
             'date' => 'required|date',
@@ -93,6 +94,7 @@ class CashInController extends Controller
     {
         $validated = $request->validate([
             'project_id' => 'required|uuid|exists:projects,id',
+            'payment_method_id' => 'nullable|exists:payment_methods,id',
             'category' => 'required|in:pendapatan_jasa,lainnya',
             'amount' => 'required|numeric|min:1',
             'date' => 'required|date',

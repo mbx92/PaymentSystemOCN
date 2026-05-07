@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\MasterProduct;
 use App\Models\Project;
 use App\Models\ProjectBudget;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -31,7 +32,37 @@ class ProjectBudgetController extends Controller
         ];
     }
 
-    private function validatePayload(Request $request): array
+    private function validateStorePayload(Request $request): array
+    {
+        return $request->validate([
+            'name' => 'required|string|max:255',
+            'client_name' => 'required|string|max:255',
+            'client_contact' => 'nullable|string|max:255',
+            'project_type' => 'required|in:cctv_installation,system_website_development',
+            'estimated_value' => 'required|numeric|min:0',
+            'description' => 'nullable|string',
+        ]);
+    }
+
+    /**
+     * Hapus baris item kosong sebelum validasi agar tidak memicu required_with pada indeks 0.
+     */
+    private function mergeFilteredCctvItems(Request $request): void
+    {
+        $raw = $request->input('cctv_items');
+        if (! is_array($raw)) {
+            return;
+        }
+
+        $filtered = collect($raw)
+            ->filter(fn ($row) => is_array($row) && ! empty(trim((string) ($row['name'] ?? ''))))
+            ->values()
+            ->all();
+
+        $request->merge(['cctv_items' => $filtered]);
+    }
+
+    private function validateUpdatePayload(Request $request): array
     {
         return $request->validate([
             'name' => 'required|string|max:255',
@@ -41,16 +72,25 @@ class ProjectBudgetController extends Controller
             'estimated_value' => 'required|numeric|min:0',
             'description' => 'nullable|string',
             'cctv_items' => 'nullable|array',
-            'cctv_items.*.name' => 'required_with:cctv_items|string|max:255',
-            'cctv_items.*.qty' => 'required_with:cctv_items|numeric|min:0.01',
-            'cctv_items.*.unit_price' => 'required_with:cctv_items|numeric|min:0',
+            'cctv_items.*.name' => 'required|string|max:255',
+            'cctv_items.*.qty' => 'required|numeric|min:0.01',
+            'cctv_items.*.unit_price' => 'required|numeric|min:0',
         ]);
     }
 
-    private function normalizePayload(array $validated): array
+    private function normalizeStorePayload(array $validated): array
     {
+        return $validated + ['cctv_items' => []];
+    }
+
+    private function normalizeUpdatePayload(array $validated): array
+    {
+        if (($validated['project_type'] ?? null) !== 'cctv_installation') {
+            return $validated + ['cctv_items' => []];
+        }
+
         $cctvItems = collect($validated['cctv_items'] ?? [])
-            ->filter(fn (array $row) => !empty($row['name']) && (float) ($row['qty'] ?? 0) > 0)
+            ->filter(fn (array $row) => ! empty($row['name']) && (float) ($row['qty'] ?? 0) > 0)
             ->map(fn (array $row) => [
                 'name' => $row['name'],
                 'qty' => (float) $row['qty'],
@@ -59,12 +99,7 @@ class ProjectBudgetController extends Controller
             ->values()
             ->all();
 
-        if (($validated['project_type'] ?? null) === 'cctv_installation') {
-            if (empty($cctvItems)) {
-                throw ValidationException::withMessages([
-                    'cctv_items' => 'Untuk budget CCTV, minimal 1 item produk harus diisi.',
-                ]);
-            }
+        if (! empty($cctvItems)) {
             $validated['estimated_value'] = collect($cctvItems)->sum(fn (array $row) => $row['qty'] * $row['unit_price']);
         }
 
@@ -85,7 +120,7 @@ class ProjectBudgetController extends Controller
 
     public function store(Request $request)
     {
-        $payload = $this->normalizePayload($this->validatePayload($request));
+        $payload = $this->normalizeStorePayload($this->validateStorePayload($request));
         ProjectBudget::query()->create($payload + ['status' => 'draft']);
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Budget project berhasil ditambahkan.']);
@@ -95,6 +130,11 @@ class ProjectBudgetController extends Controller
     {
         return Inertia::render('Projects/BudgetShow', [
             'budget' => $this->mapBudget($budget),
+            'cctv_products' => MasterProduct::query()
+                ->where('status', 'active')
+                ->whereIn('sales_channel', ['project', 'both'])
+                ->orderBy('name')
+                ->get(['id', 'sku', 'barcode', 'name', 'uom', 'selling_price']),
         ]);
     }
 
@@ -106,7 +146,13 @@ class ProjectBudgetController extends Controller
             ]);
         }
 
-        $payload = $this->normalizePayload($this->validatePayload($request));
+        if ($request->input('project_type') !== 'cctv_installation') {
+            $request->merge(['cctv_items' => []]);
+        } else {
+            $this->mergeFilteredCctvItems($request);
+        }
+
+        $payload = $this->normalizeUpdatePayload($this->validateUpdatePayload($request));
         $budget->update($payload);
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Budget berhasil diperbarui.']);
@@ -174,4 +220,3 @@ class ProjectBudgetController extends Controller
         return $pdf->download($filename);
     }
 }
-

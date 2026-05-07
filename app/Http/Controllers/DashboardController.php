@@ -31,6 +31,10 @@ class DashboardController extends Controller
         $totalExpense = CashOut::sum('amount');
         $activeCount  = Project::active()->count();
         $netProfit    = $totalIncome - $totalExpense;
+        $projectStatus = Project::query()
+            ->selectRaw('status, count(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
 
         // Monthly chart data for the selected year
         $monthlyData = [];
@@ -44,6 +48,7 @@ class DashboardController extends Controller
 
         $recentProjects = Project::withTrashed(false)
             ->with('payments')
+            ->withSum('cashIns as paid_amount', 'amount')
             ->latest()
             ->take(5)
             ->get()
@@ -53,11 +58,28 @@ class DashboardController extends Controller
                 'client_name' => $p->client_name,
                 'status'      => $p->status,
                 'total_value' => (float) $p->total_value,
-                'paid_terms'  => $p->payments->where('paid_at', '!=', null)->count(),
-                'total_terms' => $p->payments->count(),
+                'paid_amount' => (float) ($p->paid_amount ?? 0),
             ]);
 
-        $overduePayments = [];
+        $overduePayments = Project::query()
+            ->withSum('cashIns as paid_amount', 'amount')
+            ->where('status', 'selesai')
+            ->get()
+            ->map(function (Project $project) {
+                $remaining = max((float) $project->total_value - (float) ($project->paid_amount ?? 0), 0);
+                return [
+                    'id' => $project->id,
+                    'name' => $project->name,
+                    'client_name' => $project->client_name,
+                    'total_value' => (float) $project->total_value,
+                    'paid_amount' => (float) ($project->paid_amount ?? 0),
+                    'remaining_amount' => $remaining,
+                ];
+            })
+            ->filter(fn (array $row) => $row['remaining_amount'] > 0)
+            ->sortByDesc('remaining_amount')
+            ->take(8)
+            ->values();
 
         return Inertia::render('Dashboard/Index', [
             'stats' => [
@@ -68,6 +90,12 @@ class DashboardController extends Controller
             ],
             'monthlyData'     => $monthlyData,
             'recentProjects'  => $recentProjects,
+            'projectStatusSummary' => [
+                'negosiasi' => (int) ($projectStatus['negosiasi'] ?? 0),
+                'berjalan' => (int) ($projectStatus['berjalan'] ?? 0),
+                'selesai' => (int) ($projectStatus['selesai'] ?? 0),
+                'dibatalkan' => (int) ($projectStatus['dibatalkan'] ?? 0),
+            ],
             'overduePayments' => $overduePayments,
             'selectedYear'    => (int) $year,
             'years'           => range(now()->year, now()->year - 4),

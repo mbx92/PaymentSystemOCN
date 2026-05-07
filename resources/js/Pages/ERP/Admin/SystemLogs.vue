@@ -14,6 +14,7 @@ const filters = reactive({
   level: props.filters?.level ?? '',
   channel: props.filters?.channel ?? '',
   event: props.filters?.event ?? '',
+  method: props.filters?.method ?? '',
   q: props.filters?.q ?? '',
   date_from: props.filters?.date_from ?? '',
   date_to: props.filters?.date_to ?? '',
@@ -115,6 +116,19 @@ const closeModal = () => {
                 <span class="label-text text-xs font-semibold uppercase tracking-wide">Event</span>
               </label>
               <input v-model="filters.event" type="text" class="input input-sm input-bordered w-full" placeholder="purchasing.*, activity.http, errors" />
+            </div>
+            <div class="min-w-[130px]">
+              <label class="label">
+                <span class="label-text text-xs font-semibold uppercase tracking-wide">Method</span>
+              </label>
+              <select v-model="filters.method" class="select select-sm select-bordered w-full">
+                <option value="">Semua</option>
+                <option value="GET">GET</option>
+                <option value="POST">POST</option>
+                <option value="PUT">PUT</option>
+                <option value="PATCH">PATCH</option>
+                <option value="DELETE">DELETE</option>
+              </select>
             </div>
             <div class="min-w-[170px]">
               <label class="label">

@@ -84,7 +84,7 @@ const projectTypeLabel = (value) => {
                                     <th>Status</th>
                                     <th>Nilai Kontrak</th>
                                     <th>Mulai</th>
-                                    <th>Termin</th>
+                                    <th>Pembayaran</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -106,8 +106,8 @@ const projectTypeLabel = (value) => {
                                     <td class="text-sm text-base-content/70">{{ p.started_at ?? '-' }}</td>
                                     <td>
                                         <div class="flex items-center gap-2">
-                                            <progress class="progress progress-success w-16" :value="p.paid_terms" :max="p.total_terms || 3" />
-                                            <span class="text-xs text-base-content/60">{{ p.paid_terms }}/{{ p.total_terms }}</span>
+                                            <progress class="progress progress-success w-20" :value="p.paid_amount" :max="p.total_value || 1" />
+                                            <span class="text-xs text-base-content/60">{{ format(p.paid_amount) }} / {{ format(p.total_value) }}</span>
                                         </div>
                                     </td>
                                 </tr>

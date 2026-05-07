@@ -10,6 +10,7 @@ use App\ERP\Purchasing\Models\GoodsReceipt;
 use App\ERP\Purchasing\Models\PurchaseOrder;
 use App\ERP\Purchasing\Models\Vendor;
 use App\ERP\Shared\Enums\DocumentStatus;
+use App\ERP\Shared\Services\DocumentNumberService;
 use App\ERP\Shared\Services\ErpSystemLogger;
 use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
@@ -27,6 +28,7 @@ class ERPPurchasingController extends Controller
     public function __construct(
         private readonly GlPostingService $glPostingService,
         private readonly ErpSystemLogger $systemLogger,
+        private readonly DocumentNumberService $documentNumberService,
     ) {}
 
     public function suppliers(Request $request): Response
@@ -70,10 +72,10 @@ class ERPPurchasingController extends Controller
             'lead_time_days' => 'required|integer|min:1|max:365',
         ]);
 
-        $code = 'SUP-'.str_pad((string) (Vendor::query()->count() + 1), 3, '0', STR_PAD_LEFT);
-        while (Vendor::query()->where('code', $code)->exists()) {
-            $code = 'SUP-'.str_pad((string) random_int(100, 999), 3, '0', STR_PAD_LEFT);
-        }
+        $code = $this->documentNumberService->next('purchasing', 'supplier_code', [
+            'prefix' => 'SUP',
+            'padding_length' => 3,
+        ]);
 
         Vendor::query()->create([
             ...$validated,
@@ -135,7 +137,7 @@ class ERPPurchasingController extends Controller
             'supplierFilter' => $request->query('supplier'),
             'filters' => $request->only(['supplier', 'status', 'q']),
             'suppliers' => Vendor::query()->orderBy('name')->get(['code', 'name']),
-            'products' => MasterProduct::query()->where('status', 'active')->orderBy('name')->get(['id', 'sku', 'name', 'uom', 'selling_price']),
+            'products' => MasterProduct::query()->where('status', 'active')->orderBy('name')->get(['id', 'sku', 'barcode', 'name', 'uom', 'selling_price']),
         ]);
     }
 
@@ -186,7 +188,10 @@ class ERPPurchasingController extends Controller
         $totalAmount = (float) $lines->sum('line_total');
 
         DB::transaction(function () use ($baseValidated, $vendor, $lines, $totalAmount): void {
-            $number = 'PO-'.now()->format('Ymd-His').'-'.random_int(10, 99);
+            $number = $this->documentNumberService->next('purchasing', 'purchase_order', [
+                'prefix' => 'PO',
+                'padding_length' => 6,
+            ]);
             $po = PurchaseOrder::query()->create([
                 'number' => $number,
                 'vendor_id' => $vendor->id,
@@ -231,7 +236,7 @@ class ERPPurchasingController extends Controller
                 ]),
             ],
             'suppliers' => Vendor::query()->orderBy('name')->get(['code', 'name']),
-            'products' => MasterProduct::query()->where('status', 'active')->orderBy('name')->get(['id', 'sku', 'name', 'selling_price']),
+            'products' => MasterProduct::query()->where('status', 'active')->orderBy('name')->get(['id', 'sku', 'barcode', 'name', 'uom', 'selling_price']),
         ]);
     }
 
@@ -400,7 +405,10 @@ class ERPPurchasingController extends Controller
         }
 
         DB::transaction(function () use ($validated, $purchaseOrder, $linePayloads): void {
-            $number = 'GRN-'.now()->format('Ymd-His').'-'.random_int(10, 99);
+            $number = $this->documentNumberService->next('purchasing', 'goods_receipt', [
+                'prefix' => 'GRN',
+                'padding_length' => 6,
+            ]);
             $warehouse = Warehouse::query()->find($validated['warehouse_id']);
             $receipt = GoodsReceipt::query()->create([
                 'number' => $number,
@@ -665,7 +673,10 @@ class ERPPurchasingController extends Controller
                     'vendor_id' => $receipt->purchaseOrder->vendor_id,
                     'purchase_order_id' => $receipt->purchase_order_id,
                     'goods_receipt_id' => $receipt->id,
-                    'bill_no' => 'BILL-'.$receipt->number,
+                    'bill_no' => $this->documentNumberService->next('accounting', 'payable_bill', [
+                        'prefix' => 'BILL',
+                        'padding_length' => 6,
+                    ]),
                     'bill_date' => $receipt->received_date->toDateString(),
                     'due_date' => $receipt->received_date->copy()->addDays(14)->toDateString(),
                     'amount' => $amount,

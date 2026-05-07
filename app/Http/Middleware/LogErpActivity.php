@@ -14,6 +14,10 @@ class LogErpActivity
 
     private function shouldTrack(Request $request): bool
     {
+        if ($request->is('erp/admin/system-logs*')) {
+            return false;
+        }
+
         return $request->is([
             'erp/*',
             'kas-*',

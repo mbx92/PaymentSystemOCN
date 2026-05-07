@@ -1,10 +1,10 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, nextTick } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import {
     HomeIcon, CodeBracketIcon, ArrowDownCircleIcon, ArrowUpCircleIcon, ChartBarIcon,
     UsersIcon, Bars3Icon, XMarkIcon, ArrowRightOnRectangleIcon, BuildingOffice2Icon, BellAlertIcon,
-    ShoppingCartIcon, ArchiveBoxIcon, UserCircleIcon, BanknotesIcon, CircleStackIcon,
+    ShoppingCartIcon, ArchiveBoxIcon, UserCircleIcon, BanknotesIcon, CircleStackIcon, ChatBubbleLeftRightIcon, PaperAirplaneIcon,
 } from '@heroicons/vue/24/outline';
 import FlashMessage from '@/Components/FlashMessage.vue';
 
@@ -14,6 +14,17 @@ const flash = computed(() => page.props.flash);
 const inventoryAlerts = computed(() => page.props.inventoryAlerts ?? { lowStockCount: 0, lowStockItems: [] });
 const sidebarOpen = ref(false);
 const showAlertDropdown = ref(false);
+const chatPanelOpen = ref(false);
+const chatInput = ref('');
+const chatLoading = ref(false);
+const chatBodyRef = ref(null);
+const chatInputRef = ref(null);
+const chatMessages = ref([
+    {
+        role: 'assistant',
+        text: 'Halo! Saya siap bantu cek data ERP. Coba tanya: "stok lid cup", "harga standing pouch", atau "invoice belum dibayar".',
+    },
+]);
 
 const sidebarModules = computed(() => {
     const role = auth.value?.user?.role;
@@ -67,6 +78,65 @@ const isActive = (href) => {
     const path = new URL(href).pathname;
     const currentPath = page.url.split('?')[0];
     return path === '/' ? currentPath === '/' : currentPath === path || currentPath.startsWith(`${path}/`);
+};
+
+const toggleChatPanel = () => {
+    chatPanelOpen.value = !chatPanelOpen.value;
+    if (chatPanelOpen.value) {
+        nextTick(() => {
+            scrollChatToBottom();
+            chatInputRef.value?.focus();
+        });
+    }
+};
+
+const scrollChatToBottom = () => {
+    const container = chatBodyRef.value;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
+};
+
+const getCookieValue = (name) => {
+    const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+    return match ? decodeURIComponent(match[1]) : '';
+};
+
+const sendChatMessage = async () => {
+    const message = chatInput.value.trim();
+    if (!message || chatLoading.value) return;
+
+    chatMessages.value.push({ role: 'user', text: message });
+    chatInput.value = '';
+    await nextTick();
+    scrollChatToBottom();
+    chatLoading.value = true;
+
+    try {
+        const response = await fetch(route('erp.chatbot.ask'), {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-XSRF-TOKEN': getCookieValue('XSRF-TOKEN'),
+            },
+            body: JSON.stringify({ message }),
+        });
+
+        const payload = await response.json();
+        const answer = payload?.answer || 'Maaf, terjadi kendala saat memproses pertanyaan.';
+        chatMessages.value.push({ role: 'assistant', text: answer });
+        await nextTick();
+        scrollChatToBottom();
+    } catch (error) {
+        chatMessages.value.push({ role: 'assistant', text: 'Koneksi ke chatbot gagal. Coba lagi sebentar.' });
+        await nextTick();
+        scrollChatToBottom();
+    } finally {
+        chatLoading.value = false;
+        await nextTick();
+        scrollChatToBottom();
+    }
 };
 </script>
 
@@ -179,6 +249,60 @@ const isActive = (href) => {
             ]">
                 <slot />
             </main>
+
+            <div class="fixed bottom-6 right-6 z-[9999] flex flex-col items-end gap-3">
+                <div
+                    v-if="chatPanelOpen"
+                    class="w-[40rem] max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-2xl"
+                >
+                    <div class="flex items-center justify-between border-b border-base-300 px-4 py-3">
+                        <div>
+                            <p class="text-xs font-bold uppercase tracking-[0.14em] text-primary/70">AI Assistant</p>
+                            <p class="text-sm font-semibold">ERP Chat Assistant</p>
+                        </div>
+                        <button class="btn btn-ghost btn-xs" @click="chatPanelOpen = false">
+                            <XMarkIcon class="h-4 w-4" />
+                        </button>
+                    </div>
+                    <div class="flex h-[32rem] flex-col">
+                        <div ref="chatBodyRef" class="flex-1 space-y-3 overflow-y-auto p-4">
+                            <div
+                                v-for="(msg, idx) in chatMessages"
+                                :key="idx"
+                                class="rounded-xl p-3 text-sm"
+                                :class="msg.role === 'user'
+                                    ? 'ml-12 bg-primary text-primary-content'
+                                    : 'mr-12 bg-base-200 text-base-content/80'"
+                            >
+                                <p class="whitespace-pre-line">{{ msg.text }}</p>
+                            </div>
+                            <div v-if="chatLoading" class="mr-12 rounded-xl bg-base-200 p-3 text-sm text-base-content/70">
+                                Mengetik jawaban...
+                            </div>
+                        </div>
+                        <div class="border-t border-base-300 p-3">
+                          <div class="flex items-center gap-2">
+                            <input
+                                ref="chatInputRef"
+                                v-model="chatInput"
+                                type="text"
+                                class="input input-bordered input-sm w-full"
+                                placeholder="Tulis pertanyaan..."
+                                @keyup.enter="sendChatMessage"
+                            />
+                            <button class="btn btn-primary btn-sm" :disabled="chatLoading || !chatInput.trim()" @click="sendChatMessage">
+                                <PaperAirplaneIcon class="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary rounded-full px-4 shadow-xl" @click="toggleChatPanel">
+                    <ChatBubbleLeftRightIcon class="h-5 w-5" />
+                    <span>{{ chatPanelOpen ? 'Tutup Chat' : 'AI Chat' }}</span>
+                </button>
+            </div>
         </div>
     </div>
 </template>

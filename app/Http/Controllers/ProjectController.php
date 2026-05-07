@@ -22,6 +22,7 @@ class ProjectController extends Controller
     public function index(Request $request)
     {
         $query = Project::with(['payments'])
+            ->withSum('cashIns as paid_amount', 'amount')
             ->when($request->search, fn ($q) => $q->where('name', 'ilike', "%{$request->search}%")
                 ->orWhere('client_name', 'ilike', "%{$request->search}%"))
             ->when($request->status, fn ($q) => $q->where('status', $request->status))
@@ -35,9 +36,8 @@ class ProjectController extends Controller
                 'project_type'=> $p->project_type,
                 'status'      => $p->status,
                 'total_value' => (float) $p->total_value,
+                'paid_amount' => (float) ($p->paid_amount ?? 0),
                 'started_at'  => $p->started_at?->format('Y-m-d'),
-                'paid_terms'  => $p->payments->where('paid_at', '!=', null)->count(),
-                'total_terms' => $p->payments->count(),
             ]);
 
         return Inertia::render('Projects/Index', [
@@ -63,10 +63,18 @@ class ProjectController extends Controller
             'started_at'     => 'nullable|date',
             'finished_at'    => 'nullable|date|after_or_equal:started_at',
             'description'    => 'nullable|string',
+            'payment_scheme' => 'nullable|in:terms,final',
             'payments'       => 'required|array|min:1|max:20',
             'payments.*.percentage' => 'required|numeric|min:0.01|max:100',
             'payments.*.note'       => 'nullable|string|max:500',
         ]);
+
+        if (($validated['payment_scheme'] ?? 'terms') === 'final') {
+            $validated['payments'] = [[
+                'percentage' => 100,
+                'note' => 'Pelunasan di akhir',
+            ]];
+        }
 
         $this->assertPaymentsTotalHundredPercent($validated['payments']);
         $validated['project_type'] = $validated['project_type'] ?? 'system_website_development';
@@ -196,9 +204,17 @@ class ProjectController extends Controller
         $validated = $request->validate([
             'user_id' => 'required|exists:users,id',
             'team_role_id' => 'required|integer|exists:team_roles,id',
+            'percentage' => 'nullable|numeric|min:0|max:100',
+            'base_pay' => 'nullable|numeric|min:0',
+            'bonus' => 'nullable|numeric|min:0',
+            'total_pay' => 'nullable|numeric|min:0',
         ]);
 
         $role = TeamRole::query()->findOrFail((int) $validated['team_role_id']);
+        $basePay = (float) ($validated['base_pay'] ?? 0);
+        $bonus = (float) ($validated['bonus'] ?? 0);
+        $computedTotalPay = $basePay + $bonus;
+        $totalPay = array_key_exists('total_pay', $validated) ? (float) $validated['total_pay'] : $computedTotalPay;
 
         TeamDistribution::query()->updateOrCreate(
             [
@@ -207,10 +223,10 @@ class ProjectController extends Controller
             ],
             [
                 'role_in_project' => $role->name,
-                'percentage' => 0,
-                'base_pay' => 0,
-                'bonus' => 0,
-                'total_pay' => 0,
+                'percentage' => (float) ($validated['percentage'] ?? 0),
+                'base_pay' => $basePay,
+                'bonus' => $bonus,
+                'total_pay' => $totalPay,
             ]
         );
 
@@ -366,6 +382,63 @@ class ProjectController extends Controller
         });
 
         return redirect()->route('projects.show', $project)->with('flash', ['type' => 'success', 'message' => 'Project berhasil diperbarui.']);
+    }
+
+    public function updateStatus(Request $request, Project $project)
+    {
+        $validated = $request->validate([
+            'target_status' => 'required|in:berjalan,selesai',
+            'started_at' => 'nullable|date',
+            'finished_at' => 'nullable|date',
+        ]);
+
+        $target = $validated['target_status'];
+
+        if ($target === 'berjalan') {
+            if ($project->status !== 'negosiasi') {
+                throw ValidationException::withMessages([
+                    'target_status' => 'Hanya project berstatus negosiasi yang bisa diubah menjadi berjalan.',
+                ]);
+            }
+
+            if (empty($validated['started_at'])) {
+                throw ValidationException::withMessages([
+                    'started_at' => 'Tanggal mulai wajib diisi saat mengubah status ke berjalan.',
+                ]);
+            }
+
+            $project->update([
+                'status' => 'berjalan',
+                'started_at' => $validated['started_at'],
+            ]);
+
+            return back()->with('flash', ['type' => 'success', 'message' => 'Status project diubah ke berjalan.']);
+        }
+
+        if ($project->status !== 'berjalan') {
+            throw ValidationException::withMessages([
+                'target_status' => 'Hanya project berstatus berjalan yang bisa diubah menjadi selesai.',
+            ]);
+        }
+
+        if (empty($validated['finished_at'])) {
+            throw ValidationException::withMessages([
+                'finished_at' => 'Tanggal selesai wajib diisi saat mengubah status ke selesai.',
+            ]);
+        }
+
+        if (! empty($project->started_at) && $validated['finished_at'] < $project->started_at->format('Y-m-d')) {
+            throw ValidationException::withMessages([
+                'finished_at' => 'Tanggal selesai tidak boleh lebih awal dari tanggal mulai project.',
+            ]);
+        }
+
+        $project->update([
+            'status' => 'selesai',
+            'finished_at' => $validated['finished_at'],
+        ]);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Status project diubah ke selesai.']);
     }
 
     public function destroy(Project $project)

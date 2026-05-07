@@ -2,41 +2,740 @@
 
 namespace App\Http\Controllers;
 
+use App\ERP\Accounting\Models\Account;
+use App\ERP\Accounting\Models\JournalEntry;
+use App\ERP\Accounting\Services\GlPostingService;
+use App\ERP\Inventory\Models\Warehouse;
+use App\ERP\Shared\Enums\DocumentStatus;
+use App\ERP\Shared\Services\DocumentNumberService;
+use App\Models\CashIn;
 use App\Models\MasterProduct;
+use App\Models\MasterProductWarehouseStock;
+use App\Models\PaymentMethod;
+use App\Models\PosSale;
+use App\Models\ProductStockMovement;
+use App\Models\Project;
+use App\Models\User;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class ERPSalesController extends Controller
 {
+    public function __construct(
+        private readonly GlPostingService $glPostingService,
+        private readonly DocumentNumberService $documentNumberService,
+    ) {}
+
     public function pos(Request $request): Response
     {
         $products = MasterProduct::query()
             ->where('status', 'active')
             ->whereIn('sales_channel', ['pos', 'both'])
+            ->with(['uomMappings' => fn ($q) => $q->where('status', 'active')])
             ->orderBy('name')
-            ->get(['sku', 'name', 'selling_price', 'stock'])
-            ->map(fn (MasterProduct $product) => [
-                'sku' => $product->sku,
-                'barcode' => $product->barcode,
-                'name' => $product->name,
-                'price' => (float) $product->selling_price,
-                'stock' => $product->stock,
-            ]);
+            ->get(['id', 'sku', 'barcode', 'name', 'uom', 'selling_price', 'stock'])
+            ->flatMap(function (MasterProduct $product) {
+                $base = [[
+                    'id' => 'base-'.$product->id,
+                    'master_product_id' => $product->id,
+                    'sku' => $product->sku,
+                    'barcode' => $product->barcode,
+                    'name' => $product->name,
+                    'uom' => $product->uom,
+                    'variant_label' => $product->uom,
+                    'price' => (float) $product->selling_price,
+                    'stock' => $product->stock,
+                    'multiplier' => 1,
+                ]];
+
+                $mapped = $product->uomMappings->map(fn ($mapping) => [
+                    'id' => 'map-'.$mapping->id,
+                    'master_product_id' => $product->id,
+                    'sku' => $product->sku.'-'.$mapping->uom_code,
+                    'barcode' => $product->barcode,
+                    'name' => $product->name,
+                    'uom' => $mapping->uom_code,
+                    'variant_label' => $mapping->uom_code,
+                    'price_operation' => $mapping->price_operation ?: 'multiply',
+                    'price' => (float) ($mapping->use_auto_price
+                        ? (($mapping->price_operation === 'divide')
+                            ? round((float) $product->selling_price / max((float) $mapping->multiplier, 0.0001), 2)
+                            : round((float) $product->selling_price * (float) $mapping->multiplier, 2))
+                        : $mapping->selling_price),
+                    'stock' => (int) (($mapping->price_operation === 'divide')
+                        ? floor((float) $product->stock * (float) $mapping->multiplier)
+                        : floor((float) $product->stock / max((float) $mapping->multiplier, 0.0001))),
+                    'multiplier' => (float) $mapping->multiplier,
+                ]);
+
+                return collect($base)->concat($mapped);
+            })
+            ->values();
 
         return Inertia::render('ERP/Sales/POS', [
             'products' => $products,
             'fullscreen' => $request->boolean('fullscreen'),
+            'payment_methods' => PaymentMethod::query()
+                ->where('status', 'active')
+                ->orderBy('name')
+                ->get(['id', 'code', 'name']),
         ]);
+    }
+
+    public function posTransactions(): Response
+    {
+        $query = PosSale::query()
+            ->with(['paymentMethod:id,name', 'soldBy:id,name', 'items:id,pos_sale_id,qty,base_qty_used'])
+            ->latest('sold_at')
+            ->when(request()->filled('q'), function ($q): void {
+                $term = request()->string('q')->toString();
+                $q->where('number', 'like', '%'.$term.'%')
+                    ->orWhereHas('soldBy', fn ($u) => $u->where('name', 'like', '%'.$term.'%'));
+            })
+            ->when(request()->filled('status'), fn ($q) => $q->where('status', request()->string('status')->toString()))
+            ->when(request()->filled('date_from'), fn ($q) => $q->whereDate('sold_at', '>=', request()->date('date_from')))
+            ->when(request()->filled('date_to'), fn ($q) => $q->whereDate('sold_at', '<=', request()->date('date_to')));
+
+        $transactions = $query
+            ->limit(200)
+            ->get()
+            ->map(fn (PosSale $sale) => [
+                'id' => $sale->id,
+                'number' => $sale->number,
+                'sold_at' => $sale->sold_at?->format('Y-m-d H:i:s'),
+                'items_count' => $sale->items->count(),
+                'total_qty' => (float) $sale->items->sum('qty'),
+                'base_qty_used' => (int) $sale->items->sum('base_qty_used'),
+                'grand_total' => (float) $sale->grand_total,
+                'payment_method' => $sale->paymentMethod?->name,
+                'cashier' => $sale->soldBy?->name,
+                'status' => $sale->status,
+            ]);
+
+        return Inertia::render('ERP/Sales/Transactions', [
+            'transactions' => $transactions,
+            'filters' => request()->only(['q', 'status', 'date_from', 'date_to']),
+        ]);
+    }
+
+    public function posTransactionShow(PosSale $posSale): Response
+    {
+        $posSale->load(['paymentMethod:id,code,name', 'soldBy:id,name', 'items.product:id,sku,name,uom']);
+
+        return Inertia::render('ERP/Sales/TransactionShow', [
+            'detail' => [
+                'id' => $posSale->id,
+                'number' => $posSale->number,
+                'status' => $posSale->status,
+                'sold_at' => $posSale->sold_at?->format('Y-m-d H:i:s'),
+                'cashier' => $posSale->soldBy?->name,
+                'payment_method_id' => $posSale->payment_method_id,
+                'payment_method_name' => $posSale->paymentMethod?->name,
+                'gross_total' => (float) $posSale->gross_total,
+                'discount_total' => (float) $posSale->discount_total,
+                'grand_total' => (float) $posSale->grand_total,
+                'cash_paid' => (float) $posSale->cash_paid,
+                'change_amount' => (float) $posSale->change_amount,
+                'items' => $posSale->items->map(fn ($item) => [
+                    'id' => $item->id,
+                    'master_product_id' => $item->master_product_id,
+                    'sku' => $item->sku,
+                    'product_name' => $item->product_name,
+                    'uom' => $item->uom,
+                    'qty' => (float) $item->qty,
+                    'unit_price' => (float) $item->unit_price,
+                    'discount_percent' => (float) $item->discount_percent,
+                    'line_total' => (float) $item->line_total,
+                    'multiplier' => (float) $item->multiplier,
+                    'price_operation' => $item->price_operation,
+                    'base_qty_used' => (int) $item->base_qty_used,
+                ]),
+                'requires_high_authorization' => ! (bool) Auth::user()?->hasRole('admin'),
+            ],
+            'payment_methods' => PaymentMethod::query()
+                ->where('status', 'active')
+                ->orderBy('name')
+                ->get(['id', 'name']),
+        ]);
+    }
+
+    public function updatePosTransactionPaymentMethod(Request $request, PosSale $posSale): RedirectResponse
+    {
+        $this->authorizeHighPrivilege($request);
+
+        $validated = $request->validate([
+            'payment_method_id' => 'required|exists:payment_methods,id',
+        ]);
+
+        $posSale->update([
+            'payment_method_id' => (int) $validated['payment_method_id'],
+        ]);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Metode pembayaran transaksi berhasil diperbarui.']);
+    }
+
+    public function refundPosTransaction(PosSale $posSale): RedirectResponse
+    {
+        $this->authorizeHighPrivilege(request());
+
+        if ($posSale->status === 'refunded') {
+            return back()->with('flash', ['type' => 'info', 'message' => 'Transaksi sudah berstatus refund.']);
+        }
+
+        DB::transaction(function () use ($posSale): void {
+            $posSale->load('items');
+            $posWarehouseId = $this->resolvePosWarehouseId();
+            foreach ($posSale->items as $item) {
+                if (! $item->master_product_id) {
+                    continue;
+                }
+                $product = MasterProduct::query()->lockForUpdate()->find($item->master_product_id);
+                if (! $product) {
+                    continue;
+                }
+                $product->increment('stock', (int) $item->base_qty_used);
+                $product->decrement('total_sold', min((int) $item->base_qty_used, (int) $product->total_sold));
+
+                if ($posWarehouseId) {
+                    $warehouseRow = MasterProductWarehouseStock::query()->firstOrCreate(
+                        ['master_product_id' => $product->id, 'warehouse_id' => $posWarehouseId],
+                        ['qty' => 0, 'reserved_qty' => 0]
+                    );
+                    $warehouseRow->increment('qty', (int) $item->base_qty_used);
+                }
+
+                ProductStockMovement::query()->create([
+                    'master_product_id' => $product->id,
+                    'warehouse_id' => $posWarehouseId,
+                    'movement_date' => now()->toDateString(),
+                    'movement_type' => 'pos_refund_in',
+                    'qty' => (int) $item->base_qty_used,
+                    'note' => 'Refund POS '.$posSale->number,
+                ]);
+            }
+
+            $posSale->update([
+                'status' => 'refunded',
+                'note' => trim(($posSale->note ? $posSale->note.' | ' : '').'Refund '.now()->format('Y-m-d H:i')),
+            ]);
+
+            $cashAccount = Account::query()->where('code', '1001')->firstOrFail();
+            $revenueAccount = Account::query()->where('code', '4001')->firstOrFail();
+            $this->glPostingService->post(
+                sourceModule: 'pos_sale_refund',
+                sourceReference: $posSale->number,
+                description: 'Refund POS '.$posSale->number,
+                entryDate: now()->toDateString(),
+                lines: [
+                    ['account_id' => $revenueAccount->id, 'debit' => (float) $posSale->grand_total, 'credit' => 0],
+                    ['account_id' => $cashAccount->id, 'debit' => 0, 'credit' => (float) $posSale->grand_total],
+                ],
+            );
+        });
+
+        return back()->with('flash', ['type' => 'warning', 'message' => 'Transaksi berhasil di-refund dan stok dikembalikan.']);
+    }
+
+    public function reopenPosTransaction(PosSale $posSale): RedirectResponse
+    {
+        $this->authorizeHighPrivilege(request());
+
+        DB::transaction(function () use ($posSale): void {
+            $posSale->load('items');
+            $posWarehouseId = $this->resolvePosWarehouseId();
+            if ($posSale->status === 'refunded') {
+                foreach ($posSale->items as $item) {
+                    if (! $item->master_product_id) {
+                        continue;
+                    }
+                    $product = MasterProduct::query()->lockForUpdate()->find($item->master_product_id);
+                    if (! $product) {
+                        continue;
+                    }
+                    if ((int) $product->stock < (int) $item->base_qty_used) {
+                        throw ValidationException::withMessages([
+                            'reopen' => 'Stok tidak cukup untuk reopen transaksi ini.',
+                        ]);
+                    }
+                    $product->decrement('stock', (int) $item->base_qty_used);
+                    $product->increment('total_sold', (int) $item->base_qty_used);
+
+                    if ($posWarehouseId) {
+                        $warehouseRow = MasterProductWarehouseStock::query()->firstOrCreate(
+                            ['master_product_id' => $product->id, 'warehouse_id' => $posWarehouseId],
+                            ['qty' => 0, 'reserved_qty' => 0]
+                        );
+                        if ((float) $warehouseRow->qty < (int) $item->base_qty_used) {
+                            throw ValidationException::withMessages([
+                                'reopen' => "Stok warehouse untuk {$product->name} tidak cukup.",
+                            ]);
+                        }
+                        $warehouseRow->decrement('qty', (int) $item->base_qty_used);
+                    }
+
+                    ProductStockMovement::query()->create([
+                        'master_product_id' => $product->id,
+                        'warehouse_id' => $posWarehouseId,
+                        'movement_date' => now()->toDateString(),
+                        'movement_type' => 'pos_reopen_out',
+                        'qty' => (int) $item->base_qty_used,
+                        'note' => 'Reopen POS '.$posSale->number,
+                    ]);
+                }
+            }
+
+            $posSale->update([
+                'status' => 'reopened',
+                'note' => trim(($posSale->note ? $posSale->note.' | ' : '').'Reopen '.now()->format('Y-m-d H:i')),
+            ]);
+
+            $cashAccount = Account::query()->where('code', '1001')->firstOrFail();
+            $revenueAccount = Account::query()->where('code', '4001')->firstOrFail();
+            $this->glPostingService->post(
+                sourceModule: 'pos_sale_reopen',
+                sourceReference: $posSale->number,
+                description: 'Reopen POS '.$posSale->number,
+                entryDate: now()->toDateString(),
+                lines: [
+                    ['account_id' => $cashAccount->id, 'debit' => (float) $posSale->grand_total, 'credit' => 0],
+                    ['account_id' => $revenueAccount->id, 'debit' => 0, 'credit' => (float) $posSale->grand_total],
+                ],
+            );
+        });
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Transaksi berhasil di-reopen.']);
+    }
+
+    public function checkoutPos(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'payment_method_id' => 'required|exists:payment_methods,id',
+            'cash_paid' => 'nullable|numeric|min:0',
+            'items' => 'required|array|min:1',
+            'items.*.master_product_id' => 'required|integer|exists:master_products,id',
+            'items.*.qty' => 'required|numeric|gt:0',
+            'items.*.unit_price' => 'required|numeric|min:0',
+            'items.*.discount_percent' => 'nullable|numeric|min:0|max:100',
+            'items.*.multiplier' => 'nullable|numeric|gt:0',
+            'items.*.price_operation' => 'nullable|in:multiply,divide',
+            'items.*.sku' => 'nullable|string|max:100',
+            'items.*.uom' => 'nullable|string|max:20',
+        ]);
+
+        $paymentMethod = PaymentMethod::query()->findOrFail((int) $validated['payment_method_id']);
+        $items = $validated['items'];
+
+        $grossTotal = collect($items)->sum(fn ($item) => (float) $item['unit_price'] * (float) $item['qty']);
+        $discountTotal = collect($items)->sum(function ($item): float {
+            $gross = (float) $item['unit_price'] * (float) $item['qty'];
+            return $gross * (((float) ($item['discount_percent'] ?? 0)) / 100);
+        });
+        $grandTotal = max($grossTotal - $discountTotal, 0);
+        $cashPaid = (float) ($validated['cash_paid'] ?? 0);
+
+        if ($paymentMethod->code === 'cash' && $cashPaid < $grandTotal) {
+            throw ValidationException::withMessages([
+                'cash_paid' => 'Nominal bayar kurang dari grand total.',
+            ]);
+        }
+
+        $checkoutResult = DB::transaction(function () use ($items, $grossTotal, $discountTotal, $grandTotal, $cashPaid, $paymentMethod): array {
+            $transactionNumber = $this->documentNumberService->next('sales', 'pos_sale', [
+                'prefix' => 'POS',
+                'padding_length' => 6,
+            ]);
+
+            $sale = PosSale::query()->create([
+                'number' => $transactionNumber,
+                'payment_method_id' => $paymentMethod->id,
+                'gross_total' => $grossTotal,
+                'discount_total' => $discountTotal,
+                'grand_total' => $grandTotal,
+                'cash_paid' => $cashPaid,
+                'change_amount' => max($cashPaid - $grandTotal, 0),
+                'status' => 'paid',
+                'sold_at' => now(),
+                'sold_by' => Auth::id(),
+            ]);
+
+            $saleItemsPayload = [];
+            $posWarehouseId = $this->resolvePosWarehouseId();
+            foreach ($items as $item) {
+                $product = MasterProduct::query()->lockForUpdate()->findOrFail((int) $item['master_product_id']);
+                $multiplier = max((float) ($item['multiplier'] ?? 1), 0.0001);
+                $operation = $item['price_operation'] ?? 'multiply';
+                $qty = (float) $item['qty'];
+
+                $requiredBaseQty = $operation === 'divide'
+                    ? (int) ceil($qty / $multiplier)
+                    : (int) ceil($qty * $multiplier);
+
+                if ($requiredBaseQty <= 0) {
+                    $requiredBaseQty = 1;
+                }
+
+                if ((int) $product->stock < $requiredBaseQty) {
+                    throw ValidationException::withMessages([
+                        'stock' => "Stok {$product->name} tidak mencukupi untuk transaksi ini.",
+                    ]);
+                }
+
+                $product->decrement('stock', $requiredBaseQty);
+                $product->increment('total_sold', $requiredBaseQty);
+
+                if ($posWarehouseId) {
+                    $warehouseRow = MasterProductWarehouseStock::query()->firstOrCreate(
+                        ['master_product_id' => $product->id, 'warehouse_id' => $posWarehouseId],
+                        ['qty' => $product->stock + $requiredBaseQty, 'reserved_qty' => 0]
+                    );
+                    if ((float) $warehouseRow->qty < $requiredBaseQty) {
+                        throw ValidationException::withMessages([
+                            'stock' => "Stok warehouse untuk {$product->name} tidak mencukupi.",
+                        ]);
+                    }
+                    $warehouseRow->decrement('qty', $requiredBaseQty);
+                }
+
+                ProductStockMovement::query()->create([
+                    'master_product_id' => $product->id,
+                    'warehouse_id' => $posWarehouseId,
+                    'movement_date' => now()->toDateString(),
+                    'movement_type' => 'pos_sale_out',
+                    'qty' => $requiredBaseQty,
+                    'note' => 'POS '.$transactionNumber,
+                ]);
+
+                $gross = (float) $item['unit_price'] * (float) $item['qty'];
+                $discount = $gross * (((float) ($item['discount_percent'] ?? 0)) / 100);
+                $lineTotal = max($gross - $discount, 0);
+                $saleItemsPayload[] = [
+                    'master_product_id' => (int) $item['master_product_id'],
+                    'sku' => $item['sku'] ?? $product->sku,
+                    'product_name' => $product->name,
+                    'uom' => $item['uom'] ?? $product->uom,
+                    'qty' => (float) $item['qty'],
+                    'unit_price' => (float) $item['unit_price'],
+                    'discount_percent' => (float) ($item['discount_percent'] ?? 0),
+                    'line_total' => $lineTotal,
+                    'multiplier' => $multiplier,
+                    'price_operation' => $operation,
+                    'base_qty_used' => $requiredBaseQty,
+                ];
+            }
+
+            $sale->items()->createMany($saleItemsPayload);
+
+            $cashAccount = Account::query()->where('code', '1001')->firstOrFail();
+            $revenueAccount = Account::query()->where('code', '4001')->firstOrFail();
+            $this->glPostingService->post(
+                sourceModule: 'pos_sale',
+                sourceReference: $transactionNumber,
+                description: 'Penjualan POS '.$transactionNumber,
+                entryDate: now()->toDateString(),
+                lines: [
+                    ['account_id' => $cashAccount->id, 'debit' => $grandTotal, 'credit' => 0],
+                    ['account_id' => $revenueAccount->id, 'debit' => 0, 'credit' => $grandTotal],
+                ],
+            );
+
+            return [
+                'transaction_number' => $transactionNumber,
+                'sold_at' => $sale->sold_at?->format('Y-m-d H:i:s'),
+                'items_count' => count($saleItemsPayload),
+                'total_qty' => array_sum(array_map(fn ($item) => (float) $item['qty'], $saleItemsPayload)),
+                'grand_total' => (float) $sale->grand_total,
+                'payment_method' => $paymentMethod->name,
+                'cashier' => Auth::user()?->name,
+            ];
+        });
+
+        return response()->json([
+            'message' => 'Transaksi POS berhasil diproses.',
+            'transaction_number' => $checkoutResult['transaction_number'],
+            'grand_total' => $grandTotal,
+            'cash_paid' => $cashPaid,
+            'change' => max($cashPaid - $grandTotal, 0),
+            'payment_method_name' => $paymentMethod->name,
+            'transaction' => $checkoutResult,
+        ]);
+    }
+
+    private function resolvePosWarehouseId(): ?int
+    {
+        return Warehouse::query()->where('is_active', true)->orderBy('id')->value('id');
+    }
+
+    private function authorizeHighPrivilege(Request $request): void
+    {
+        $currentUser = Auth::user();
+        if ($currentUser && $currentUser->hasRole('admin')) {
+            return;
+        }
+
+        $validated = $request->validate([
+            'authorization_email' => 'required|email',
+            'authorization_password' => 'required|string|min:6',
+        ]);
+
+        $adminUser = User::query()->where('email', $validated['authorization_email'])->first();
+        if (! $adminUser || ! $adminUser->hasRole('admin') || ! Hash::check($validated['authorization_password'], $adminUser->password)) {
+            throw ValidationException::withMessages([
+                'authorization' => 'Otorisasi admin tidak valid.',
+            ]);
+        }
     }
 
     public function projectInvoices(): Response
     {
+        $invoices = Project::query()
+            ->withSum('cashIns as paid_amount', 'amount')
+            ->where('status', 'selesai')
+            ->latest('finished_at')
+            ->get()
+            ->map(function (Project $project) {
+                $project->invoice_number = $this->ensureProjectInvoiceNumber($project);
+                return $this->mapProjectInvoice($project);
+            });
+
         return Inertia::render('ERP/Sales/ProjectInvoices', [
-            'invoices' => [
-                ['number' => 'INV-PRJ-0001', 'project' => 'Website Company Profile', 'client' => 'PT Maju Jaya', 'amount' => 12500000, 'status' => 'posted'],
-                ['number' => 'INV-PRJ-0002', 'project' => 'Instalasi CCTV Gudang', 'client' => 'CV Sinar Plastik', 'amount' => 9800000, 'status' => 'approved'],
-            ],
+            'invoices' => $invoices,
         ]);
+    }
+
+    public function projectInvoiceShow(Project $project): Response
+    {
+        abort_unless($project->status === 'selesai', 404);
+
+        $project->load(['payments', 'cashIns.creator', 'cashIns.paymentMethod']);
+        $project->loadSum('cashIns as paid_amount', 'amount');
+        $project->invoice_number = $this->ensureProjectInvoiceNumber($project);
+
+        return Inertia::render('ERP/Sales/ProjectInvoiceShow', [
+            'invoice' => $this->mapProjectInvoice($project) + [
+                'client_contact' => $project->client_contact,
+                'project_type' => $project->project_type,
+                'started_at' => $project->started_at?->format('Y-m-d'),
+                'finished_at' => $project->finished_at?->format('Y-m-d'),
+                'description' => $project->description,
+                'payments' => $project->payments->map(fn ($payment) => [
+                    'id' => $payment->id,
+                    'term_number' => $payment->term_number,
+                    'percentage' => (float) $payment->percentage,
+                    'amount' => (float) $payment->amount,
+                    'paid_at' => $payment->paid_at?->format('Y-m-d'),
+                    'note' => $payment->note,
+                ]),
+                'cash_ins' => $project->cashIns
+                    ->sortByDesc('date')
+                    ->values()
+                    ->map(fn (CashIn $cashIn) => [
+                        'id' => $cashIn->id,
+                        'amount' => (float) $cashIn->amount,
+                        'date' => $cashIn->date?->format('Y-m-d'),
+                        'category' => $cashIn->category,
+                        'payment_method_id' => $cashIn->payment_method_id,
+                        'payment_method_name' => $cashIn->paymentMethod?->name,
+                        'note' => $cashIn->note,
+                        'creator_name' => $cashIn->creator?->name,
+                    ]),
+            ],
+            'paymentMethods' => PaymentMethod::query()
+                ->where('status', 'active')
+                ->orderBy('name')
+                ->get(['id', 'code', 'name']),
+        ]);
+    }
+
+    public function storeProjectInvoicePayment(Request $request, Project $project)
+    {
+        abort_unless($project->status === 'selesai', 404);
+
+        $validated = $request->validate([
+            'amount' => 'required|numeric|min:1',
+            'date' => 'required|date',
+            'payment_method_id' => 'required|exists:payment_methods,id',
+            'note' => 'nullable|string|max:1000',
+        ]);
+
+        $paidAmount = (float) $project->cashIns()->sum('amount');
+        $remaining = max((float) $project->total_value - $paidAmount, 0);
+        if ((float) $validated['amount'] > $remaining) {
+            throw ValidationException::withMessages([
+                'amount' => 'Jumlah pembayaran melebihi sisa tagihan: Rp '.number_format($remaining, 0, ',', '.'),
+            ]);
+        }
+
+        $validated['project_id'] = $project->id;
+        $validated['category'] = 'pendapatan_jasa';
+        $validated['created_by'] = Auth::id();
+        $validated['document_status'] = DocumentStatus::Posted->value;
+        $validated['approved_at'] = now();
+        $validated['approved_by'] = Auth::id();
+        $validated['posted_at'] = now();
+        $validated['posted_by'] = Auth::id();
+
+        $cashIn = CashIn::query()->create($validated);
+
+        $cashAccount = Account::query()->where('code', '1001')->firstOrFail();
+        $revenueAccount = Account::query()->where('code', '4001')->firstOrFail();
+
+        $entry = $this->glPostingService->post(
+            sourceModule: 'project_invoice_payment',
+            sourceReference: (string) $cashIn->id,
+            description: 'Pembayaran invoice project '.$project->name,
+            entryDate: $validated['date'],
+            lines: [
+                ['account_id' => $cashAccount->id, 'debit' => $validated['amount'], 'credit' => 0],
+                ['account_id' => $revenueAccount->id, 'debit' => 0, 'credit' => $validated['amount']],
+            ],
+        );
+
+        $cashIn->update(['journal_entry_id' => $entry->id]);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Pembayaran invoice berhasil dicatat.']);
+    }
+
+    public function updateProjectInvoicePayment(Request $request, Project $project, CashIn $cashIn)
+    {
+        abort_unless($project->status === 'selesai' && $cashIn->project_id === $project->id, 404);
+
+        $validated = $request->validate([
+            'amount' => 'required|numeric|min:1',
+            'date' => 'required|date',
+            'payment_method_id' => 'required|exists:payment_methods,id',
+            'note' => 'nullable|string|max:1000',
+        ]);
+
+        $totalPaidOther = (float) $project->cashIns()->whereKeyNot($cashIn->id)->sum('amount');
+        $remaining = max((float) $project->total_value - $totalPaidOther, 0);
+        if ((float) $validated['amount'] > $remaining) {
+            throw ValidationException::withMessages([
+                'amount' => 'Jumlah pembayaran melebihi sisa tagihan: Rp '.number_format($remaining, 0, ',', '.'),
+            ]);
+        }
+
+        DB::transaction(function () use ($cashIn, $validated, $project): void {
+            $cashIn->update([
+                'amount' => $validated['amount'],
+                'date' => $validated['date'],
+                'payment_method_id' => $validated['payment_method_id'],
+                'note' => $validated['note'] ?? null,
+            ]);
+
+            if ($cashIn->journal_entry_id) {
+                $entry = JournalEntry::query()->with('lines')->find($cashIn->journal_entry_id);
+                if ($entry) {
+                    $entry->update([
+                        'entry_date' => $validated['date'],
+                        'description' => 'Pembayaran invoice project '.$project->name.' (updated)',
+                    ]);
+
+                    foreach ($entry->lines as $line) {
+                        if ((float) $line->debit > 0) {
+                            $line->update(['debit' => $validated['amount'], 'credit' => 0]);
+                        } else {
+                            $line->update(['debit' => 0, 'credit' => $validated['amount']]);
+                        }
+                    }
+                }
+            }
+        });
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Pembayaran invoice berhasil diperbarui.']);
+    }
+
+    public function downloadProjectInvoice(Project $project)
+    {
+        abort_unless($project->status === 'selesai', 404);
+
+        $project->invoice_number = $this->ensureProjectInvoiceNumber($project);
+        $project->load(['payments', 'cashIns']);
+        $project->loadSum('cashIns as paid_amount', 'amount');
+
+        $pdf = Pdf::loadView('pdf.project-invoice', [
+            'project' => $project,
+            'invoice' => $this->mapProjectInvoice($project),
+            'generatedAt' => now(),
+        ])->setPaper('a4');
+
+        return $pdf->download($this->invoiceNumber($project).'.pdf');
+    }
+
+    public function downloadProjectReceipt(Project $project, CashIn $cashIn)
+    {
+        abort_unless($project->status === 'selesai' && $cashIn->project_id === $project->id, 404);
+
+        $project->invoice_number = $this->ensureProjectInvoiceNumber($project);
+        $project->loadSum('cashIns as paid_amount', 'amount');
+        $cashIn->load('paymentMethod');
+
+        $pdf = Pdf::loadView('pdf.project-receipt', [
+            'project' => $project,
+            'cashIn' => $cashIn,
+            'invoice' => $this->mapProjectInvoice($project),
+            'generatedAt' => now(),
+        ])->setPaper('a4');
+
+        return $pdf->download('KW-'.$this->invoiceNumber($project).'-'.($cashIn->date?->format('Ymd') ?? now()->format('Ymd')).'.pdf');
+    }
+
+    private function mapProjectInvoice(Project $project): array
+    {
+        $paidAmount = (float) ($project->paid_amount ?? $project->cashIns()->sum('amount'));
+        $amount = (float) $project->total_value;
+        $remaining = max($amount - $paidAmount, 0);
+
+        return [
+            'id' => $project->id,
+            'number' => $project->invoice_number ?: $this->invoiceNumber($project),
+            'project' => $project->name,
+            'client' => $project->client_name,
+            'amount' => $amount,
+            'paid_amount' => $paidAmount,
+            'remaining_amount' => $remaining,
+            'status' => $remaining <= 0 ? 'paid' : ($paidAmount > 0 ? 'partial' : 'unpaid'),
+            'finished_at' => $project->finished_at?->format('Y-m-d'),
+            'created_at' => $project->created_at?->format('Y-m-d'),
+        ];
+    }
+
+    private function invoiceNumber(Project $project): string
+    {
+        return $project->invoice_number
+            ?: ('INV-PRJ-'.($project->finished_at?->format('Ymd') ?? $project->created_at?->format('Ymd') ?? now()->format('Ymd')).'-'.strtoupper(substr(str_replace('-', '', (string) $project->getKey()), -6)));
+    }
+
+    private function ensureProjectInvoiceNumber(Project $project): string
+    {
+        if ($project->invoice_number) {
+            return $project->invoice_number;
+        }
+
+        return DB::transaction(function () use ($project): string {
+            $locked = Project::query()->lockForUpdate()->findOrFail($project->id);
+            if ($locked->invoice_number) {
+                return $locked->invoice_number;
+            }
+
+            $nextNumber = $this->documentNumberService->next('sales', 'project_invoice', [
+                'prefix' => 'INV-PRJ',
+                'padding_length' => 6,
+            ]);
+
+            $locked->update([
+                'invoice_number' => $nextNumber,
+                'invoiced_at' => now(),
+            ]);
+
+            return $nextNumber;
+        });
     }
 }

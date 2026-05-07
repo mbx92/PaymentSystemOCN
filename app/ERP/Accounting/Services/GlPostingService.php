@@ -4,31 +4,22 @@ namespace App\ERP\Accounting\Services;
 
 use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Accounting\Models\JournalLine;
-use App\ERP\Core\Models\DocumentSequence;
+use App\ERP\Shared\Services\DocumentNumberService;
 use App\ERP\Shared\Enums\DocumentStatus;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class GlPostingService
 {
+    public function __construct(private readonly DocumentNumberService $documentNumberService) {}
+
     /**
      * @param  array<int, array{account_id:int, description?:string, debit:float|int|string, credit:float|int|string}>  $lines
      */
     public function post(string $sourceModule, string $sourceReference, string $description, string $entryDate, array $lines): JournalEntry
     {
         return DB::transaction(function () use ($sourceModule, $sourceReference, $description, $entryDate, $lines): JournalEntry {
-            $sequence = DocumentSequence::query()->firstOrCreate(
-                ['module' => 'accounting', 'document_type' => 'journal_entry'],
-                ['prefix' => 'JE', 'running_number' => 0, 'padding_length' => 6]
-            );
-
-            $sequence->increment('running_number');
-
-            $entryNo = sprintf(
-                '%s-%s',
-                $sequence->prefix,
-                str_pad((string) $sequence->running_number, $sequence->padding_length, '0', STR_PAD_LEFT)
-            );
+            $entryNo = $this->nextUniqueEntryNo();
 
             $journalEntry = JournalEntry::query()->create([
                 'entry_no' => $entryNo,
@@ -53,5 +44,20 @@ class GlPostingService
 
             return $journalEntry;
         });
+    }
+
+    private function nextUniqueEntryNo(): string
+    {
+        $attempt = 0;
+        do {
+            $entryNo = $this->documentNumberService->next('accounting', 'journal_entry', [
+                'prefix' => 'JE',
+                'padding_length' => 6,
+            ]);
+            $exists = JournalEntry::query()->where('entry_no', $entryNo)->exists();
+            $attempt++;
+        } while ($exists && $attempt < 20);
+
+        return $entryNo;
     }
 }

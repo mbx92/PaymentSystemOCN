@@ -41,24 +41,16 @@ const form = useForm({
     client_contact: '',
     project_type: 'system_website_development',
     estimated_value: 0,
-    cctv_items: [{ name: '', qty: 1, unit_price: 0 }],
     description: '',
 });
 
-const isCctv = computed(() => form.project_type === 'cctv_installation');
-const totalCctvItems = computed(() => (form.cctv_items ?? []).reduce((s, r) => s + ((Number(r.qty) || 0) * (Number(r.unit_price) || 0)), 0));
-const addCctvItem = () => form.cctv_items.push({ name: '', qty: 1, unit_price: 0 });
-const removeCctvItem = (idx) => { if (form.cctv_items.length > 1) form.cctv_items.splice(idx, 1); };
-
 const openAddModal = () => document.getElementById('modal-add-budget')?.showModal();
 const submit = () => {
-    if (isCctv.value) form.estimated_value = totalCctvItems.value;
     form.post(route('erp.projects.budgets.store'), {
         preserveScroll: true,
         onSuccess: () => {
-            form.reset('name', 'client_name', 'client_contact', 'estimated_value', 'description', 'cctv_items');
+            form.reset('name', 'client_name', 'client_contact', 'estimated_value', 'description');
             form.project_type = 'system_website_development';
-            form.cctv_items = [{ name: '', qty: 1, unit_price: 0 }];
             document.getElementById('modal-add-budget')?.close();
         },
     });
@@ -76,7 +68,6 @@ const submit = () => {
                         <h1 class="mt-2 text-3xl font-bold tracking-tight">Budgeting Project</h1>
                         <p class="mt-2 text-sm text-base-content/70">Klik baris untuk lihat detail budget, edit, dan aksi deal/convert.</p>
                     </div>
-                    <Link :href="route('erp.projects')" class="btn btn-ghost btn-sm">Back</Link>
                 </div>
             </div>
 
@@ -165,15 +156,10 @@ const submit = () => {
                     <div><label class="label"><span class="label-text">Kontak Klien</span></label><input v-model="form.client_contact" type="text" class="input input-bordered w-full" /></div>
                     <div><label class="label"><span class="label-text">Tipe Project</span></label><select v-model="form.project_type" class="select select-bordered w-full"><option value="system_website_development">System/Website Development</option><option value="cctv_installation">CCTV Installation</option></select></div>
                     <div>
-                        <CurrencyInput v-if="!isCctv" v-model="form.estimated_value" label="Estimasi Nilai Project" :required="true" :error="form.errors.estimated_value" />
-                        <div v-else><label class="label"><span class="label-text">Total Item CCTV (Auto)</span></label><div class="input input-bordered w-full flex items-center bg-base-200">{{ format(totalCctvItems) }}</div></div>
+                        <CurrencyInput v-model="form.estimated_value" label="Estimasi Nilai Budget" :required="true" :error="form.errors.estimated_value" />
+                        <p class="text-xs text-base-content/60 mt-1">Untuk CCTV, rincian item produk diisi setelah budget tersimpan, di halaman detail.</p>
                     </div>
                     <div class="md:col-span-2"><label class="label"><span class="label-text">Deskripsi</span></label><textarea v-model="form.description" class="textarea textarea-bordered w-full" rows="3" /></div>
-                </div>
-                <div v-if="isCctv" class="mt-4 space-y-2">
-                    <div class="flex items-center justify-between"><h3 class="font-semibold">Item CCTV</h3><button class="btn btn-outline btn-xs" type="button" @click="addCctvItem">+ Item</button></div>
-                    <p v-if="form.errors.cctv_items" class="text-error text-xs">{{ form.errors.cctv_items }}</p>
-                    <div class="overflow-x-auto rounded-xl border border-base-300"><table class="table table-sm"><thead><tr><th>Produk</th><th>Qty</th><th>Harga Satuan</th><th>Subtotal</th><th></th></tr></thead><tbody><tr v-for="(item, idx) in form.cctv_items" :key="idx"><td><input v-model="item.name" type="text" class="input input-bordered input-sm w-full" /></td><td><input v-model.number="item.qty" type="number" min="0.01" step="0.01" class="input input-bordered input-sm w-24" /></td><td><input v-model.number="item.unit_price" type="number" min="0" step="1000" class="input input-bordered input-sm w-36" /></td><td class="font-medium">{{ format((Number(item.qty) || 0) * (Number(item.unit_price) || 0)) }}</td><td><button type="button" class="btn btn-ghost btn-xs text-error" @click="removeCctvItem(idx)">Hapus</button></td></tr></tbody></table></div>
                 </div>
                 <div class="modal-action">
                     <form method="dialog"><button class="btn btn-ghost">Batal</button></form>

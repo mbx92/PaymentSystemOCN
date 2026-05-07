@@ -15,6 +15,7 @@ class CashIn extends Model
     protected $fillable = [
         'project_id',
         'project_payment_id',
+        'payment_method_id',
         'category',
         'amount',
         'document_status',
@@ -43,6 +44,11 @@ class CashIn extends Model
     public function projectPayment()
     {
         return $this->belongsTo(ProjectPayment::class);
+    }
+
+    public function paymentMethod()
+    {
+        return $this->belongsTo(PaymentMethod::class);
     }
 
     public function creator()

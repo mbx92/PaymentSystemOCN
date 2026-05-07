@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class MasterProduct extends Model
 {
@@ -32,5 +33,10 @@ class MasterProduct extends Model
             'total_sold' => 'int',
             'lead_time_days' => 'int',
         ];
+    }
+
+    public function uomMappings(): HasMany
+    {
+        return $this->hasMany(MasterProductUomMapping::class)->orderBy('uom_code');
     }
 }

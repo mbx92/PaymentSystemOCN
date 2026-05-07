@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\ERP\Inventory\Models\Warehouse;
 use App\Models\ProductCategory;
 use App\Models\Uom;
 use App\Models\UomConversion;
@@ -12,6 +13,78 @@ use Inertia\Response;
 
 class ERPInventoryMasterDataController extends Controller
 {
+    public function warehouses(Request $request): Response
+    {
+        $query = Warehouse::query()->orderBy('name');
+
+        if ($request->filled('q')) {
+            $term = $request->string('q')->toString();
+            $query->where(function ($inner) use ($term): void {
+                $inner->where('code', 'like', '%'.$term.'%')
+                    ->orWhere('name', 'like', '%'.$term.'%')
+                    ->orWhere('address', 'like', '%'.$term.'%');
+            });
+        }
+
+        if ($request->filled('status')) {
+            $status = $request->string('status')->toString();
+            if ($status === 'active') {
+                $query->where('is_active', true);
+            } elseif ($status === 'inactive') {
+                $query->where('is_active', false);
+            }
+        }
+
+        return Inertia::render('ERP/Inventory/Warehouses', [
+            'warehouses' => $query->get()->map(fn (Warehouse $warehouse) => [
+                'id' => $warehouse->id,
+                'code' => $warehouse->code,
+                'name' => $warehouse->name,
+                'address' => $warehouse->address,
+                'status' => $warehouse->is_active ? 'active' : 'inactive',
+            ]),
+            'filters' => $request->only(['q', 'status']),
+        ]);
+    }
+
+    public function storeWarehouse(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'code' => 'required|string|max:32|unique:warehouses,code',
+            'name' => 'required|string|max:120',
+            'address' => 'nullable|string',
+            'status' => 'required|in:active,inactive',
+        ]);
+
+        Warehouse::query()->create([
+            'code' => strtoupper($validated['code']),
+            'name' => $validated['name'],
+            'address' => $validated['address'] ?? null,
+            'is_active' => $validated['status'] === 'active',
+        ]);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Warehouse berhasil ditambahkan.']);
+    }
+
+    public function updateWarehouse(Request $request, Warehouse $warehouse): RedirectResponse
+    {
+        $validated = $request->validate([
+            'code' => 'required|string|max:32|unique:warehouses,code,'.$warehouse->id,
+            'name' => 'required|string|max:120',
+            'address' => 'nullable|string',
+            'status' => 'required|in:active,inactive',
+        ]);
+
+        $warehouse->update([
+            'code' => strtoupper($validated['code']),
+            'name' => $validated['name'],
+            'address' => $validated['address'] ?? null,
+            'is_active' => $validated['status'] === 'active',
+        ]);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Warehouse berhasil diperbarui.']);
+    }
+
     public function categories(): Response
     {
         return Inertia::render('ERP/Inventory/Categories', [

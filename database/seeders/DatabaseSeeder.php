@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Core\Models\Company;
 use App\ERP\Core\Models\Currency;
+use App\ERP\Core\Models\DocumentSequence;
 use App\ERP\Core\Models\FiscalPeriod;
 use App\ERP\Inventory\Models\Warehouse;
 use App\ERP\Purchasing\Models\GoodsReceipt;
@@ -14,6 +15,7 @@ use App\ERP\Purchasing\Models\PurchaseOrderLine;
 use App\ERP\Purchasing\Models\Vendor;
 use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
+use App\Models\PaymentMethod;
 use App\Models\ProductCategory;
 use App\Models\ProductStockMovement;
 use App\Models\Uom;
@@ -167,6 +169,33 @@ class DatabaseSeeder extends Seeder
         foreach ($uoms as $uom) {
             Uom::query()->firstOrCreate(['code' => $uom['code']], $uom);
         }
+
+        $paymentMethods = [
+            ['code' => 'cash', 'name' => 'Tunai', 'description' => 'Pembayaran tunai langsung', 'status' => 'active'],
+            ['code' => 'transfer', 'name' => 'Transfer Bank', 'description' => 'Transfer ke rekening perusahaan', 'status' => 'active'],
+            ['code' => 'qris', 'name' => 'QRIS', 'description' => 'Pembayaran via QRIS', 'status' => 'active'],
+            ['code' => 'debit', 'name' => 'Kartu Debit', 'description' => 'Pembayaran via EDC/debit', 'status' => 'active'],
+        ];
+        foreach ($paymentMethods as $method) {
+            PaymentMethod::query()->updateOrCreate(['code' => $method['code']], $method);
+        }
+
+        $documentSequences = [
+            ['module' => 'sales', 'document_type' => 'project_invoice', 'prefix' => 'INV-PRJ', 'running_number' => 0, 'padding_length' => 6],
+            ['module' => 'purchasing', 'document_type' => 'purchase_order', 'prefix' => 'PO', 'running_number' => 0, 'padding_length' => 6],
+            ['module' => 'purchasing', 'document_type' => 'goods_receipt', 'prefix' => 'GRN', 'running_number' => 0, 'padding_length' => 6],
+            ['module' => 'purchasing', 'document_type' => 'supplier_code', 'prefix' => 'SUP', 'running_number' => 0, 'padding_length' => 3],
+            ['module' => 'accounting', 'document_type' => 'journal_entry', 'prefix' => 'JE', 'running_number' => 0, 'padding_length' => 6],
+            ['module' => 'accounting', 'document_type' => 'payable_bill', 'prefix' => 'BILL', 'running_number' => 0, 'padding_length' => 6],
+        ];
+        foreach ($documentSequences as $seq) {
+            DocumentSequence::query()->updateOrCreate(
+                ['module' => $seq['module'], 'document_type' => $seq['document_type']],
+                $seq
+            );
+        }
+
+        $this->call(ErpChatParserRuleSeeder::class);
 
         $pcs = Uom::query()->where('code', 'pcs')->first();
         $pack = Uom::query()->where('code', 'pack')->first();

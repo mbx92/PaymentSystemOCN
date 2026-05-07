@@ -311,6 +311,9 @@ class ERPInventoryController extends Controller
             'products' => $products,
             'types' => [
                 'purchase_receipt',
+                'pos_sale_out',
+                'pos_refund_in',
+                'pos_reopen_out',
                 'in',
                 'out',
                 'opname_in',

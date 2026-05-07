@@ -1,60 +1,130 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import ProductPickerModal from '@/Components/ProductPickerModal.vue';
 import { Head, Link } from '@inertiajs/vue3';
 import { useCurrency } from '@/composables/useCurrency';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 const props = defineProps({
   products: Array,
+  payment_methods: Array,
   fullscreen: Boolean,
 });
 
-const { format } = useCurrency();
-const selectedProductId = ref('');
-const barcodeQuery = ref('');
+const { format, parse, formatInput } = useCurrency();
+const showProductModal = ref(false);
+const productCatalog = ref((props.products ?? []).map((item) => ({ ...item })));
 const cart = ref([]);
-const cashPaid = ref(0);
-const paymentMethod = ref('cash');
+const cashPaidInput = ref('0');
+const defaultPaymentMethodId = props.payment_methods?.[0]?.id ?? null;
+const paymentMethodId = ref(defaultPaymentMethodId);
 const heldCart = ref([]);
 const isOnHold = ref(false);
 const cashInputRef = ref(null);
-const modalBarcodeRef = ref(null);
+const processingPayment = ref(false);
+const checkoutError = ref('');
+const lastReceipt = ref(null);
+const successToast = ref('');
+let toastTimer = null;
 
 const openProductModal = () => {
-  barcodeQuery.value = '';
-  document.getElementById('modal-pos-products').showModal();
-  nextTick(() => modalBarcodeRef.value?.focus());
+  showProductModal.value = true;
 };
 
-const addSelectedProductToCart = () => {
-  if (!selectedProductId.value) return;
-  const selected = props.products.find((p) => p.sku === selectedProductId.value);
-  if (!selected) return;
+const addProductToCart = (selected) => {
+  if (Number(selected.stock ?? 0) <= 0) {
+    alert('Stok produk habis.');
+    return;
+  }
 
-  const existing = cart.value.find((line) => line.sku === selected.sku);
+  const existing = cart.value.find((line) => line.productId === selected.id);
   if (existing) {
+    if (existing.qty + 1 > existing.availableStock) {
+      alert(`Stok tidak mencukupi. Maksimal ${existing.availableStock} ${existing.uom}.`);
+      return;
+    }
     existing.qty += 1;
   } else {
     cart.value.push({
+      productId: selected.id,
+      masterProductId: selected.master_product_id ?? null,
       sku: selected.sku,
       name: selected.name,
+      uom: selected.uom,
+      priceOperation: selected.price_operation ?? 'multiply',
+      multiplier: Number(selected.multiplier ?? 1),
+      availableStock: Number(selected.stock ?? 0),
       price: Number(selected.price),
       qty: 1,
       discountPercent: 0,
     });
   }
-
-  selectedProductId.value = '';
-  document.getElementById('modal-pos-products').close();
+  showProductModal.value = false;
 };
 
-const addProductBySku = (sku) => {
-  selectedProductId.value = sku;
-  addSelectedProductToCart();
+const showSuccessToast = (message) => {
+  successToast.value = message;
+  if (toastTimer) window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => {
+    successToast.value = '';
+    toastTimer = null;
+  }, 2500);
+};
+
+const recalculateStocksForMasterProduct = (masterProductId) => {
+  const related = productCatalog.value.filter((item) => item.master_product_id === masterProductId);
+  const baseVariant = related.find((item) => Number(item.multiplier || 1) === 1);
+  if (!baseVariant) return;
+
+  const baseStock = Math.max(Number(baseVariant.stock || 0), 0);
+  related.forEach((item) => {
+    const multiplier = Math.max(Number(item.multiplier || 1), 0.0001);
+    const operation = item.price_operation || 'multiply';
+    if (Number(item.multiplier || 1) === 1) {
+      item.stock = baseStock;
+      return;
+    }
+
+    item.stock = operation === 'divide'
+      ? Math.floor(baseStock * multiplier)
+      : Math.floor(baseStock / multiplier);
+  });
+};
+
+const applyLocalStockMutationAfterCheckout = (lines) => {
+  const consumedByMaster = new Map();
+  lines.forEach((line) => {
+    const multiplier = Math.max(Number(line.multiplier || 1), 0.0001);
+    const qty = Number(line.qty || 0);
+    const operation = line.priceOperation || 'multiply';
+    const consumedBase = operation === 'divide'
+      ? Math.ceil(qty / multiplier)
+      : Math.ceil(qty * multiplier);
+    const current = consumedByMaster.get(line.masterProductId) || 0;
+    consumedByMaster.set(line.masterProductId, current + consumedBase);
+  });
+
+  consumedByMaster.forEach((consumed, masterProductId) => {
+    const baseVariant = productCatalog.value.find((item) => item.master_product_id === masterProductId && Number(item.multiplier || 1) === 1);
+    if (!baseVariant) return;
+    baseVariant.stock = Math.max(Number(baseVariant.stock || 0) - consumed, 0);
+    recalculateStocksForMasterProduct(masterProductId);
+  });
 };
 
 const removeLine = (sku) => {
-  cart.value = cart.value.filter((line) => line.sku !== sku);
+  cart.value = cart.value.filter((line) => line.productId !== sku);
+};
+
+const sanitizeLineQty = (line) => {
+  const maxQty = Math.max(Number(line.availableStock || 0), 0);
+  let qty = Number(line.qty || 0);
+  if (!Number.isFinite(qty) || qty < 1) qty = 1;
+  if (maxQty > 0 && qty > maxQty) {
+    qty = maxQty;
+    alert(`Qty melebihi stok. Maksimal ${maxQty} ${line.uom}.`);
+  }
+  line.qty = qty;
 };
 
 const lineSubtotal = (line) => {
@@ -66,27 +136,90 @@ const lineSubtotal = (line) => {
 const grossTotal = computed(() => cart.value.reduce((sum, line) => sum + (line.price * line.qty), 0));
 const discountTotal = computed(() => cart.value.reduce((sum, line) => sum + ((line.price * line.qty) * (Number(line.discountPercent || 0) / 100)), 0));
 const grandTotal = computed(() => grossTotal.value - discountTotal.value);
-const changeAmount = computed(() => Math.max(Number(cashPaid.value || 0) - grandTotal.value, 0));
+const selectedPaymentMethod = computed(() => props.payment_methods?.find((method) => method.id === paymentMethodId.value) ?? null);
+const isCashPayment = computed(() => selectedPaymentMethod.value?.code === 'cash');
+const cashPaidValue = computed(() => parse(cashPaidInput.value));
+const changeAmount = computed(() => Math.max(Number(cashPaidValue.value || 0) - grandTotal.value, 0));
+const hasStockViolation = computed(() => cart.value.some((line) => Number(line.qty) > Number(line.availableStock || 0)));
 const canProcessPayment = computed(() => {
   if (cart.value.length === 0) return false;
-  if (paymentMethod.value !== 'cash') return true;
-  return Number(cashPaid.value || 0) >= grandTotal.value;
+  if (hasStockViolation.value) return false;
+  if (!isCashPayment.value) return true;
+  return Number(cashPaidValue.value || 0) >= grandTotal.value;
 });
 
-const filteredProducts = computed(() => {
-  const term = barcodeQuery.value.toLowerCase().trim();
-  if (!term) return props.products;
+const onCashInput = (event) => {
+  cashPaidInput.value = formatInput(event.target.value);
+};
 
-  return props.products.filter((product) =>
-    product.sku.toLowerCase().includes(term) ||
-    (product.barcode || '').toLowerCase().includes(term) ||
-    product.name.toLowerCase().includes(term),
-  );
-});
+const getCookieValue = (name) => {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop()?.split(';').shift() || '';
+  return '';
+};
 
-const processPayment = () => {
-  if (!canProcessPayment.value) return;
-  openReceiptPreview();
+const processPayment = async () => {
+  if (!canProcessPayment.value || processingPayment.value) return;
+
+  processingPayment.value = true;
+  checkoutError.value = '';
+
+  try {
+    const response = await fetch(route('erp.sales.pos.checkout'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+        'X-XSRF-TOKEN': decodeURIComponent(getCookieValue('XSRF-TOKEN') || ''),
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        payment_method_id: paymentMethodId.value,
+        cash_paid: isCashPayment.value ? cashPaidValue.value : grandTotal.value,
+        items: cart.value.map((line) => ({
+          master_product_id: line.masterProductId,
+          sku: line.sku,
+          uom: line.uom,
+          qty: Number(line.qty),
+          unit_price: Number(line.price),
+          discount_percent: Number(line.discountPercent || 0),
+          multiplier: Number(line.multiplier || 1),
+          price_operation: line.priceOperation || 'multiply',
+        })),
+      }),
+    });
+
+    const payload = await response.json();
+    if (!response.ok) {
+      const firstError = payload?.errors ? Object.values(payload.errors)[0]?.[0] : null;
+      throw new Error(firstError || payload?.message || 'Gagal memproses pembayaran POS.');
+    }
+
+    lastReceipt.value = {
+      number: payload.transaction_number,
+      paymentMethodName: payload.payment_method_name,
+      grandTotal: payload.grand_total,
+      cashPaid: payload.cash_paid,
+      change: payload.change,
+      lines: cart.value.map((line) => ({ ...line })),
+    };
+
+    applyLocalStockMutationAfterCheckout(cart.value);
+    showSuccessToast(`Transaksi ${payload.transaction_number} berhasil disimpan.`);
+
+    cart.value = [];
+    heldCart.value = [];
+    isOnHold.value = false;
+    cashPaidInput.value = '0';
+
+    openReceiptPreview();
+  } catch (error) {
+    checkoutError.value = error?.message || 'Gagal memproses pembayaran.';
+  } finally {
+    processingPayment.value = false;
+  }
 };
 
 const saveDraft = () => {
@@ -96,7 +229,7 @@ const saveDraft = () => {
 
 const voidTransaction = () => {
   cart.value = [];
-  cashPaid.value = 0;
+  cashPaidInput.value = '0';
   heldCart.value = [];
   isOnHold.value = false;
 };
@@ -106,7 +239,7 @@ const toggleHoldResume = () => {
     if (cart.value.length === 0) return;
     heldCart.value = JSON.parse(JSON.stringify(cart.value));
     cart.value = [];
-    cashPaid.value = 0;
+    cashPaidInput.value = '0';
     isOnHold.value = true;
     return;
   }
@@ -119,6 +252,7 @@ const toggleHoldResume = () => {
 const openReceiptPreview = () => {
   document.getElementById('modal-pos-receipt').showModal();
 };
+const receiptLines = computed(() => (lastReceipt.value?.lines?.length ? lastReceipt.value.lines : cart.value));
 
 const printReceipt = () => {
   window.print();
@@ -157,8 +291,7 @@ const handleCashierShortcuts = (event) => {
 
   // Esc: close modal if open
   if (event.key === 'Escape') {
-    const modal = document.getElementById('modal-pos-products');
-    if (modal?.open) modal.close();
+    if (showProductModal.value) showProductModal.value = false;
     return;
   }
 
@@ -171,11 +304,17 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleCashierShortcuts);
+  if (toastTimer) window.clearTimeout(toastTimer);
 });
 </script>
 
 <template>
   <Head title="Sales - POS Produk" />
+  <div v-if="successToast" class="toast toast-top toast-end z-[10000]">
+    <div class="alert alert-success text-sm">
+      <span>{{ successToast }}</span>
+    </div>
+  </div>
   <AppLayout v-if="!fullscreen">
     <div class="space-y-4">
       <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -208,19 +347,22 @@ onBeforeUnmount(() => {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="line in cart" :key="line.sku">
+                <tr v-for="line in cart" :key="line.productId">
                   <td class="font-mono text-xs">{{ line.sku }}</td>
-                  <td class="font-medium">{{ line.name }}</td>
+                  <td class="font-medium">{{ line.name }} <span class="text-xs text-base-content/60">({{ line.uom }})</span></td>
                   <td>{{ format(line.price) }}</td>
                   <td>
-                    <input v-model.number="line.qty" type="number" min="1" class="input input-bordered input-sm w-20" />
+                    <div class="flex items-center gap-1 whitespace-nowrap">
+                      <input v-model.number="line.qty" type="number" min="1" :max="line.availableStock" class="input input-bordered input-sm w-20" @change="sanitizeLineQty(line)" />
+                      <span class="text-xs text-base-content/60">/ {{ line.availableStock }}</span>
+                    </div>
                   </td>
                   <td>
                     <input v-model.number="line.discountPercent" type="number" min="0" max="100" class="input input-bordered input-sm w-24" />
                   </td>
                   <td class="font-semibold text-primary">{{ format(lineSubtotal(line)) }}</td>
                   <td>
-                    <button class="btn btn-ghost btn-xs text-error" @click="removeLine(line.sku)">Hapus</button>
+                    <button class="btn btn-ghost btn-xs text-error" @click="removeLine(line.productId)">Hapus</button>
                   </td>
                 </tr>
                 <tr v-if="cart.length === 0">
@@ -245,23 +387,20 @@ onBeforeUnmount(() => {
             <div class="mt-4 space-y-3">
               <div>
                 <label class="label py-1"><span class="label-text text-xs uppercase tracking-wide">Metode Pembayaran</span></label>
-                <select v-model="paymentMethod" class="select select-bordered w-full">
-                  <option value="cash">Cash</option>
-                  <option value="transfer">Transfer Bank</option>
-                  <option value="qris">QRIS</option>
-                  <option value="debit">Kartu Debit</option>
+                <select v-model="paymentMethodId" class="select select-bordered w-full">
+                  <option v-for="method in payment_methods" :key="method.id" :value="method.id">{{ method.name }}</option>
                 </select>
               </div>
               <div>
                 <label class="label py-1"><span class="label-text text-xs uppercase tracking-wide">Nominal Bayar</span></label>
                 <input
                   ref="cashInputRef"
-                  v-model.number="cashPaid"
-                  type="number"
-                  min="0"
+                  :value="cashPaidInput"
+                  type="text"
                   class="input input-bordered w-full"
-                  :disabled="paymentMethod !== 'cash'"
+                  :disabled="!isCashPayment"
                   placeholder="Masukkan nominal bayar"
+                  @input="onCashInput"
                 />
               </div>
               <div class="rounded-xl bg-base-200 px-3 py-2">
@@ -277,97 +416,35 @@ onBeforeUnmount(() => {
               <button class="btn btn-outline btn-sm text-error" :disabled="cart.length === 0 && !isOnHold" @click="voidTransaction">Void</button>
               <button class="btn btn-outline btn-sm" :disabled="cart.length === 0" @click="openReceiptPreview">Preview Struk</button>
             </div>
+            <p v-if="checkoutError" class="mt-2 text-sm text-error">{{ checkoutError }}</p>
+            <p v-if="hasStockViolation" class="mt-1 text-xs text-error">Ada qty melebihi stok tersedia. Perbaiki sebelum proses.</p>
             <button
               class="btn mt-4 w-full border-0 bg-primary text-primary-content disabled:!bg-slate-300 disabled:!text-slate-500"
-              :disabled="!canProcessPayment"
+              :disabled="!canProcessPayment || processingPayment"
               @click="processPayment"
             >
-              Proses Pembayaran
+              {{ processingPayment ? 'Memproses...' : 'Proses Pembayaran' }}
             </button>
             <p class="mt-2 text-[11px] text-base-content/55">Shortcut: F2 (produk), F4 (bayar), Ctrl+Enter (proses), Ctrl+K (scan), Esc (tutup modal)</p>
           </div>
         </div>
       </div>
+
     </div>
-
-    <dialog id="modal-pos-products" class="modal">
-      <div class="modal-box max-w-2xl">
-        <h3 class="font-bold text-lg">Pilih Produk untuk Ditambahkan</h3>
-        <p class="text-sm text-base-content/60 mt-1">Scan barcode / cari produk, pilih produk, lalu tambahkan ke keranjang.</p>
-
-        <div class="mt-3">
-          <label class="label"><span class="label-text">Scan Barcode / Cari SKU</span></label>
-          <input
-            ref="modalBarcodeRef"
-            v-model="barcodeQuery"
-            type="text"
-            class="input input-bordered w-full"
-            placeholder="Contoh: PKG-SP-12X20"
-            @keydown.enter.prevent="filteredProducts[0] && addProductBySku(filteredProducts[0].sku)"
-          />
-        </div>
-
-        <div class="mt-4 border rounded-xl overflow-hidden">
-          <table class="table table-zebra">
-            <thead>
-              <tr>
-                <th></th>
-                <th>SKU</th>
-                <th>Barcode</th>
-                <th>Produk</th>
-                <th>Harga</th>
-                <th>Stok</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="product in filteredProducts" :key="product.sku">
-                <td>
-                  <input
-                    :value="product.sku"
-                    v-model="selectedProductId"
-                    type="radio"
-                    name="selected_product"
-                    class="radio radio-sm"
-                  />
-                </td>
-                <td class="font-mono text-xs">{{ product.sku }}</td>
-                <td class="font-mono text-xs">{{ product.barcode || '-' }}</td>
-                <td class="font-medium">{{ product.name }}</td>
-                <td>{{ format(product.price) }}</td>
-                <td>{{ product.stock }}</td>
-              </tr>
-              <tr v-if="filteredProducts.length === 0">
-                <td colspan="6" class="py-8 text-center text-base-content/50">Produk tidak ditemukan.</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="modal-action">
-          <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
-          <button
-            class="btn border-0 bg-primary text-primary-content disabled:!bg-slate-300 disabled:!text-slate-500"
-            :disabled="!selectedProductId"
-            @click="addSelectedProductToCart"
-          >
-            Tambah ke Keranjang
-          </button>
-        </div>
-      </div>
-    </dialog>
 
     <dialog id="modal-pos-receipt" class="modal">
       <div class="modal-box max-w-md">
         <h3 class="font-bold text-lg">Preview Struk</h3>
         <div class="mt-4 space-y-2 text-sm">
-          <div class="flex justify-between"><span>Total Item</span><span>{{ cart.length }}</span></div>
-          <div class="flex justify-between"><span>Metode Bayar</span><span class="uppercase">{{ paymentMethod }}</span></div>
-          <div class="flex justify-between"><span>Grand Total</span><span>{{ format(grandTotal) }}</span></div>
-          <div class="flex justify-between"><span>Bayar</span><span>{{ format(cashPaid) }}</span></div>
-          <div class="flex justify-between"><span>Kembalian</span><span>{{ format(changeAmount) }}</span></div>
+          <div class="flex justify-between"><span>No. Transaksi</span><span>{{ lastReceipt?.number || '-' }}</span></div>
+          <div class="flex justify-between"><span>Total Item</span><span>{{ receiptLines.length }}</span></div>
+          <div class="flex justify-between"><span>Metode Bayar</span><span class="uppercase">{{ lastReceipt?.paymentMethodName || selectedPaymentMethod?.name || '-' }}</span></div>
+          <div class="flex justify-between"><span>Grand Total</span><span>{{ format(lastReceipt?.grandTotal ?? grandTotal) }}</span></div>
+          <div class="flex justify-between"><span>Bayar</span><span>{{ format(lastReceipt?.cashPaid ?? cashPaidValue) }}</span></div>
+          <div class="flex justify-between"><span>Kembalian</span><span>{{ format(lastReceipt?.change ?? changeAmount) }}</span></div>
           <div class="divider my-1"></div>
-          <div v-for="line in cart" :key="`receipt-${line.sku}`" class="flex justify-between gap-2">
-            <span class="truncate">{{ line.name }} x{{ line.qty }}</span>
+          <div v-for="line in receiptLines" :key="`receipt-${line.productId}`" class="flex justify-between gap-2">
+            <span class="truncate">{{ line.name }} ({{ line.uom }}) x{{ line.qty }}</span>
             <span>{{ format(lineSubtotal(line)) }}</span>
           </div>
         </div>
@@ -411,14 +488,19 @@ onBeforeUnmount(() => {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="line in cart" :key="line.sku">
+                <tr v-for="line in cart" :key="line.productId">
                   <td class="font-mono text-xs">{{ line.sku }}</td>
-                  <td class="font-medium">{{ line.name }}</td>
+                  <td class="font-medium">{{ line.name }} <span class="text-xs text-base-content/60">({{ line.uom }})</span></td>
                   <td>{{ format(line.price) }}</td>
-                  <td><input v-model.number="line.qty" type="number" min="1" class="input input-bordered input-sm w-20" /></td>
+                  <td>
+                    <div class="flex items-center gap-1 whitespace-nowrap">
+                      <input v-model.number="line.qty" type="number" min="1" :max="line.availableStock" class="input input-bordered input-sm w-20" @change="sanitizeLineQty(line)" />
+                      <span class="text-xs text-base-content/60">/ {{ line.availableStock }}</span>
+                    </div>
+                  </td>
                   <td><input v-model.number="line.discountPercent" type="number" min="0" max="100" class="input input-bordered input-sm w-24" /></td>
                   <td class="font-semibold text-primary">{{ format(lineSubtotal(line)) }}</td>
-                  <td><button class="btn btn-ghost btn-xs text-error" @click="removeLine(line.sku)">Hapus</button></td>
+                  <td><button class="btn btn-ghost btn-xs text-error" @click="removeLine(line.productId)">Hapus</button></td>
                 </tr>
                 <tr v-if="cart.length === 0">
                   <td colspan="7" class="py-10 text-center text-base-content/50">Keranjang masih kosong. Klik "Tambah Produk" untuk mulai transaksi.</td>
@@ -440,23 +522,20 @@ onBeforeUnmount(() => {
             <div class="mt-4 space-y-3">
               <div>
                 <label class="label py-1"><span class="label-text text-xs uppercase tracking-wide">Metode Pembayaran</span></label>
-                <select v-model="paymentMethod" class="select select-bordered w-full">
-                  <option value="cash">Cash</option>
-                  <option value="transfer">Transfer Bank</option>
-                  <option value="qris">QRIS</option>
-                  <option value="debit">Kartu Debit</option>
+                <select v-model="paymentMethodId" class="select select-bordered w-full">
+                  <option v-for="method in payment_methods" :key="method.id" :value="method.id">{{ method.name }}</option>
                 </select>
               </div>
               <div>
                 <label class="label py-1"><span class="label-text text-xs uppercase tracking-wide">Nominal Bayar</span></label>
                 <input
                   ref="cashInputRef"
-                  v-model.number="cashPaid"
-                  type="number"
-                  min="0"
+                  :value="cashPaidInput"
+                  type="text"
                   class="input input-bordered w-full"
-                  :disabled="paymentMethod !== 'cash'"
+                  :disabled="!isCashPayment"
                   placeholder="Masukkan nominal bayar"
+                  @input="onCashInput"
                 />
               </div>
               <div class="rounded-xl bg-base-200 px-3 py-2">
@@ -472,79 +551,35 @@ onBeforeUnmount(() => {
               <button class="btn btn-outline btn-sm text-error" :disabled="cart.length === 0 && !isOnHold" @click="voidTransaction">Void</button>
               <button class="btn btn-outline btn-sm" :disabled="cart.length === 0" @click="openReceiptPreview">Preview Struk</button>
             </div>
+            <p v-if="checkoutError" class="mt-2 text-sm text-error">{{ checkoutError }}</p>
+            <p v-if="hasStockViolation" class="mt-1 text-xs text-error">Ada qty melebihi stok tersedia. Perbaiki sebelum proses.</p>
             <button
               class="btn mt-4 w-full border-0 bg-primary text-primary-content disabled:!bg-slate-300 disabled:!text-slate-500"
-              :disabled="!canProcessPayment"
+              :disabled="!canProcessPayment || processingPayment"
               @click="processPayment"
             >
-              Proses Pembayaran
+              {{ processingPayment ? 'Memproses...' : 'Proses Pembayaran' }}
             </button>
             <p class="mt-2 text-[11px] text-base-content/55">Shortcut: F2 (produk), F4 (bayar), Ctrl+Enter (proses), Ctrl+K (scan), Esc (tutup modal)</p>
           </div>
         </div>
       </div>
-    </div>
 
-    <dialog id="modal-pos-products" class="modal">
-      <div class="modal-box max-w-2xl">
-        <h3 class="font-bold text-lg">Pilih Produk untuk Ditambahkan</h3>
-        <p class="text-sm text-base-content/60 mt-1">Scan barcode / cari produk, pilih produk, lalu tambahkan ke keranjang.</p>
-        <div class="mt-3">
-          <label class="label"><span class="label-text">Scan Barcode / Cari SKU</span></label>
-          <input
-            ref="modalBarcodeRef"
-            v-model="barcodeQuery"
-            type="text"
-            class="input input-bordered w-full"
-            placeholder="Contoh: PKG-SP-12X20"
-            @keydown.enter.prevent="filteredProducts[0] && addProductBySku(filteredProducts[0].sku)"
-          />
-        </div>
-        <div class="mt-4 border rounded-xl overflow-hidden">
-          <table class="table table-zebra">
-            <thead>
-              <tr><th></th><th>SKU</th><th>Barcode</th><th>Produk</th><th>Harga</th><th>Stok</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="product in filteredProducts" :key="product.sku">
-                <td><input :value="product.sku" v-model="selectedProductId" type="radio" name="selected_product_fullscreen" class="radio radio-sm" /></td>
-                <td class="font-mono text-xs">{{ product.sku }}</td>
-                <td class="font-mono text-xs">{{ product.barcode || '-' }}</td>
-                <td class="font-medium">{{ product.name }}</td>
-                <td>{{ format(product.price) }}</td>
-                <td>{{ product.stock }}</td>
-              </tr>
-              <tr v-if="filteredProducts.length === 0">
-                <td colspan="6" class="py-8 text-center text-base-content/50">Produk tidak ditemukan.</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="modal-action">
-          <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
-          <button
-            class="btn border-0 bg-primary text-primary-content disabled:!bg-slate-300 disabled:!text-slate-500"
-            :disabled="!selectedProductId"
-            @click="addSelectedProductToCart"
-          >
-            Tambah ke Keranjang
-          </button>
-        </div>
-      </div>
-    </dialog>
+    </div>
 
     <dialog id="modal-pos-receipt" class="modal">
       <div class="modal-box max-w-md">
         <h3 class="font-bold text-lg">Preview Struk</h3>
         <div class="mt-4 space-y-2 text-sm">
-          <div class="flex justify-between"><span>Total Item</span><span>{{ cart.length }}</span></div>
-          <div class="flex justify-between"><span>Metode Bayar</span><span class="uppercase">{{ paymentMethod }}</span></div>
-          <div class="flex justify-between"><span>Grand Total</span><span>{{ format(grandTotal) }}</span></div>
-          <div class="flex justify-between"><span>Bayar</span><span>{{ format(cashPaid) }}</span></div>
-          <div class="flex justify-between"><span>Kembalian</span><span>{{ format(changeAmount) }}</span></div>
+          <div class="flex justify-between"><span>No. Transaksi</span><span>{{ lastReceipt?.number || '-' }}</span></div>
+          <div class="flex justify-between"><span>Total Item</span><span>{{ receiptLines.length }}</span></div>
+          <div class="flex justify-between"><span>Metode Bayar</span><span class="uppercase">{{ lastReceipt?.paymentMethodName || selectedPaymentMethod?.name || '-' }}</span></div>
+          <div class="flex justify-between"><span>Grand Total</span><span>{{ format(lastReceipt?.grandTotal ?? grandTotal) }}</span></div>
+          <div class="flex justify-between"><span>Bayar</span><span>{{ format(lastReceipt?.cashPaid ?? cashPaidValue) }}</span></div>
+          <div class="flex justify-between"><span>Kembalian</span><span>{{ format(lastReceipt?.change ?? changeAmount) }}</span></div>
           <div class="divider my-1"></div>
-          <div v-for="line in cart" :key="`receipt-full-${line.sku}`" class="flex justify-between gap-2">
-            <span class="truncate">{{ line.name }} x{{ line.qty }}</span>
+          <div v-for="line in receiptLines" :key="`receipt-full-${line.productId}`" class="flex justify-between gap-2">
+            <span class="truncate">{{ line.name }} ({{ line.uom }}) x{{ line.qty }}</span>
             <span>{{ format(lineSubtotal(line)) }}</span>
           </div>
         </div>
@@ -555,4 +590,17 @@ onBeforeUnmount(() => {
       </div>
     </dialog>
   </div>
+
+  <ProductPickerModal
+    :show="showProductModal"
+    :products="productCatalog"
+    title="Pilih Produk untuk Ditambahkan"
+    subtitle="Scan barcode / cari produk, pilih produk, lalu tambahkan ke keranjang."
+    search-label="Scan Barcode / Cari SKU"
+    search-placeholder="Contoh: PKG-SP-12X20"
+    confirm-text="Tambah ke Keranjang"
+    radio-name="selected_product_pos"
+    @close="showProductModal = false"
+    @confirm="addProductToCart"
+  />
 </template>

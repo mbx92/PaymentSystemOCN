@@ -25,6 +25,7 @@ import {
   SparklesIcon,
   Squares2X2Icon,
   IdentificationIcon,
+  CreditCardIcon,
 } from '@heroicons/vue/24/outline';
 
 defineProps({
@@ -55,6 +56,7 @@ const iconMap = {
   'inbox-arrow-down': InboxArrowDownIcon,
   sparkles: SparklesIcon,
   identification: IdentificationIcon,
+  'credit-card': CreditCardIcon,
 };
 
 const iconFor = (menu) => iconMap[menu.icon] ?? Squares2X2Icon;
@@ -66,7 +68,10 @@ const iconFor = (menu) => iconMap[menu.icon] ?? Squares2X2Icon;
     <div class="space-y-6">
       <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">ERP Module</p>
-        <h1 class="mt-2 text-3xl font-bold tracking-tight">{{ module }}</h1>
+        <div class="mt-2 flex items-center justify-between gap-3">
+          <h1 class="text-3xl font-bold tracking-tight">{{ module }}</h1>
+          <Link class="btn btn-ghost btn-sm" :href="route('dashboard')">Back</Link>
+        </div>
         <p class="mt-2 text-sm text-base-content/70">
           Pilih submenu {{ module }} untuk lanjut ke workflow operasional.
         </p>

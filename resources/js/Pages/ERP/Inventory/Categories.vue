@@ -14,6 +14,7 @@ const form = useForm({
 });
 
 const submit = () => {
+  form.status = form.status === 'active' ? 'active' : 'inactive';
   form.post(route('erp.inventory.categories.store'), {
     preserveScroll: true,
     onSuccess: () => form.reset(),
@@ -37,10 +38,15 @@ const submit = () => {
         <div class="card-body grid gap-3 md:grid-cols-4">
           <input v-model="form.name" class="input input-bordered" placeholder="Nama kategori" />
           <input v-model="form.description" class="input input-bordered" placeholder="Deskripsi" />
-          <select v-model="form.status" class="select select-bordered">
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
+          <label class="label cursor-pointer justify-start gap-3 rounded-lg border border-base-300 px-3">
+            <input
+              :checked="form.status === 'active'"
+              type="checkbox"
+              class="toggle toggle-success"
+              @change="form.status = $event.target.checked ? 'active' : 'inactive'"
+            />
+            <span class="label-text">{{ form.status === 'active' ? 'Active' : 'Inactive' }}</span>
+          </label>
           <button class="btn btn-primary" @click="submit">Tambah Kategori</button>
         </div>
       </div>
