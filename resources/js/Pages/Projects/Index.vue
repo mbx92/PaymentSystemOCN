@@ -43,7 +43,10 @@ const projectTypeLabel = (value) => {
             </div>
 
             <!-- Utility Card -->
-            <div class="card bg-base-100 shadow">
+            <div class="ocn-panel">
+                <div class="ocn-panel__head">
+                    <h2 class="ocn-panel__title">Filter project</h2>
+                </div>
                 <div class="card-body">
                     <div class="flex flex-wrap gap-3 items-center">
                         <label class="input input-bordered input-sm flex items-center gap-2 max-w-xs">
@@ -72,8 +75,11 @@ const projectTypeLabel = (value) => {
             </div>
 
             <!-- Table -->
-            <div class="card bg-base-100 shadow">
-                <div class="card-body p-0">
+            <div class="ocn-panel">
+                <div class="ocn-panel__head">
+                    <h2 class="ocn-panel__title">Daftar project</h2>
+                </div>
+                <div class="p-0">
                     <div class="overflow-x-auto">
                         <table class="table table-zebra">
                             <thead>

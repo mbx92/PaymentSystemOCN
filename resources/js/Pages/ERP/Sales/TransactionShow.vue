@@ -107,7 +107,10 @@ const openConfirmModal = (id) => document.getElementById(id)?.showModal();
       </div>
 
       <div class="grid gap-5 xl:grid-cols-[1fr_340px]">
-        <div class="card bg-base-100 shadow">
+        <div class="ocn-panel">
+          <div class="ocn-panel__head">
+            <h2 class="ocn-panel__title">Item transaksi</h2>
+          </div>
           <div class="card-body p-0">
             <div class="overflow-x-auto">
               <table class="table table-zebra">

@@ -46,7 +46,10 @@ watch(
         <p class="mt-2 text-sm text-base-content/70">Lihat histori pergerakan stok per produk dan per warehouse.</p>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Filter pergerakan stok</h2>
+        </div>
         <div class="card-body">
           <div class="flex flex-wrap items-end gap-3">
             <div class="min-w-[220px]">
@@ -86,7 +89,10 @@ watch(
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Riwayat stock movement</h2>
+        </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra">
             <thead>

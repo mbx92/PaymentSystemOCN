@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Accounting\Models\JournalLine;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -80,5 +81,26 @@ class ERPReportingController extends Controller
         return Inertia::render('ERP/Reports/TrialBalance', [
             'balances' => $balances,
         ]);
+    }
+
+    public function storeChartOfAccount(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'code' => 'required|string|max:32|unique:accounts,code',
+            'name' => 'required|string|max:255',
+            'type' => 'required|in:asset,liability,equity,revenue,expense',
+            'normal_balance' => 'required|in:debit,credit',
+            'is_active' => 'nullable|boolean',
+        ]);
+
+        Account::query()->create([
+            'code' => strtoupper(trim($validated['code'])),
+            'name' => trim($validated['name']),
+            'type' => $validated['type'],
+            'normal_balance' => $validated['normal_balance'],
+            'is_active' => (bool) ($validated['is_active'] ?? true),
+        ]);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Akun CoA berhasil ditambahkan.']);
     }
 }

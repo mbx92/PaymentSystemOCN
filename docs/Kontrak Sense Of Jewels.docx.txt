@@ -1,0 +1,207 @@
+PERJANJIAN KONTRAK
+JASA PEMBUATAN WEBSITE
+Landing Page Company Profile & Shopping Cart
+Nomor: ____/PKJW/2026
+Tanggal: 22 April 2026
+Perjanjian Kontrak Jasa Pembuatan Website ini (selanjutnya disebut "Perjanjian") dibuat dan ditandatangani pada tanggal sebagaimana tercantum di atas, oleh dan antara pihak-pihak yang tersebut di bawah ini:
+PIHAK PERTAMA (Penyedia Jasa)
+Nama / Perusahaan
+:
+________________________________
+Alamat
+:
+________________________________
+No. Telepon / WA
+:
+________________________________
+Email
+:
+________________________________
+No. Rekening
+:
+________________________________
+PIHAK KEDUA (Klien / Pemberi Kerja)
+Nama / Perusahaan
+:
+________________________________
+Alamat
+:
+________________________________
+No. Telepon / WA
+:
+________________________________
+Email
+:
+________________________________
+Nama PIC / Penanggung Jawab
+:
+________________________________
+Pihak Pertama dan Pihak Kedua selanjutnya secara bersama-sama disebut sebagai "Para Pihak", telah sepakat untuk mengadakan perjanjian ini dengan ketentuan-ketentuan sebagai berikut:
+PASAL 1 – LINGKUP PEKERJAAN
+Pihak Pertama setuju untuk merancang, mengembangkan, dan mengimplementasikan website untuk Pihak Kedua dengan lingkup pekerjaan sebagai berikut:
+A. Jenis Website
+Landing Page Company Profile
+Halaman Shopping Cart / E-Commerce sederhana
+B. Teknologi yang Digunakan
+Framework Backend: Laravel (PHP)
+Database: MySQL
+Frontend CSS Framework: Tailwind CSS
+UI Component Library: DaisyUI
+Deployment: Production Server (VPS / Shared Hosting sesuai kesepakatan)
+C. Fitur Company Profile
+Halaman Beranda (Homepage) yang responsif dan modern
+Halaman Tentang Kami (About Us)
+Halaman Produk / Layanan
+Halaman Portofolio / Galeri
+Halaman Kontak (Contact Us) dengan form inquiry
+Integrasi Google Maps / lokasi perusahaan
+SEO On-Page dasar (meta title, meta description, sitemap)
+Tampilan mobile-friendly / responsive
+D. Fitur Shopping Cart
+Manajemen produk (tambah, edit, hapus produk)
+Kategori produk
+Halaman detail produk dengan foto dan deskripsi
+Keranjang belanja (shopping cart)
+Proses checkout dan ringkasan pesanan
+Halaman konfirmasi pembayaran manual (transfer bank)
+Panel admin sederhana untuk manajemen produk dan pesanan
+Laporan pesanan masuk
+E. Tidak Termasuk dalam Lingkup (Exclusions)
+Integrasi payment gateway & Ongkos Kirim (Midtrans, Xendit, dll) – dapat ditambahkan sebagai fitur tambahan berbayar,
+Pembuatan konten teks dan foto produk (disediakan oleh Pihak Kedua)
+Biaya domain dan hosting (ditanggung Pihak Kedua kecuali disepakati lain)
+Pembuatan logo atau desain grafis brand identity
+Fitur lain di luar yang tercantum dalam pasal ini
+PASAL 2 – NILAI KONTRAK DAN SKEMA PEMBAYARAN
+Nilai total kontrak jasa pembuatan website sebagaimana dimaksud dalam Pasal 1 adalah sebesar:
+Rp 8.000.000,- (Delapan Juta Rupiah)
+Pembayaran dilakukan dalam tiga tahap sebagai berikut:
+No.
+Tahap
+Persentase
+Jumlah
+Waktu Pembayaran
+1
+Down Payment (DP)
+35%
+Rp 2.800.000,-
+Sebelum pengerjaan dimulai
+2
+Pelunasan Utama
+55%
+Rp 4.400.000,-
+Saat website live / production
+3
+Masa Garansi & Revisi
+10%
+Rp 800.000,-
+Setelah bugs & tambahan pasca-live selesai
+TOTAL
+100%*
+Rp 8.000.000,-*
+Lihat catatan di bawah
+* Catatan Penting mengenai Tahap 3 (10%):
+Pembayaran Tahap 3 sebesar Rp 800.000,- merupakan retensi yang ditahan selama masa garansi. Pembayaran ini wajib dilakukan setelah seluruh laporan bug dan permintaan tambahan yang disepakati dalam masa garansi telah diselesaikan oleh Pihak Pertama. Jika tidak ada bug atau tambahan yang perlu diselesaikan, pembayaran Tahap 3 tetap wajib dilakukan paling lambat 30 (tiga puluh) hari kalender setelah website live.
+Metode Pembayaran:
+Transfer Bank ke rekening Pihak Pertama (informasi rekening terlampir)
+Pembayaran dinyatakan sah setelah bukti transfer dikirimkan kepada Pihak Pertama
+Pengerjaan tidak akan dimulai sebelum DP diterima dan terkonfirmasi
+PASAL 3 – JANGKA WAKTU PENGERJAAN
+Estimasi jangka waktu pengerjaan adalah sebagai berikut:
+No.
+Fase / Milestone
+Durasi
+Keterangan
+1
+Briefing & Wireframe Design
+3-5 hari kerja
+Diskusi kebutuhan, struktur halaman
+2
+Pengembangan Frontend (UI)
+7-10 hari kerja
+Tailwind CSS + DaisyUI
+3
+Pengembangan Backend (Laravel)
+7-10 hari kerja
+Logika, database, autentikasi
+4
+Integrasi & Testing Internal
+3-5 hari kerja
+UAT, bug fixing internal
+5
+Deployment & Go Live
+1-2 hari kerja
+Upload ke server production
+6
+Masa Garansi & Bug Fixing
+14 hari kalender
+Setelah website live
+Estimasi total waktu pengerjaan: 21-32 hari kerja sejak DP diterima. Jangka waktu dapat berubah apabila terdapat keterlambatan dari Pihak Kedua dalam memberikan konten, feedback, atau dokumen yang dibutuhkan.
+PASAL 4 – HAK DAN KEWAJIBAN PARA PIHAK
+A. Kewajiban Pihak Pertama (Penyedia Jasa):
+Mengerjakan proyek sesuai dengan lingkup pekerjaan yang disepakati dalam Pasal 1
+Memberikan update progres pengerjaan secara berkala kepada Pihak Kedua
+Menyelesaikan revisi yang wajar dan sesuai dengan brief awal
+Melakukan deployment website ke server production
+Memberikan garansi bug selama 14 (empat belas) hari kalender setelah website live
+Menjaga kerahasiaan data dan informasi bisnis Pihak Kedua
+Menyerahkan source code dan akses penuh kepada Pihak Kedua setelah pelunasan Tahap 3 selesai
+B. Kewajiban Pihak Kedua (Klien):
+Membayar biaya sesuai skema yang telah disepakati dalam Pasal 2
+Menyediakan seluruh aset konten (teks, foto, logo, video) yang dibutuhkan tepat waktu
+Memberikan feedback dan persetujuan (approval) dalam waktu 3 (tiga) hari kerja setelah setiap tahap selesai
+Menyediakan akses domain dan hosting (jika diperlukan)
+Menunjuk satu orang sebagai PIC (Person in Charge) untuk koordinasi proyek
+Tidak melakukan perubahan atau pengeditan langsung pada sistem selama pengerjaan berlangsung
+PASAL 5 – REVISI DAN PERUBAHAN
+Pihak Kedua berhak mendapatkan maksimal 3 (tiga) kali putaran revisi selama masa pengerjaan
+Revisi yang dimaksud adalah perubahan yang masih dalam lingkup brief awal (minor revision)
+Perubahan besar yang tidak termasuk dalam lingkup awal (major revision) akan dikenakan biaya tambahan yang disepakati bersama sebelum dikerjakan
+Revisi dianggap major apabila mengubah struktur halaman, menambah fitur baru, atau mengubah total desain yang sudah disetujui
+PASAL 6 – GARANSI DAN PEMELIHARAAN
+Pihak Pertama memberikan garansi pasca-live dengan ketentuan:
+Masa garansi berlaku selama 14 (empat belas) hari kalender terhitung sejak tanggal website live
+Garansi mencakup perbaikan bug atau error yang ditemukan akibat kesalahan dari sisi pengerjaan (bukan akibat konten atau perubahan yang dilakukan Pihak Kedua)
+Garansi TIDAK mencakup: penambahan fitur baru, perubahan desain, kerusakan akibat aksi pihak ketiga, atau masalah yang disebabkan oleh server/hosting Pihak Kedua
+Pengembangan lanjutan setelah masa garansi berakhir dapat dilakukan dengan perjanjian kontrak baru atau sistem maintenance fee
+PASAL 7 – HAK KEKAYAAN INTELEKTUAL
+Seluruh hak kekayaan intelektual atas website (source code, desain, konten yang dibuat oleh Pihak Pertama) akan berpindah sepenuhnya kepada Pihak Kedua setelah seluruh pembayaran (Tahap 1, 2, dan 3) dilunasi
+Sebelum pelunasan penuh, Pihak Pertama berhak menahan penyerahan source code
+Pihak Pertama berhak mencantumkan website tersebut sebagai bagian dari portofolio, kecuali Pihak Kedua secara tertulis melarang hal tersebut
+Aset konten yang disediakan oleh Pihak Kedua (logo, foto, teks) tetap menjadi milik Pihak Kedua
+PASAL 8 – KETERLAMBATAN DAN PENALTI
+A. Keterlambatan oleh Pihak Pertama:
+Jika Pihak Pertama terlambat menyelesaikan pekerjaan melebihi estimasi waktu yang disepakati tanpa alasan yang dapat diterima, Pihak Kedua berhak meminta kompensasi berupa pengerjaan tambahan gratis senilai maksimal 5% dari total kontrak
+Keterlambatan akibat tidak tersedianya konten atau feedback dari Pihak Kedua tidak termasuk dalam kategori ini
+B. Keterlambatan oleh Pihak Kedua:
+Jika Pihak Kedua terlambat memberikan konten, feedback, atau pembayaran lebih dari 7 (tujuh) hari kerja, maka timeline proyek akan dinyatakan otomatis mundur
+Keterlambatan pembayaran akan dikenakan denda sebesar 2% per minggu dari jumlah yang tertunggak
+Jika Pihak Kedua tidak melakukan pembayaran Tahap 2 (65%) dalam 7 hari kerja setelah website siap untuk live, Pihak Pertama berhak menonaktifkan website sementara
+PASAL 9 – PEMBATALAN KONTRAK
+Jika pembatalan dilakukan oleh Pihak Kedua sebelum pengerjaan dimulai, DP yang telah dibayarkan tidak dapat dikembalikan (non-refundable)
+Jika pembatalan dilakukan setelah pengerjaan berjalan 50% atau lebih, Pihak Kedua wajib membayar 75% dari total nilai kontrak
+Jika pembatalan dilakukan oleh Pihak Pertama karena force majeure, DP akan dikembalikan penuh
+Pembatalan wajib dilakukan secara tertulis melalui surat atau pesan tertulis yang dapat didokumentasikan
+PASAL 10 – KERAHASIAAN
+Para Pihak sepakat untuk menjaga kerahasiaan seluruh informasi yang diperoleh selama berlangsungnya perjanjian ini, termasuk namun tidak terbatas pada strategi bisnis, data pelanggan, informasi keuangan, dan data teknis. Kewajiban ini tetap berlaku selama 2 (dua) tahun setelah perjanjian ini berakhir.
+PASAL 11 – PENYELESAIAN SENGKETA
+Apabila terjadi perselisihan antara Para Pihak terkait perjanjian ini, Para Pihak sepakat untuk menyelesaikannya melalui:
+Musyawarah mufakat antara Para Pihak dalam waktu 14 (empat belas) hari kalender
+Mediasi oleh pihak ketiga yang disepakati bersama jika musyawarah gagal
+Jalur hukum melalui Pengadilan Negeri yang berwenang jika mediasi tidak mencapai kesepakatan
+PASAL 12 – KETENTUAN LAIN-LAIN
+Perjanjian ini merupakan keseluruhan kesepakatan antara Para Pihak dan menggantikan semua perjanjian atau diskusi sebelumnya terkait proyek yang sama
+Setiap perubahan atau amandemen terhadap perjanjian ini harus dilakukan secara tertulis dan ditandatangani oleh kedua belah pihak
+Jika salah satu ketentuan dalam perjanjian ini dinyatakan tidak sah, ketentuan lainnya tetap berlaku
+Perjanjian ini dibuat dalam 2 (dua) rangkap bermaterai cukup, masing-masing mempunyai kekuatan hukum yang sama
+Demikian Perjanjian ini dibuat dan ditandatangani oleh Para Pihak dengan penuh kesadaran, tanpa paksaan dari pihak manapun.
+PIHAK PERTAMA
+<w:tcPr><w:tcW w:w="4413" w:type="dxa"/><w:tcBorders><w:top w:val="none" w:sz="0" w:space="0" w:color="FFFFFF"/><w:left w:val="none" w:sz="0" w:space="0" w:color="FFFFFF"/><w:bottom w:val="none" w:sz="0" w:space="0" w:color="FFFFFF"/><w:right w:val="none" w:sz="0" w:space="0" w:color="FFFFFF"/></w:tcBorders><w:tcMar><w:top w:w="80" w:type="dxa"/><w:left w:w="100" w:type="dxa"/><w:bottom w:w="80" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tcMar></w:tcPr><w:p w14:paraId="722DB7A0" w14:textId="77777777" w:rsidR="00001970" w:rsidRDefault="00000000"><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:bCs/></w:rPr><w:t>PIHAK KEDUA
+(Penyedia Jasa)
+<w:tcPr><w:tcW w:w="4413" w:type="dxa"/><w:tcBorders><w:top w:val="none" w:sz="0" w:space="0" w:color="FFFFFF"/><w:left w:val="none" w:sz="0" w:space="0" w:color="FFFFFF"/><w:bottom w:val="none" w:sz="0" w:space="0" w:color="FFFFFF"/><w:right w:val="none" w:sz="0" w:space="0" w:color="FFFFFF"/></w:tcBorders><w:tcMar><w:top w:w="80" w:type="dxa"/><w:left w:w="100" w:type="dxa"/><w:bottom w:w="80" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tcMar></w:tcPr><w:p w14:paraId="79C929F9" w14:textId="77777777" w:rsidR="00001970" w:rsidRDefault="00000000"><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:color w:val="666666"/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr><w:t xml:space="preserve">(Klien / Pemberi Kerja)
+Materai Rp 10.000,-
+<w:tcPr><w:tcW w:w="4413" w:type="dxa"/><w:tcBorders><w:top w:val="none" w:sz="0" w:space="0" w:color="FFFFFF"/><w:left w:val="none" w:sz="0" w:space="0" w:color="FFFFFF"/><w:bottom w:val="none" w:sz="0" w:space="0" w:color="FFFFFF"/><w:right w:val="none" w:sz="0" w:space="0" w:color="FFFFFF"/></w:tcBorders><w:tcMar><w:top w:w="80" w:type="dxa"/><w:left w:w="100" w:type="dxa"/><w:bottom w:w="280" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tcMar></w:tcPr><w:p w14:paraId="7FD295D6" w14:textId="77777777" w:rsidR="00001970" w:rsidRDefault="00000000"><w:pPr><w:jc w:val="center"/></w:pPr><w:proofErr w:type="spellStart"/><w:r><w:rPr><w:i/><w:iCs/><w:color w:val="AAAAAA"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t>Materai Rp 10.000,-
+________________________________
+Nama & Jabatan
+<w:tcPr><w:tcW w:w="4413" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="1" w:space="0" w:color="CCCCCC"/><w:left w:val="none" w:sz="0" w:space="0" w:color="FFFFFF"/><w:bottom w:val="none" w:sz="0" w:space="0" w:color="FFFFFF"/><w:right w:val="none" w:sz="0" w:space="0" w:color="FFFFFF"/></w:tcBorders><w:tcMar><w:top w:w="80" w:type="dxa"/><w:left w:w="100" w:type="dxa"/><w:bottom w:w="80" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tcMar></w:tcPr><w:p w14:paraId="7881AD37" w14:textId="77777777" w:rsidR="00001970" w:rsidRDefault="00000000"><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t>________________________________
+Nama & Jabatan

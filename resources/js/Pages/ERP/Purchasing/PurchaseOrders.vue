@@ -171,7 +171,10 @@ const submitAdd = () => {
         <span>Menyaring PO untuk supplier <span class="font-mono font-semibold">{{ supplierFilter }}</span>.</span>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Filter purchase order</h2>
+        </div>
         <div class="card-body">
           <div class="flex flex-wrap items-end gap-3">
             <div class="min-w-[180px]">
@@ -200,7 +203,10 @@ const submitAdd = () => {
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Daftar purchase order</h2>
+        </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra">
             <thead><tr><th>Nomor PO</th><th>Supplier</th><th>ETA</th><th>Nilai</th><th>Status</th></tr></thead>

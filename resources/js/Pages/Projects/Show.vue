@@ -379,9 +379,11 @@ const deleteProject = () => {
 
             <!-- Tab: Info -->
             <div v-if="activeTab === 'info'" class="space-y-4">
-                <div class="card bg-base-100 shadow">
+                <div class="ocn-panel">
+                    <div class="ocn-panel__head">
+                        <h2 class="ocn-panel__title">Detail project</h2>
+                    </div>
                     <div class="card-body">
-                        <h2 class="card-title text-base">Detail Project</h2>
                         <div class="grid grid-cols-2 gap-2 text-sm">
                             <div class="text-base-content/60">Kontak Klien</div><div>{{ project.client_contact ?? '-' }}</div>
                             <div class="text-base-content/60">Tipe Project</div><div>{{ projectTypeLabel(project.project_type) }}</div>
@@ -392,9 +394,11 @@ const deleteProject = () => {
                     </div>
                 </div>
 
-                <div class="card bg-base-100 shadow">
+                <div class="ocn-panel">
+                    <div class="ocn-panel__head">
+                        <h2 class="ocn-panel__title">Termin pembayaran</h2>
+                    </div>
                     <div class="card-body">
-                        <h2 class="card-title text-base">Termin Pembayaran</h2>
                         <div class="space-y-3">
                             <div v-for="term in project.payments" :key="term.id"
                                 :class="['flex items-center justify-between p-3 rounded-lg border', term.paid_at ? 'border-success/30 bg-success/5' : 'border-base-300']"
@@ -417,11 +421,13 @@ const deleteProject = () => {
                     </div>
                 </div>
 
-                <div class="card bg-base-100 shadow">
+                <div class="ocn-panel">
+                    <div class="ocn-panel__head">
+                        <h2 class="ocn-panel__title">Gantt timeline</h2>
+                        <p class="ocn-panel__desc">Otomatis dari tanggal mulai–selesai dan tipe project.</p>
+                    </div>
                     <div class="card-body">
-                        <h2 class="card-title text-base">Gantt Timeline Project</h2>
-                        <p class="text-xs text-base-content/60">Timeline otomatis berdasarkan tanggal mulai-selesai dan tipe project.</p>
-                        <div v-if="project.started_at && project.finished_at" class="mt-3 space-y-3">
+                        <div v-if="project.started_at && project.finished_at" class="mt-1 space-y-3">
                             <div v-for="(phase, idx) in ganttPhases" :key="idx" class="space-y-1">
                                 <div class="flex items-center justify-between text-xs">
                                     <span class="font-medium">{{ phase.name }}</span>
@@ -438,9 +444,11 @@ const deleteProject = () => {
             </div>
 
             <div v-if="activeTab === 'materials'" class="space-y-4">
-                <div class="card bg-base-100 shadow">
+                <div class="ocn-panel">
+                    <div class="ocn-panel__head">
+                        <h2 class="ocn-panel__title">Tambah material project</h2>
+                    </div>
                     <div class="card-body">
-                        <h2 class="card-title text-base">Tambah Material Project</h2>
                         <div class="grid grid-cols-1 gap-3 md:grid-cols-5">
                             <div class="md:col-span-2">
                                 <label class="label"><span class="label-text">Produk</span></label>
@@ -471,9 +479,11 @@ const deleteProject = () => {
                     </div>
                 </div>
 
-                <div class="card bg-base-100 shadow">
-                    <div class="card-body p-0">
-                        <div class="p-4 border-b border-base-300"><h2 class="font-semibold">Daftar Material (BOM Reserved)</h2></div>
+                <div class="ocn-panel">
+                    <div class="ocn-panel__head">
+                        <h2 class="ocn-panel__title">Daftar material (BOM reserved)</h2>
+                    </div>
+                    <div class="overflow-x-auto">
                         <table class="table table-sm">
                             <thead><tr><th>SKU</th><th>Produk</th><th>Warehouse</th><th>Planned</th><th>Reserved</th><th>Issued</th><th>Status</th><th></th></tr></thead>
                             <tbody>
@@ -501,9 +511,11 @@ const deleteProject = () => {
                     <button class="btn btn-error btn-sm" onclick="document.getElementById('modal-cash-out').showModal()">+ Kas Keluar</button>
                 </div>
 
-                <div class="card bg-base-100 shadow">
-                    <div class="card-body p-0">
-                        <div class="p-4 border-b border-base-300"><h2 class="font-semibold text-success">Kas Masuk</h2></div>
+                <div class="ocn-panel">
+                    <div class="ocn-panel__head">
+                        <h2 class="ocn-panel__title text-success">Kas masuk</h2>
+                    </div>
+                    <div class="overflow-x-auto">
                         <table class="table table-sm">
                             <thead><tr><th>Tanggal</th><th>Kategori</th><th>Jumlah</th><th>Keterangan</th><th>Oleh</th></tr></thead>
                             <tbody>
@@ -520,9 +532,11 @@ const deleteProject = () => {
                     </div>
                 </div>
 
-                <div class="card bg-base-100 shadow">
-                    <div class="card-body p-0">
-                        <div class="p-4 border-b border-base-300"><h2 class="font-semibold text-error">Kas Keluar</h2></div>
+                <div class="ocn-panel">
+                    <div class="ocn-panel__head">
+                        <h2 class="ocn-panel__title text-error">Kas keluar</h2>
+                    </div>
+                    <div class="overflow-x-auto">
                         <table class="table table-sm">
                             <thead><tr><th>Tanggal</th><th>Kategori</th><th>Jumlah</th><th>Penerima</th><th>Keterangan</th></tr></thead>
                             <tbody>
@@ -542,17 +556,18 @@ const deleteProject = () => {
 
             <!-- Tab: Tim -->
             <div v-if="activeTab === 'tim'" class="space-y-4">
-                <div class="card bg-base-100 shadow">
-                    <div class="card-body">
-                        <div class="flex items-center justify-between mb-3">
-                            <h2 class="card-title text-base">Pembagian Tim</h2>
-                            <div class="flex gap-2">
+                <div class="ocn-panel">
+                    <div class="ocn-panel__head flex flex-wrap items-center justify-between gap-2">
+                        <h2 class="ocn-panel__title">Pembagian tim</h2>
+                        <div class="flex gap-2 shrink-0">
                                 <button class="btn btn-outline btn-sm" @click="openAssignTeamModal">Assign Tim</button>
                                 <Link :href="route('team-distribution.calculator') + '?project_id=' + project.id" class="btn btn-primary btn-sm">
                                     Kalkulator
                                 </Link>
-                            </div>
                         </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="overflow-x-auto">
                         <table class="table table-sm">
                             <thead><tr><th>Nama</th><th>Peran</th><th>%</th><th>Base Pay</th><th>Bonus</th><th>Total</th><th></th></tr></thead>
                             <tbody>
@@ -568,15 +583,17 @@ const deleteProject = () => {
                                 <tr v-if="!project.team_distributions.length"><td colspan="7" class="text-center py-6 text-base-content/50">Belum ada pembagian tim</td></tr>
                             </tbody>
                         </table>
+                        </div>
                     </div>
                 </div>
 
-                <div class="card bg-base-100 shadow">
+                <div class="ocn-panel">
+                    <div class="ocn-panel__head flex flex-wrap items-center justify-between gap-2">
+                        <h2 class="ocn-panel__title">Komisi referral</h2>
+                        <button class="btn btn-outline btn-sm shrink-0" @click="openAddReferralModal">Add referral</button>
+                    </div>
                     <div class="card-body">
-                        <div class="flex items-center justify-between mb-3">
-                            <h2 class="card-title text-base">Komisi Referral</h2>
-                            <button class="btn btn-outline btn-sm" @click="openAddReferralModal">Add Referral</button>
-                        </div>
+                        <div class="overflow-x-auto">
                         <table class="table table-sm">
                             <thead><tr><th>Nama Referrer</th><th>Komisi</th><th>Tgl Bayar</th><th>Catatan</th></tr></thead>
                             <tbody>
@@ -589,18 +606,19 @@ const deleteProject = () => {
                                 <tr v-if="!project.referrals.length"><td colspan="4" class="text-center py-6 text-base-content/50">Belum ada referral</td></tr>
                             </tbody>
                         </table>
+                        </div>
                     </div>
                 </div>
             </div>
 
             <div v-if="activeTab === 'kanban' && canShowKanban" class="space-y-4">
-                <div class="card bg-base-100 shadow">
-                    <div class="card-body flex flex-row items-center justify-between gap-3">
+                <div class="ocn-panel">
+                    <div class="ocn-panel__head flex flex-wrap items-center justify-between gap-2">
                         <div>
-                            <h2 class="card-title text-base">Kanban Task</h2>
-                            <p class="text-sm text-base-content/60">Kelola task development menggunakan drag & drop antar kolom.</p>
+                            <h2 class="ocn-panel__title">Kanban task</h2>
+                            <p class="ocn-panel__desc">Drag & drop antar kolom.</p>
                         </div>
-                        <button class="btn btn-primary btn-sm" @click="openTaskModal">+ Tambah Task</button>
+                        <button class="btn btn-primary btn-sm shrink-0" @click="openTaskModal">+ Tambah task</button>
                     </div>
                 </div>
 

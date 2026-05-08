@@ -76,7 +76,11 @@ const openReservedModal = (product) => {
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Manajemen stok per warehouse</h2>
+          <p class="ocn-panel__desc">Pilih gudang, lalu sesuaikan minimum stok per produk.</p>
+        </div>
         <div class="card-body border-b border-base-200">
           <div class="flex flex-wrap items-end gap-3">
             <div class="min-w-[240px]">

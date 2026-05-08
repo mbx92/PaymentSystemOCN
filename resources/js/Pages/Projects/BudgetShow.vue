@@ -124,7 +124,10 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
                 </div>
             </div>
 
-            <div class="card bg-base-100 shadow">
+            <div class="ocn-panel">
+                <div class="ocn-panel__head">
+                    <h2 class="ocn-panel__title">Ringkasan budget</h2>
+                </div>
                 <div class="card-body grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                     <div><span class="text-base-content/60">Kontak</span><div>{{ budget.client_contact || '-' }}</div></div>
                     <div><span class="text-base-content/60">Tipe</span><div>{{ budget.project_type === 'system_website_development' ? 'System/Website Development' : 'CCTV Installation' }}</div></div>
@@ -138,17 +141,16 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
                 </div>
             </div>
 
-            <div v-if="budget.project_type === 'cctv_installation'" class="card bg-base-100 shadow">
-                <div class="card-body p-0">
-                    <div class="p-4 border-b border-base-300 flex flex-wrap items-center justify-between gap-2">
-                        <h2 class="font-semibold">Item CCTV</h2>
-                        <div v-if="canEditCctvItems" class="flex flex-wrap items-center gap-2">
-                            <button type="button" class="btn btn-ghost btn-sm gap-1" @click="showProductPicker = true">Pilih dari master</button>
-                            <button type="button" class="btn btn-outline btn-sm gap-1" @click="addCctvItem">+ Tambah item</button>
-                            <button type="button" class="btn btn-primary btn-sm" :disabled="budgetForm.processing" @click="saveCctvItemsFromDetail">Simpan item &amp; estimasi</button>
-                        </div>
+            <div v-if="budget.project_type === 'cctv_installation'" class="ocn-panel">
+                <div class="ocn-panel__head flex flex-wrap items-center justify-between gap-2">
+                    <h2 class="ocn-panel__title">Item CCTV</h2>
+                    <div v-if="canEditCctvItems" class="flex flex-wrap items-center gap-2 shrink-0">
+                        <button type="button" class="btn btn-ghost btn-sm gap-1" @click="showProductPicker = true">Pilih dari master</button>
+                        <button type="button" class="btn btn-outline btn-sm gap-1" @click="addCctvItem">+ Tambah item</button>
+                        <button type="button" class="btn btn-primary btn-sm" :disabled="budgetForm.processing" @click="saveCctvItemsFromDetail">Simpan item &amp; estimasi</button>
                     </div>
-
+                </div>
+                <div class="card-body p-0">
                     <template v-if="canEditCctvItems">
                         <p v-if="budgetForm.errors.cctv_items" class="text-error text-xs px-4 pt-2">{{ budgetForm.errors.cctv_items }}</p>
                         <div class="overflow-x-auto">

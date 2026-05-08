@@ -33,7 +33,10 @@ const submit = () => {
         <p class="mt-2 text-sm text-base-content/70">Lakukan penyesuaian stok fisik berkala untuk menjaga akurasi inventory.</p>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Penyesuaian stok opname</h2>
+        </div>
         <div class="card-body grid gap-3 md:grid-cols-2">
           <div class="md:col-span-2">
             <label class="label"><span class="label-text">Produk</span></label>

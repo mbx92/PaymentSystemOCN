@@ -37,21 +37,21 @@ const changeYear = (year) => {
 
             <!-- Stat Cards -->
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div class="card ocn-stat-card bg-base-100 shadow">
+                <div class="ocn-panel ocn-stat-card">
                     <div class="card-body p-5">
                         <h3 class="text-sm font-medium text-base-content/70">Total Pendapatan</h3>
                         <p class="text-2xl font-bold text-success mt-1">{{ format(stats.total_income) }}</p>
                         <p class="text-xs text-base-content/50 mt-2">Akumulasi semua kas masuk</p>
                     </div>
                 </div>
-                <div class="card ocn-stat-card bg-base-100 shadow">
+                <div class="ocn-panel ocn-stat-card">
                     <div class="card-body p-5">
                         <h3 class="text-sm font-medium text-base-content/70">Total Pengeluaran</h3>
                         <p class="text-2xl font-bold text-error mt-1">{{ format(stats.total_expense) }}</p>
                         <p class="text-xs text-base-content/50 mt-2">Biaya tim, referral, operasional</p>
                     </div>
                 </div>
-                <div class="card ocn-stat-card bg-base-100 shadow">
+                <div class="ocn-panel ocn-stat-card">
                     <div class="card-body p-5">
                         <h3 class="text-sm font-medium text-base-content/70">Laba Bersih</h3>
                         <p :class="['text-2xl font-bold mt-1', stats.net_profit >= 0 ? 'text-primary' : 'text-error']">
@@ -60,7 +60,7 @@ const changeYear = (year) => {
                         <p class="text-xs text-base-content/50 mt-2">Selisih kas masuk dan keluar</p>
                     </div>
                 </div>
-                <div class="card ocn-stat-card bg-base-100 shadow">
+                <div class="ocn-panel ocn-stat-card">
                     <div class="card-body p-5">
                         <h3 class="text-sm font-medium text-base-content/70">Project Aktif</h3>
                         <p class="text-2xl font-bold text-info mt-1">{{ stats.active_count }}</p>
@@ -70,26 +70,26 @@ const changeYear = (year) => {
             </div>
 
             <!-- Chart -->
-            <div class="card bg-base-100 shadow">
+            <div class="ocn-panel">
+                <div class="ocn-panel__head">
+                    <h2 class="ocn-panel__title">Pendapatan vs pengeluaran</h2>
+                    <p class="ocn-panel__desc">Perbandingan bulanan sepanjang {{ selectedYear }}</p>
+                </div>
                 <div class="card-body">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <h2 class="card-title text-lg">Pendapatan vs Pengeluaran</h2>
-                            <p class="text-sm text-base-content/60">Perbandingan bulanan sepanjang {{ selectedYear }}</p>
-                        </div>
-                    </div>
                     <RevenueBarChart :monthly-data="monthlyData" />
                 </div>
             </div>
 
             <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                <div class="card bg-base-100 shadow lg:col-span-2">
-                    <div class="card-body">
-                        <div class="flex items-center justify-between mb-1">
-                            <h2 class="card-title text-lg">Piutang Project (Interaktif)</h2>
-                            <Link :href="route('erp.sales.project-invoices')" class="btn btn-outline btn-xs">Buka Invoice</Link>
+                <div class="ocn-panel lg:col-span-2">
+                    <div class="ocn-panel__head flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                            <h2 class="ocn-panel__title">Piutang project</h2>
+                            <p class="ocn-panel__desc">Project selesai yang belum lunas sepenuhnya.</p>
                         </div>
-                        <p class="text-sm text-base-content/60">Project selesai yang belum lunas sepenuhnya.</p>
+                        <Link :href="route('erp.sales.project-invoices')" class="btn btn-outline btn-xs shrink-0">Buka invoice</Link>
+                    </div>
+                    <div class="card-body">
                         <div class="mt-3 space-y-3">
                             <div
                                 v-for="row in overduePayments"
@@ -118,9 +118,11 @@ const changeYear = (year) => {
                     </div>
                 </div>
 
-                <div class="card bg-base-100 shadow">
+                <div class="ocn-panel">
+                    <div class="ocn-panel__head">
+                        <h2 class="ocn-panel__title">Status project</h2>
+                    </div>
                     <div class="card-body">
-                        <h2 class="card-title text-lg">Status Project</h2>
                         <div class="space-y-2 text-sm">
                             <div class="flex items-center justify-between rounded-lg bg-base-200 px-3 py-2">
                                 <span>Negosiasi</span>
@@ -144,15 +146,15 @@ const changeYear = (year) => {
             </div>
 
             <!-- Recent Projects -->
-            <div class="card bg-base-100 shadow">
-                <div class="card-body">
-                    <div class="flex items-center justify-between mb-2">
-                        <div>
-                            <h2 class="card-title text-lg">Project Terbaru</h2>
-                            <p class="text-sm text-base-content/60">Pantau status dan progress termin terbaru</p>
-                        </div>
-                        <Link :href="route('projects.index')" class="btn btn-primary btn-sm">Lihat semua</Link>
+            <div class="ocn-panel">
+                <div class="ocn-panel__head flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                        <h2 class="ocn-panel__title">Project terbaru</h2>
+                        <p class="ocn-panel__desc">Status dan progress termin terbaru.</p>
                     </div>
+                    <Link :href="route('projects.index')" class="btn btn-primary btn-sm shrink-0">Lihat semua</Link>
+                </div>
+                <div class="card-body p-0">
                     <div class="overflow-x-auto">
                         <table class="table table-zebra table-sm">
                             <thead>

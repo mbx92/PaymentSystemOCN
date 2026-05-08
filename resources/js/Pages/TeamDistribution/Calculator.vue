@@ -74,9 +74,12 @@ const save = () => {
             <h1 class="text-2xl font-bold">Kalkulator Pembagian Tim</h1>
 
             <!-- Project Selector -->
-            <div class="card bg-base-100 shadow">
+            <div class="ocn-panel">
+                <div class="ocn-panel__head">
+                    <h2 class="ocn-panel__title">Pilih project</h2>
+                </div>
                 <div class="card-body">
-                    <label class="label"><span class="label-text font-medium">Pilih Project</span></label>
+                    <label class="label"><span class="label-text font-medium">Project aktif</span></label>
                     <select v-model="selectedProjectId" class="select select-bordered max-w-md">
                         <option value="">-- Pilih Project --</option>
                         <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }} ({{ p.status }})</option>
@@ -116,10 +119,13 @@ const save = () => {
                 </div>
 
                 <!-- Distribution Table -->
-                <div class="card bg-base-100 shadow">
+                <div class="ocn-panel">
+                    <div class="ocn-panel__head">
+                        <h2 class="ocn-panel__title">Pembagian anggota tim</h2>
+                    </div>
                     <div class="card-body">
                         <div class="flex items-center justify-between mb-4">
-                            <h2 class="card-title text-base">Anggota Tim</h2>
+                            <p class="text-sm text-base-content/70">Atur persentase dan nominal per anggota.</p>
                             <div class="flex gap-2">
                                 <button class="btn btn-outline btn-sm" @click="applyPreset">Preset 1 Lead + 2 Dev</button>
                                 <button class="btn btn-primary btn-sm gap-1" @click="addRow">

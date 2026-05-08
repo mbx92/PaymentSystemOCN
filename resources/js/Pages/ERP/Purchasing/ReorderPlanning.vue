@@ -89,7 +89,10 @@ const submitPlan = () => {
         </p>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Filter reorder</h2>
+        </div>
         <div class="card-body">
           <div class="flex flex-wrap items-end gap-3">
             <div class="min-w-[260px] flex-1">
@@ -101,7 +104,11 @@ const submitPlan = () => {
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Saran reorder</h2>
+          <p class="ocn-panel__desc">Produk di bawah minimum atau mendekati lead time.</p>
+        </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra">
             <thead>

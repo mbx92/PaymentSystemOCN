@@ -28,7 +28,11 @@ const openInvoice = (invoice) => {
         <p class="mt-2 text-sm text-base-content/70">Invoice otomatis dari project yang sudah selesai.</p>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Daftar invoice project</h2>
+          <p class="ocn-panel__desc">Project selesai beserta status pembayaran invoice.</p>
+        </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra">
             <thead>

@@ -7,7 +7,7 @@ import { useForm, router } from '@inertiajs/vue3';
 import { ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 
-const props = defineProps({ cashOuts: Object, total: Number, projects: Array, filters: Object });
+const props = defineProps({ cashOuts: Object, total: Number, projects: Array, cashAccounts: Array, filters: Object });
 const { format } = useCurrency();
 
 const filters = ref({ ...props.filters });
@@ -20,16 +20,16 @@ watch(filters, (val) => {
 const CATEGORIES = ['biaya_tim', 'komisi_referral', 'operasional', 'lainnya'];
 const CATEGORY_LABELS = { biaya_tim: 'Biaya Tim', komisi_referral: 'Komisi Referral', operasional: 'Operasional', lainnya: 'Lainnya' };
 
-const form = useForm({ project_id: '', category: 'biaya_tim', amount: 0, date: new Date().toISOString().slice(0,10), note: '', recipient_name: '' });
+const form = useForm({ project_id: '', cash_account_id: '', category: 'biaya_tim', amount: 0, date: new Date().toISOString().slice(0,10), note: '', recipient_name: '' });
 const editingId = ref(null);
-const editForm = useForm({ category: 'biaya_tim', amount: 0, date: '', note: '', recipient_name: '' });
+const editForm = useForm({ project_id: '', cash_account_id: '', category: 'biaya_tim', amount: 0, date: '', note: '', recipient_name: '' });
 
 const submitAdd = () => form.post(route('cash-out.store'), {
     onSuccess: () => { form.reset(); document.getElementById('modal-add-cash-out').close(); }
 });
 const openEdit = (c) => {
     editingId.value = c.id;
-    Object.assign(editForm, { category: c.category, amount: c.amount, date: c.date, note: c.note ?? '', recipient_name: c.recipient_name ?? '' });
+    Object.assign(editForm, { project_id: c.project_id ?? '', cash_account_id: c.cash_account_id ?? '', category: c.category, amount: c.amount, date: c.date, note: c.note ?? '', recipient_name: c.recipient_name ?? '' });
     document.getElementById('modal-edit-cash-out').showModal();
 };
 const submitEdit = () => editForm.put(route('cash-out.update', editingId.value), {
@@ -65,7 +65,11 @@ const doDelete = () => { router.delete(route('cash-out.destroy', deletingId.valu
                     <div class="stat-value text-xl text-error">{{ format(total) }}</div>
                 </div>
             </div>
-            <div class="card bg-base-100 shadow">
+            <div class="ocn-panel">
+                <div class="ocn-panel__head">
+                    <h2 class="ocn-panel__title">Daftar kas keluar</h2>
+                    <p class="ocn-panel__desc">Transaksi sesuai filter di atas.</p>
+                </div>
                 <div class="overflow-x-auto">
                     <table class="table table-zebra">
                         <thead>
@@ -101,11 +105,19 @@ const doDelete = () => { router.delete(route('cash-out.destroy', deletingId.valu
                 <h3 class="font-bold text-lg">Tambah Kas Keluar</h3>
                 <div class="space-y-3 mt-4">
                     <div>
-                        <label class="label"><span class="label-text">Project <span class="text-error">*</span></span></label>
+                        <label class="label"><span class="label-text">Project (Opsional)</span></label>
                         <select v-model="form.project_id" class="select select-bordered w-full">
-                            <option value="">-- Pilih Project --</option>
+                            <option value="">Operasional umum (tanpa project)</option>
                             <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
                         </select>
+                    </div>
+                    <div>
+                        <label class="label"><span class="label-text">Sumber Dana Kas/Bank</span></label>
+                        <select v-model="form.cash_account_id" class="select select-bordered w-full">
+                            <option value="" disabled>-- Pilih Akun Kas/Bank --</option>
+                            <option v-for="acc in cashAccounts" :key="acc.id" :value="acc.id">{{ acc.code }} - {{ acc.name }}</option>
+                        </select>
+                        <p v-if="form.errors.cash_account_id" class="text-error text-xs mt-1">{{ form.errors.cash_account_id }}</p>
                     </div>
                     <div>
                         <label class="label"><span class="label-text">Kategori</span></label>
@@ -140,6 +152,21 @@ const doDelete = () => { router.delete(route('cash-out.destroy', deletingId.valu
             <div class="modal-box">
                 <h3 class="font-bold text-lg">Edit Kas Keluar</h3>
                 <div class="space-y-3 mt-4">
+                    <div>
+                        <label class="label"><span class="label-text">Project (Opsional)</span></label>
+                        <select v-model="editForm.project_id" class="select select-bordered w-full">
+                            <option value="">Operasional umum (tanpa project)</option>
+                            <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="label"><span class="label-text">Sumber Dana Kas/Bank</span></label>
+                        <select v-model="editForm.cash_account_id" class="select select-bordered w-full">
+                            <option value="" disabled>-- Pilih Akun Kas/Bank --</option>
+                            <option v-for="acc in cashAccounts" :key="acc.id" :value="acc.id">{{ acc.code }} - {{ acc.name }}</option>
+                        </select>
+                        <p v-if="editForm.errors.cash_account_id" class="text-error text-xs mt-1">{{ editForm.errors.cash_account_id }}</p>
+                    </div>
                     <div>
                         <label class="label"><span class="label-text">Kategori</span></label>
                         <select v-model="editForm.category" class="select select-bordered w-full">

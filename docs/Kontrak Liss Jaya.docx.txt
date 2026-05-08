@@ -1,0 +1,151 @@
+PERJANJIAN KONTRAK PENGEMBANGAN PERANGKAT LUNAK
+DAN LAYANAN SEWA SERVER
+<w:tblPr><w:tblW w:w="9386" w:type="dxa"/><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tblBorders><w:tblCellMar><w:left w:w="10" w:type="dxa"/><w:right w:w="10" w:type="dxa"/></w:tblCellMar><w:tblLook w:val="0000" w:firstRow="0" w:lastRow="0" w:firstColumn="0" w:lastColumn="0" w:noHBand="0" w:noVBand="0"/></w:tblPr><w:tblGrid><w:gridCol w:w="4693"/><w:gridCol w:w="4693"/></w:tblGrid><w:tr w:rsidR="005A7606" w14:paraId="0F85987B" w14:textId="77777777"><w:tc><w:tcPr><w:tcW w:w="4693" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="1E3A5F"/><w:left w:val="single" w:sz="4" w:space="0" w:color="1E3A5F"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="1E3A5F"/><w:right w:val="single" w:sz="4" w:space="0" w:color="1E3A5F"/></w:tcBorders><w:shd w:val="clear" w:color="auto" w:fill="EBF3FB"/><w:tcMar><w:top w:w="100" w:type="dxa"/><w:left w:w="150" w:type="dxa"/><w:bottom w:w="100" w:type="dxa"/><w:right w:w="150" w:type="dxa"/></w:tcMar></w:tcPr><w:p w14:paraId="18A88695" w14:textId="77777777" w:rsidR="005A7606" w:rsidRDefault="00000000"><w:proofErr w:type="spellStart"/><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="666666"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t>Nomor Kontrak
+PKP/2025/04/001
+Tanggal Perjanjian
+23 April 2025
+Perjanjian ini dibuat dan ditandatangani oleh para pihak yang disebutkan di bawah ini, dengan itikad baik dan tanpa adanya paksaan dari pihak mana pun, dengan ketentuan sebagai berikut:
+PASAL 1 - IDENTITAS PARA PIHAK
+Pihak Pertama (Pengembang / Developer):
+Nama
+:
+____________________________
+Alamat
+:
+____________________________
+No. Telepon / WA
+:
+____________________________
+Email
+:
+____________________________
+Pihak Kedua (Klien / Pemilik Kost):
+Nama
+:
+____________________________
+Alamat
+:
+____________________________
+No. Telepon / WA
+:
+____________________________
+Email
+:
+____________________________
+PASAL 2 - RUANG LINGKUP PEKERJAAN
+Pihak Pertama setuju untuk mengembangkan Sistem Pencatatan Sewa Kost berbasis web dengan spesifikasi teknis sebagai berikut:
+<w:tblPr><w:tblW w:w="9386" w:type="dxa"/><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tblBorders><w:tblCellMar><w:left w:w="10" w:type="dxa"/><w:right w:w="10" w:type="dxa"/></w:tblCellMar><w:tblLook w:val="0000" w:firstRow="0" w:lastRow="0" w:firstColumn="0" w:lastColumn="0" w:noHBand="0" w:noVBand="0"/></w:tblPr><w:tblGrid><w:gridCol w:w="3000"/><w:gridCol w:w="6386"/></w:tblGrid><w:tr w:rsidR="005A7606" w14:paraId="44199ED5" w14:textId="77777777"><w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="1" w:space="0" w:color="CCCCCC"/><w:left w:val="single" w:sz="1" w:space="0" w:color="CCCCCC"/><w:bottom w:val="single" w:sz="1" w:space="0" w:color="CCCCCC"/><w:right w:val="single" w:sz="1" w:space="0" w:color="CCCCCC"/></w:tcBorders><w:shd w:val="clear" w:color="auto" w:fill="D6E4F0"/><w:tcMar><w:top w:w="100" w:type="dxa"/><w:left w:w="150" w:type="dxa"/><w:bottom w:w="100" w:type="dxa"/><w:right w:w="150" w:type="dxa"/></w:tcMar></w:tcPr><w:p w14:paraId="60A37346" w14:textId="77777777" w:rsidR="005A7606" w:rsidRDefault="00000000"><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">Jenis Proyek
+Sistem Pencatatan Sewa Kost Berbasis Web
+Frontend Framework
+NuxtJS (Vue.js)
+UI Library
+Nuxt UI
+Database
+PostgreSQL
+Platform
+Web Application (Responsive) + PWA
+Fitur-fitur yang akan dikembangkan meliputi namun tidak terbatas pada:
+•  Manajemen data penyewa (tambah, edit, hapus, lihat detail)
+•  Manajemen data properti (tambah, edit, hapus, lihat detail)
+•  Pencatatan pembayaran sewa bulanan
+•  Notifikasi jatuh tempo sewa
+•  Laporan keuangan dan rekap pembayaran
+•  Manajemen kamar dan unit kost
+•  Dashboard ringkasan hunian dan pendapatan
+•  Fitur login dan autentikasi pengguna
+PASAL 3 - NILAI KONTRAK DAN PEMBAYARAN
+3.1  Nilai Kontrak Pengembangan Sistem
+<w:tblPr><w:tblW w:w="9386" w:type="dxa"/><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tblBorders><w:tblCellMar><w:left w:w="10" w:type="dxa"/><w:right w:w="10" w:type="dxa"/></w:tblCellMar><w:tblLook w:val="0000" w:firstRow="0" w:lastRow="0" w:firstColumn="0" w:lastColumn="0" w:noHBand="0" w:noVBand="0"/></w:tblPr><w:tblGrid><w:gridCol w:w="5386"/><w:gridCol w:w="4000"/></w:tblGrid><w:tr w:rsidR="005A7606" w14:paraId="12B9B8A4" w14:textId="77777777"><w:tc><w:tcPr><w:tcW w:w="5386" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="1" w:space="0" w:color="CCCCCC"/><w:left w:val="single" w:sz="1" w:space="0" w:color="CCCCCC"/><w:bottom w:val="single" w:sz="1" w:space="0" w:color="CCCCCC"/><w:right w:val="single" w:sz="1" w:space="0" w:color="CCCCCC"/></w:tcBorders><w:shd w:val="clear" w:color="auto" w:fill="1E3A5F"/><w:tcMar><w:top w:w="100" w:type="dxa"/><w:left w:w="150" w:type="dxa"/><w:bottom w:w="100" w:type="dxa"/><w:right w:w="150" w:type="dxa"/></w:tcMar></w:tcPr><w:p w14:paraId="5284E28F" w14:textId="77777777" w:rsidR="005A7606" w:rsidRDefault="00000000"><w:proofErr w:type="spellStart"/><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="FFFFFF"/></w:rPr><w:t>Keterangan
+Nominal
+Pengembangan Sistem Pencatatan Sewa Kost
+Rp 15.000.000,-
+Total Nilai Kontrak
+Rp 15.000.000,-
+3.2  Jadwal Pembayaran Pengembangan Sistem
+<w:tblPr><w:tblW w:w="9386" w:type="dxa"/><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tblBorders><w:tblCellMar><w:left w:w="10" w:type="dxa"/><w:right w:w="10" w:type="dxa"/></w:tblCellMar><w:tblLook w:val="0000" w:firstRow="0" w:lastRow="0" w:firstColumn="0" w:lastColumn="0" w:noHBand="0" w:noVBand="0"/></w:tblPr><w:tblGrid><w:gridCol w:w="655"/><w:gridCol w:w="3170"/><w:gridCol w:w="2411"/><w:gridCol w:w="1854"/><w:gridCol w:w="1296"/></w:tblGrid><w:tr w:rsidR="005A7606" w14:paraId="3B7C0D38" w14:textId="77777777" w:rsidTr="0001335C"><w:tc><w:tcPr><w:tcW w:w="655" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="1" w:space="0" w:color="CCCCCC"/><w:left w:val="single" w:sz="1" w:space="0" w:color="CCCCCC"/><w:bottom w:val="single" w:sz="1" w:space="0" w:color="CCCCCC"/><w:right w:val="single" w:sz="1" w:space="0" w:color="CCCCCC"/></w:tcBorders><w:shd w:val="clear" w:color="auto" w:fill="1E3A5F"/><w:tcMar><w:top w:w="100" w:type="dxa"/><w:left w:w="150" w:type="dxa"/><w:bottom w:w="100" w:type="dxa"/><w:right w:w="150" w:type="dxa"/></w:tcMar></w:tcPr><w:p w14:paraId="38AF309F" w14:textId="77777777" w:rsidR="005A7606" w:rsidRDefault="00000000"><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="FFFFFF"/></w:rPr><w:t>No.
+Tahap Pembayaran
+Syarat Pembayaran
+Nominal
+Status
+1
+DP / Uang Muka (Tahap 1)
+Dibayar di awal sebelum pekerjaan dimulai
+Rp 4.500.000,-
+LUNAS
+2
+Pembayaran Tahap 2
+Dibayar saat pekerjaan mencapai 50% progres
+Rp 4.500.000,-
+LUNAS
+3
+Pembayaran Pelunasan (Tahap 3)
+Dibayar setelah sistem dinyatakan selesai / LIVE
+Rp 6.000.000,-
+BELUM BAYAR
+TOTAL KESELURUHAN
+Rp 15.000.000,-
+Catatan: Jumlah yang sudah dibayarkan adalah Rp 9.000.000,- (DP + Tahap 2). Sisa pembayaran Rp 6.000.000,- akan dibayarkan setelah sistem dinyatakan selesai dan sudah live / dapat diakses oleh Pihak Kedua.
+3.3  Biaya Sewa Server
+<w:tblPr><w:tblW w:w="9386" w:type="dxa"/><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tblBorders><w:tblCellMar><w:left w:w="10" w:type="dxa"/><w:right w:w="10" w:type="dxa"/></w:tblCellMar><w:tblLook w:val="0000" w:firstRow="0" w:lastRow="0" w:firstColumn="0" w:lastColumn="0" w:noHBand="0" w:noVBand="0"/></w:tblPr><w:tblGrid><w:gridCol w:w="4000"/><w:gridCol w:w="2693"/><w:gridCol w:w="2693"/></w:tblGrid><w:tr w:rsidR="005A7606" w14:paraId="4F7D2F0E" w14:textId="77777777"><w:tc><w:tcPr><w:tcW w:w="4000" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="1" w:space="0" w:color="CCCCCC"/><w:left w:val="single" w:sz="1" w:space="0" w:color="CCCCCC"/><w:bottom w:val="single" w:sz="1" w:space="0" w:color="CCCCCC"/><w:right w:val="single" w:sz="1" w:space="0" w:color="CCCCCC"/></w:tcBorders><w:shd w:val="clear" w:color="auto" w:fill="1E3A5F"/><w:tcMar><w:top w:w="100" w:type="dxa"/><w:left w:w="150" w:type="dxa"/><w:bottom w:w="100" w:type="dxa"/><w:right w:w="150" w:type="dxa"/></w:tcMar></w:tcPr><w:p w14:paraId="5BA462D3" w14:textId="77777777" w:rsidR="005A7606" w:rsidRDefault="00000000"><w:proofErr w:type="spellStart"/><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="FFFFFF"/></w:rPr><w:t>Keterangan
+Bulanan
+Tahunan (12 Bulan)
+Biaya Sewa Server (Hosting)
+Rp 100.000,-
+Rp 1.200.000,-
+3.4  Ketentuan Pembayaran Sewa Server
+•  Pihak Kedua dapat memilih pembayaran sewa server secara bulanan (Rp 100.000,- per bulan) atau tahunan (Rp 1.200.000,- per tahun).
+•  Pembayaran sewa server dilakukan paling lambat tanggal 5 setiap bulannya atau pada awal periode tahunan.
+•  Keterlambatan pembayaran sewa server lebih dari 7 hari kalender dapat mengakibatkan penangguhan sementara layanan server.
+•  Keterlambatan lebih dari 30 hari kalender dapat mengakibatkan penghentian layanan server.
+PASAL 4 - WAKTU PENGERJAAN
+4.1. Estimasi waktu pengerjaan sistem adalah ______ (______) hari/minggu/bulan kalender terhitung sejak DP diterima oleh Pihak Pertama.
+4.2. Pihak Pertama berkewajiban memberikan laporan progres pengerjaan secara berkala kepada Pihak Kedua minimal setiap minggu.
+4.3. Apabila terjadi keterlambatan yang disebabkan oleh faktor di luar kendali Pihak Pertama (force majeure), maka waktu pengerjaan dapat diperpanjang atas kesepakatan kedua belah pihak.
+4.4. Keterlambatan yang disebabkan oleh kelalaian Pihak Pertama tanpa pemberitahuan dapat dikenakan denda sebesar ______ per hari keterlambatan.
+PASAL 5 - SERAH TERIMA DAN KRITERIA PENYELESAIAN
+5.1. Sistem dinyatakan selesai apabila telah memenuhi seluruh fitur yang disepakati dalam Pasal 2 dan dapat diakses secara online (LIVE).
+5.2. Pihak Pertama akan melakukan demo sistem kepada Pihak Kedua sebelum dinyatakan selesai.
+5.3. Pihak Kedua diberikan waktu uji coba selama ______ hari kalender setelah demo untuk melakukan pengujian sistem.
+5.4. Apabila dalam masa uji coba ditemukan bug atau kesalahan teknis, Pihak Pertama wajib memperbaiki dalam waktu ______ hari kerja tanpa biaya tambahan.
+5.5. Setelah Pihak Kedua menyatakan sistem telah selesai secara tertulis atau digital, maka proses pelunasan (Tahap 3) dapat dilakukan.
+PASAL 6 - HAK DAN KEWAJIBAN PARA PIHAK
+6.1  Kewajiban Pihak Pertama (Pengembang):
+•  Mengerjakan sistem sesuai dengan ruang lingkup dan spesifikasi teknis yang disepakati.
+•  Menyerahkan source code dan dokumentasi teknis kepada Pihak Kedua setelah pelunasan diterima.
+•  Memberikan pelatihan singkat penggunaan sistem kepada Pihak Kedua setelah serah terima.
+•  Memberikan garansi perbaikan bug selama 1 (satu) bulan setelah sistem live.
+•  Menjaga kerahasiaan data Pihak Kedua.
+6.2  Kewajiban Pihak Kedua (Klien):
+•  Membayar biaya pengembangan sesuai jadwal yang telah disepakati dalam Pasal 3.
+•  Menyediakan data dan informasi yang diperlukan untuk pengembangan sistem secara tepat waktu.
+•  Memberikan feedback dan persetujuan desain dalam waktu yang wajar agar tidak menghambat progres pengerjaan.
+•  Membayar biaya sewa server sesuai periode yang dipilih.
+•  Tidak memindahkan, menjual, atau memberikan lisensi sistem kepada pihak ketiga tanpa persetujuan Pihak Pertama.
+PASAL 7 - KEPEMILIKAN DAN HAK KEKAYAAN INTELEKTUAL
+7.1. Setelah pelunasan selesai dilakukan, hak kepemilikan atas sistem secara penuh menjadi milik Pihak Kedua.
+7.2. Source code, database, dan seluruh aset digital yang dibuat untuk proyek ini akan diserahkan kepada Pihak Kedua setelah pelunasan.
+7.3. Pihak Pertama diperkenankan menggunakan sistem ini sebagai portofolio pengembangan, kecuali data sensitif Pihak Kedua.
+PASAL 8 - KERAHASIAAN
+8.1. Kedua belah pihak sepakat untuk menjaga kerahasiaan seluruh informasi yang diperoleh dalam rangka pelaksanaan perjanjian ini.
+8.2. Kewajiban kerahasiaan ini berlaku selama perjanjian berlangsung dan tetap berlaku selama 2 (dua) tahun setelah perjanjian berakhir.
+PASAL 9 - FORCE MAJEURE
+Yang dimaksud dengan Force Majeure dalam perjanjian ini adalah kejadian-kejadian di luar kemampuan para pihak yang tidak dapat diperkirakan sebelumnya, termasuk namun tidak terbatas pada: bencana alam, kebakaran, banjir, gempa bumi, pandemi, kerusuhan, pemadaman listrik berkepanjangan, atau gangguan infrastruktur internet. Dalam kondisi force majeure, pihak yang terkena dampak wajib memberitahukan kepada pihak lainnya dalam waktu 3 (tiga) hari kerja.
+PASAL 10 - PENYELESAIAN SENGKETA
+10.1. Apabila terjadi perselisihan antara para pihak, maka akan diselesaikan secara musyawarah untuk mufakat terlebih dahulu.
+10.2. Apabila penyelesaian secara musyawarah tidak tercapai dalam waktu 30 (tiga puluh) hari, maka para pihak sepakat untuk menyelesaikan perselisihan melalui Badan Arbitrase Nasional Indonesia (BANI) atau Pengadilan Negeri yang berwenang.
+PASAL 11 - KETENTUAN LAIN-LAIN
+11.1. Perjanjian ini berlaku sejak tanggal ditandatangani oleh kedua belah pihak.
+11.2. Segala perubahan atau penambahan terhadap perjanjian ini hanya sah apabila dibuat secara tertulis dan ditandatangani oleh kedua belah pihak.
+11.3. Perjanjian ini dibuat dalam 2 (dua) rangkap yang masing-masing memiliki kekuatan hukum yang sama, satu untuk Pihak Pertama dan satu untuk Pihak Kedua.
+</w:pBdr><w:spacing w:before="200" w:after="200"/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="1E3A5F"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr><w:t>TANDA TANGAN PARA PIHAK
+PIHAK PERTAMA
+(Pengembang / Developer)
+</w:pBdr><w:jc w:val="center"/></w:pPr><w:r><w:t>(____________________________)
+Nama :
+Tanggal :
+PIHAK KEDUA
+(Klien / Pemilik Kost)
+</w:pBdr><w:jc w:val="center"/></w:pPr><w:r><w:t>(____________________________)
+Nama :
+Tanggal :
+Materai Rp 10.000 (jika diperlukan) dapat ditempelkan di atas tanda tangan masing-masing pihak.

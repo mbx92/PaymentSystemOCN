@@ -14,6 +14,7 @@ class CashOut extends Model
 
     protected $fillable = [
         'project_id',
+        'cash_account_id',
         'category',
         'amount',
         'document_status',
@@ -43,5 +44,10 @@ class CashOut extends Model
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function cashAccount()
+    {
+        return $this->belongsTo(\App\ERP\Accounting\Models\Account::class, 'cash_account_id');
     }
 }

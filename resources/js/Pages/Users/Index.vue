@@ -42,7 +42,11 @@ const doDelete = () => { router.delete(route('users.destroy', deletingId.value))
                 <button class="btn btn-primary btn-sm" onclick="document.getElementById('modal-add-user').showModal()">+ Tambah User</button>
             </div>
 
-            <div class="card bg-base-100 shadow">
+            <div class="ocn-panel">
+                <div class="ocn-panel__head">
+                    <h2 class="ocn-panel__title">Daftar pengguna</h2>
+                    <p class="ocn-panel__desc">Akun yang dapat mengakses ERP beserta perannya.</p>
+                </div>
                 <div class="overflow-x-auto">
                     <table class="table table-zebra">
                         <thead><tr><th>Nama</th><th>Email</th><th>Role</th><th></th></tr></thead>

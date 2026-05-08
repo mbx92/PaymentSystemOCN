@@ -39,9 +39,11 @@ const removeRole = (id) => {
                 </div>
             </div>
 
-            <div class="card bg-base-100 shadow">
+            <div class="ocn-panel">
+                <div class="ocn-panel__head">
+                    <h2 class="ocn-panel__title">Tambah role tim</h2>
+                </div>
                 <div class="card-body">
-                    <h2 class="card-title text-base">Tambah Role</h2>
                     <div class="flex gap-2">
                         <input v-model="form.name" type="text" class="input input-bordered w-full max-w-md" placeholder="Contoh: Backend Engineer" />
                         <button class="btn btn-primary" :disabled="form.processing" @click="submit">Simpan</button>
@@ -51,11 +53,11 @@ const removeRole = (id) => {
                 </div>
             </div>
 
-            <div class="card bg-base-100 shadow">
-                <div class="card-body p-0">
-                    <div class="p-4 border-b border-base-300">
-                        <h2 class="font-semibold">Daftar Role</h2>
-                    </div>
+            <div class="ocn-panel">
+                <div class="ocn-panel__head">
+                    <h2 class="ocn-panel__title">Daftar role</h2>
+                </div>
+                <div class="overflow-x-auto">
                     <table class="table table-sm">
                         <thead>
                             <tr>

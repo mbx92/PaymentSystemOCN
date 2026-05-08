@@ -49,9 +49,11 @@ const submitConversion = () => {
         <p class="mt-2 text-sm text-base-content/70">Kelola satuan produk dan hubungan konversi antar satuan untuk transaksi inventory.</p>
       </div>
       <div class="grid gap-4 lg:grid-cols-2">
-        <div class="card bg-base-100 shadow">
+        <div class="ocn-panel">
+          <div class="ocn-panel__head">
+            <h2 class="ocn-panel__title">Tambah UoM</h2>
+          </div>
           <div class="card-body space-y-3">
-            <h2 class="card-title text-lg">Tambah UoM</h2>
             <input v-model="uomForm.code" class="input input-bordered" placeholder="Code (pcs, pack, dus)" />
             <input v-model="uomForm.name" class="input input-bordered" placeholder="Nama satuan" />
             <label class="label cursor-pointer justify-start gap-3 rounded-lg border border-base-300 px-3">
@@ -67,9 +69,11 @@ const submitConversion = () => {
           </div>
         </div>
 
-        <div class="card bg-base-100 shadow">
+        <div class="ocn-panel">
+          <div class="ocn-panel__head">
+            <h2 class="ocn-panel__title">Tambah konversi UoM</h2>
+          </div>
           <div class="card-body space-y-3">
-            <h2 class="card-title text-lg">Tambah Konversi UoM</h2>
             <select v-model="conversionForm.from_uom_id" class="select select-bordered">
               <option value="">From UoM</option>
               <option v-for="uom in uoms" :key="uom.id" :value="uom.id">{{ uom.code }} - {{ uom.name }}</option>
@@ -84,7 +88,10 @@ const submitConversion = () => {
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Daftar satuan (UoM)</h2>
+        </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra">
             <thead><tr><th>Code</th><th>Nama</th><th>Status</th></tr></thead>
@@ -99,7 +106,10 @@ const submitConversion = () => {
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Daftar konversi</h2>
+        </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra">
             <thead><tr><th>From</th><th>To</th><th>Multiplier</th></tr></thead>

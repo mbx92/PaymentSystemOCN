@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Shared\Enums\DocumentStatus;
+use App\Models\CategoryCoaMapping;
 use App\Models\CashIn;
+use App\Models\PaymentMethod;
 use App\Models\Project;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -18,7 +20,7 @@ class CashInController extends Controller
 
     public function index(Request $request)
     {
-        $query = CashIn::with('project', 'creator')
+        $query = CashIn::with('project', 'creator', 'paymentMethod')
             ->when(
                 $request->filled('project_id') && Str::isUuid($request->project_id),
                 fn ($q) => $q->where('project_id', $request->project_id)
@@ -32,7 +34,11 @@ class CashInController extends Controller
         $cashIns = $query->latest('date')->paginate(15)->withQueryString()
             ->through(fn ($c) => [
                 'id' => $c->id,
+                'project_id' => $c->project_id,
                 'project_name' => $c->project->name,
+                'payment_method_id' => $c->payment_method_id,
+                'payment_method_name' => $c->paymentMethod?->name,
+                'cash_account_id' => $c->cash_account_id,
                 'category' => $c->category,
                 'amount' => (float) $c->amount,
                 'date' => $c->date->format('Y-m-d'),
@@ -48,6 +54,15 @@ class CashInController extends Controller
             'cashIns' => $cashIns,
             'total' => $total,
             'projects' => $projects,
+            'paymentMethods' => PaymentMethod::query()
+                ->where('status', 'active')
+                ->orderBy('name')
+                ->get(['id', 'name']),
+            'cashAccounts' => Account::query()
+                ->where('is_active', true)
+                ->where('type', 'asset')
+                ->orderBy('code')
+                ->get(['id', 'code', 'name']),
             'filters' => $request->only(['project_id', 'category', 'date_from', 'date_to']),
         ]);
     }
@@ -57,6 +72,7 @@ class CashInController extends Controller
         $validated = $request->validate([
             'project_id' => 'required|uuid|exists:projects,id',
             'payment_method_id' => 'nullable|exists:payment_methods,id',
+            'cash_account_id' => 'required|exists:accounts,id',
             'category' => 'required|in:pendapatan_jasa,lainnya',
             'amount' => 'required|numeric|min:1',
             'date' => 'required|date',
@@ -69,10 +85,18 @@ class CashInController extends Controller
         $validated['approved_by'] = Auth::id();
         $validated['posted_at'] = now();
         $validated['posted_by'] = Auth::id();
+        $revenueAccountId = CategoryCoaMapping::query()
+            ->where('domain', 'cash_in')
+            ->where('category', $validated['category'])
+            ->value('account_id');
+        if (! $revenueAccountId) {
+            return back()->withErrors(['category' => 'Kategori kas masuk belum di-mapping ke akun CoA.'])->withInput();
+        }
+
         $cashIn = CashIn::create($validated);
 
-        $cashAccount = Account::query()->where('code', '1001')->firstOrFail();
-        $revenueAccount = Account::query()->where('code', '4001')->firstOrFail();
+        $cashAccount = Account::query()->findOrFail((int) $validated['cash_account_id']);
+        $revenueAccount = Account::query()->findOrFail($revenueAccountId);
 
         $entry = $this->glPostingService->post(
             sourceModule: 'cash_in',
@@ -95,6 +119,7 @@ class CashInController extends Controller
         $validated = $request->validate([
             'project_id' => 'required|uuid|exists:projects,id',
             'payment_method_id' => 'nullable|exists:payment_methods,id',
+            'cash_account_id' => 'required|exists:accounts,id',
             'category' => 'required|in:pendapatan_jasa,lainnya',
             'amount' => 'required|numeric|min:1',
             'date' => 'required|date',

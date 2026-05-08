@@ -88,7 +88,10 @@ const submit = () => {
                 <p class="mt-2 text-sm text-base-content/70">Perbarui informasi project dan jadwal termin sesuai kondisi terbaru.</p>
             </div>
 
-            <div class="card bg-base-100 shadow">
+            <div class="ocn-panel">
+                <div class="ocn-panel__head">
+                    <h2 class="ocn-panel__title">Edit project</h2>
+                </div>
                 <div class="card-body space-y-4">
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div class="sm:col-span-2">

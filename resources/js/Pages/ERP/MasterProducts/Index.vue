@@ -91,7 +91,10 @@ const goToDetail = (id) => {
         </p>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Filter produk</h2>
+        </div>
         <div class="card-body">
           <div class="overflow-x-auto">
             <div class="flex min-w-max items-center gap-3">
@@ -117,7 +120,10 @@ const goToDetail = (id) => {
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Daftar master produk</h2>
+        </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra">
             <thead>

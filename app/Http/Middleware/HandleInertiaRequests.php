@@ -3,8 +3,10 @@
 namespace App\Http\Middleware;
 
 use App\Models\MasterProduct;
+use App\Models\ErpSetting;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
+use Illuminate\Support\Facades\Storage;
 
 class HandleInertiaRequests extends Middleware
 {
@@ -31,6 +33,7 @@ class HandleInertiaRequests extends Middleware
     public function share(Request $request): array
     {
         $user = $request->user();
+        $erpSetting = ErpSetting::query()->first();
 
         return [
             ...parent::share($request),
@@ -51,6 +54,11 @@ class HandleInertiaRequests extends Middleware
                     ->orderBy('stock')
                     ->limit(5)
                     ->get(['id', 'sku', 'name', 'stock', 'min_stock']),
+            ],
+            'erpSetting' => fn () => [
+                'app_name' => $erpSetting?->app_name ?? 'OCN ERP Suite',
+                'app_tagline' => $erpSetting?->app_tagline ?? 'Integrated Business Platform',
+                'app_logo_url' => $erpSetting?->app_logo_path ? Storage::url($erpSetting->app_logo_path) : null,
             ],
         ];
     }

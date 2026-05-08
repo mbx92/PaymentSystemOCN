@@ -52,9 +52,11 @@ const openTransaction = (trxId) => {
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Filter transaksi POS</h2>
+        </div>
         <div class="card-body">
-          <h2 class="card-title text-lg">Utilitas Filter</h2>
           <div class="grid grid-cols-1 gap-3 md:grid-cols-5">
             <div class="md:col-span-2">
               <label class="label"><span class="label-text text-xs uppercase tracking-wide">Search</span></label>
@@ -81,11 +83,11 @@ const openTransaction = (trxId) => {
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
-        <div class="card-body border-b border-base-300">
-          <h2 class="card-title text-lg">Data Transaksi POS</h2>
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Daftar transaksi POS</h2>
         </div>
-        <div class="card-body p-0">
+        <div class="p-0">
           <div class="overflow-x-auto">
             <table class="table table-zebra">
               <thead>

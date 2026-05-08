@@ -49,7 +49,10 @@ const goBack = () => {
       </div>
 
       <div class="grid gap-5 lg:grid-cols-3">
-        <div class="card bg-base-100 shadow lg:col-span-2">
+        <div class="ocn-panel lg:col-span-2">
+          <div class="ocn-panel__head">
+            <h2 class="ocn-panel__title">Baris penerimaan barang</h2>
+          </div>
           <div class="card-body p-0">
             <div class="overflow-x-auto">
               <table class="table table-zebra">

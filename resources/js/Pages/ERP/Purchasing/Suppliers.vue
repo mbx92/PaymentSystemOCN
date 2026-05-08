@@ -80,7 +80,10 @@ const openAddModal = () => {
         <span>Supplier <span class="font-mono font-semibold">{{ highlight }}</span> disorot — lanjutkan dari PO atau profil.</span>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Filter supplier</h2>
+        </div>
         <div class="card-body">
           <div class="flex flex-wrap items-end gap-3">
             <div class="min-w-[220px] flex-1">
@@ -100,7 +103,10 @@ const openAddModal = () => {
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Daftar supplier</h2>
+        </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra">
             <thead><tr><th>Kode</th><th>Nama Supplier</th><th>Kontak</th><th>Lead Time</th><th>Status</th></tr></thead>

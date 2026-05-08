@@ -31,9 +31,11 @@ const goBack = () => {
       </div>
 
       <div class="grid gap-5 lg:grid-cols-3">
-        <div class="card bg-base-100 shadow lg:col-span-2">
+        <div class="ocn-panel lg:col-span-2">
+          <div class="ocn-panel__head">
+            <h2 class="ocn-panel__title">Informasi supplier</h2>
+          </div>
           <div class="card-body">
-            <h2 class="card-title text-lg">Informasi</h2>
             <dl class="grid gap-3 sm:grid-cols-2">
               <div>
                 <dt class="text-xs font-semibold uppercase text-base-content/50">Telepon</dt>

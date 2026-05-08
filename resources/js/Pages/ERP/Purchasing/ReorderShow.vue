@@ -27,10 +27,12 @@ const goBack = () => {
       </div>
 
       <div class="grid gap-5 lg:grid-cols-3">
-        <div class="card bg-base-100 shadow lg:col-span-2">
+        <div class="ocn-panel lg:col-span-2">
+          <div class="ocn-panel__head">
+            <h2 class="ocn-panel__title">Ringkasan kebutuhan</h2>
+          </div>
           <div class="card-body">
-            <h2 class="card-title text-lg">Ringkasan kebutuhan</h2>
-            <dl class="mt-4 grid gap-4 sm:grid-cols-2">
+            <dl class="mt-2 grid gap-4 sm:grid-cols-2">
               <div>
                 <dt class="text-xs font-semibold uppercase text-base-content/50">Stok saat ini</dt>
                 <dd class="text-2xl font-bold">{{ detail.stock }}</dd>

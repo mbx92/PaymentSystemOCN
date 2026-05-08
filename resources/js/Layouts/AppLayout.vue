@@ -12,6 +12,7 @@ const page = usePage();
 const auth = computed(() => page.props.auth);
 const flash = computed(() => page.props.flash);
 const inventoryAlerts = computed(() => page.props.inventoryAlerts ?? { lowStockCount: 0, lowStockItems: [] });
+const erpSetting = computed(() => page.props.erpSetting ?? {});
 const sidebarOpen = ref(false);
 const showAlertDropdown = ref(false);
 const chatPanelOpen = ref(false);
@@ -65,6 +66,9 @@ const topbarContext = computed(() => {
 
     if (pathname.includes('/erp/sales/pos')) return { label: 'POS Workspace', subtitle: 'Mode kasir cepat untuk penjualan produk.' };
     if (pathname.includes('/laporan')) return { label: 'Reporting Workspace', subtitle: 'Analisis laporan keuangan dan operasional real-time.' };
+    if (pathname.includes('/erp/accounting/cashflow')) return { label: 'Cashflow Workspace', subtitle: 'Akses kas masuk dan kas keluar dalam satu submenu.' };
+    if (pathname.includes('/erp/accounting/payments')) return { label: 'Pembayaran Workspace', subtitle: 'Pusat pembayaran project dan tim.' };
+    if (pathname.includes('/erp/accounting/reconciliation')) return { label: 'Rekonsiliasi Workspace', subtitle: 'Kontrol mutasi kas/bank harian dan mingguan.' };
     if (pathname.includes('/kas-masuk') || pathname.includes('/kas-keluar')) return { label: 'Accounting Workspace', subtitle: 'Kelola transaksi kas dan posting jurnal terintegrasi.' };
     if (pathname.includes('/projects')) return { label: 'Projects Workspace', subtitle: 'Pantau proyek, termin pembayaran, dan profitabilitas.' };
 
@@ -149,12 +153,15 @@ const sendChatMessage = async () => {
                 sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0']"
         >
             <div class="flex items-center gap-3 px-6 py-5 border-b border-white/10">
-                <div class="w-10 h-10 ocn-brand-mark text-white rounded-xl flex items-center justify-center">
+                <div v-if="erpSetting?.app_logo_url" class="w-10 h-10 rounded-xl overflow-hidden bg-white/95 flex items-center justify-center p-1">
+                    <img :src="erpSetting.app_logo_url" alt="Logo" class="w-full h-full object-contain">
+                </div>
+                <div v-else class="w-10 h-10 ocn-brand-mark text-white rounded-xl flex items-center justify-center">
                     <span class="font-bold text-sm">ERP</span>
                 </div>
                 <div>
-                    <span class="block font-bold text-lg tracking-tight text-white leading-none">OCN ERP Suite</span>
-                    <span class="block text-xs text-slate-400 mt-1">Integrated Business Platform</span>
+                    <span class="block font-bold text-lg tracking-tight text-white leading-none">{{ erpSetting?.app_name || 'OCN ERP Suite' }}</span>
+                    <span class="block text-xs text-slate-400 mt-1">{{ erpSetting?.app_tagline || 'Integrated Business Platform' }}</span>
                 </div>
                 <button class="ml-auto lg:hidden text-slate-300" @click="sidebarOpen = false">
                     <XMarkIcon class="w-5 h-5" />

@@ -1,8 +1,13 @@
 <?php
 
 use App\Http\Controllers\CashInController;
+use App\Http\Controllers\CashflowController;
 use App\Http\Controllers\CashOutController;
+use App\Http\Controllers\OperationalController;
+use App\Http\Controllers\ExpenseCategoryController;
+use App\Http\Controllers\ReconciliationController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\PublicHomeController;
 use App\Http\Controllers\ERPInventoryController;
 use App\Http\Controllers\ERPInventoryMasterDataController;
 use App\Http\Controllers\ERPAdministrationMasterDataController;
@@ -11,6 +16,7 @@ use App\Http\Controllers\ERPModuleController;
 use App\Http\Controllers\ERPPurchasingController;
 use App\Http\Controllers\ERPReportingController;
 use App\Http\Controllers\ERPSalesController;
+use App\Http\Controllers\HRLegalController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ProjectBudgetController;
@@ -24,10 +30,9 @@ use App\Http\Controllers\ErpSystemLogController;
 use App\Http\Controllers\ErpChatbotController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware('auth')->group(function () {
-    // Dashboard
-    Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+Route::get('/', [PublicHomeController::class, 'index'])->name('dashboard');
 
+Route::middleware('auth')->group(function () {
     // Profile (Breeze default)
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
@@ -38,11 +43,34 @@ Route::middleware('auth')->group(function () {
     Route::middleware('role:admin|manajer')->group(function () {
         // ERP Module Landing Pages
         Route::get('erp/accounting', [ERPModuleController::class, 'accounting'])->name('erp.accounting');
+        Route::get('erp/accounting/cashflow', [CashflowController::class, 'index'])->name('erp.accounting.cashflow');
+        Route::post('erp/accounting/cashflow', [CashflowController::class, 'store'])->name('erp.accounting.cashflow.store');
+        Route::patch('erp/accounting/cashflow/cash-in/{cashIn}', [CashflowController::class, 'updateCashIn'])->name('erp.accounting.cashflow.cash-in.update');
+        Route::delete('erp/accounting/cashflow/cash-in/{cashIn}', [CashflowController::class, 'destroyCashIn'])->name('erp.accounting.cashflow.cash-in.destroy');
+        Route::patch('erp/accounting/cashflow/cash-out/{cashOut}', [CashflowController::class, 'updateCashOut'])->name('erp.accounting.cashflow.cash-out.update');
+        Route::delete('erp/accounting/cashflow/cash-out/{cashOut}', [CashflowController::class, 'destroyCashOut'])->name('erp.accounting.cashflow.cash-out.destroy');
+        Route::get('erp/accounting/operational', [OperationalController::class, 'index'])->name('erp.accounting.operational');
+        Route::post('erp/accounting/operational', [OperationalController::class, 'store'])->name('erp.accounting.operational.store');
+        Route::patch('erp/accounting/operational/{cashOut}', [OperationalController::class, 'update'])->name('erp.accounting.operational.update');
+        Route::delete('erp/accounting/operational/{cashOut}', [OperationalController::class, 'destroy'])->name('erp.accounting.operational.destroy');
+        Route::get('erp/accounting/expense-categories', [ExpenseCategoryController::class, 'index'])->name('erp.accounting.expense-categories');
+        Route::post('erp/accounting/expense-categories', [ExpenseCategoryController::class, 'upsert'])->name('erp.accounting.expense-categories.upsert');
+        Route::post('erp/accounting/expense-categories/store', [ExpenseCategoryController::class, 'storeCategory'])->name('erp.accounting.expense-categories.store');
+        Route::get('erp/accounting/payments', [ERPModuleController::class, 'payments'])->name('erp.accounting.payments');
+        Route::get('erp/accounting/reconciliation', [ReconciliationController::class, 'index'])->name('erp.accounting.reconciliation');
         Route::get('erp/sales', [ERPModuleController::class, 'sales'])->name('erp.sales');
         Route::get('erp/purchasing', [ERPModuleController::class, 'purchasing'])->name('erp.purchasing');
         Route::get('erp/inventory', [ERPModuleController::class, 'inventory'])->name('erp.inventory');
         Route::get('erp/projects', [ERPModuleController::class, 'projects'])->name('erp.projects');
         Route::get('erp/hr', [ERPModuleController::class, 'hr'])->name('erp.hr');
+        Route::get('erp/hr/legal', [HRLegalController::class, 'index'])->name('erp.hr.legal');
+        Route::get('erp/hr/legal/create', [HRLegalController::class, 'create'])->name('erp.hr.legal.create');
+        Route::post('erp/hr/legal', [HRLegalController::class, 'store'])->name('erp.hr.legal.store');
+        Route::get('erp/hr/legal/templates/{file}', [HRLegalController::class, 'downloadTemplate'])->name('erp.hr.legal.templates.download');
+        Route::get('erp/hr/legal/{legalContract}/edit', [HRLegalController::class, 'edit'])->name('erp.hr.legal.edit');
+        Route::put('erp/hr/legal/{legalContract}', [HRLegalController::class, 'update'])->name('erp.hr.legal.update');
+        Route::delete('erp/hr/legal/{legalContract}', [HRLegalController::class, 'destroy'])->name('erp.hr.legal.destroy');
+        Route::get('erp/hr/legal/{legalContract}/pdf', [HRLegalController::class, 'pdf'])->name('erp.hr.legal.pdf');
         Route::get('erp/reporting', [ERPModuleController::class, 'reporting'])->name('erp.reporting');
         Route::get('erp/master-products', [ERPMasterProductController::class, 'index'])->name('erp.master-products.index');
         Route::post('erp/master-products', [ERPMasterProductController::class, 'store'])->name('erp.master-products.store');
@@ -144,6 +172,7 @@ Route::middleware('auth')->group(function () {
         Route::get('laporan/bulanan', [ReportController::class, 'monthly'])->name('reports.monthly');
         Route::get('laporan/anggota', [ReportController::class, 'memberPayments'])->name('reports.member-payments');
         Route::get('erp/accounting/chart-of-accounts', [ERPReportingController::class, 'chartOfAccounts'])->name('erp.accounting.coa');
+        Route::post('erp/accounting/chart-of-accounts', [ERPReportingController::class, 'storeChartOfAccount'])->name('erp.accounting.coa.store');
         Route::get('laporan/general-ledger', [ERPReportingController::class, 'generalLedger'])->name('reports.general-ledger');
         Route::get('laporan/neraca-saldo', [ERPReportingController::class, 'trialBalance'])->name('reports.trial-balance');
 
@@ -160,16 +189,20 @@ Route::middleware('auth')->group(function () {
         Route::put('users/{user}', [UserController::class, 'update'])->name('users.update');
         Route::delete('users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
         Route::get('erp/administration', [ERPModuleController::class, 'administration'])->name('erp.administration');
+        Route::get('erp/admin/erp-settings', [ERPAdministrationMasterDataController::class, 'erpSettings'])->name('erp.admin.erp-settings');
+        Route::post('erp/admin/erp-settings', [ERPAdministrationMasterDataController::class, 'updateErpSettings'])->name('erp.admin.erp-settings.update');
         Route::get('erp/admin/document-sequences', [ERPAdministrationMasterDataController::class, 'documentSequences'])->name('erp.admin.document-sequences');
         Route::post('erp/admin/document-sequences', [ERPAdministrationMasterDataController::class, 'storeDocumentSequence'])->name('erp.admin.document-sequences.store');
         Route::patch('erp/admin/document-sequences/{documentSequence}', [ERPAdministrationMasterDataController::class, 'updateDocumentSequence'])->name('erp.admin.document-sequences.update');
         Route::get('erp/admin/payment-methods', [ERPAdministrationMasterDataController::class, 'paymentMethods'])->name('erp.admin.payment-methods');
         Route::post('erp/admin/payment-methods', [ERPAdministrationMasterDataController::class, 'storePaymentMethod'])->name('erp.admin.payment-methods.store');
         Route::patch('erp/admin/payment-methods/{paymentMethod}', [ERPAdministrationMasterDataController::class, 'updatePaymentMethod'])->name('erp.admin.payment-methods.update');
+        Route::get('erp/admin/landing-sites', [ERPAdministrationMasterDataController::class, 'landingSites'])->name('erp.admin.landing-sites');
+        Route::post('erp/admin/landing-sites', [ERPAdministrationMasterDataController::class, 'storeLandingSite'])->name('erp.admin.landing-sites.store');
+        Route::patch('erp/admin/landing-sites/{landingSite}', [ERPAdministrationMasterDataController::class, 'updateLandingSite'])->name('erp.admin.landing-sites.update');
         Route::get('erp/admin/parser-rules', [ERPAdministrationMasterDataController::class, 'parserRules'])->name('erp.admin.parser-rules');
         Route::post('erp/admin/parser-rules', [ERPAdministrationMasterDataController::class, 'storeParserRule'])->name('erp.admin.parser-rules.store');
         Route::patch('erp/admin/parser-rules/{parserRule}', [ERPAdministrationMasterDataController::class, 'updateParserRule'])->name('erp.admin.parser-rules.update');
-        Route::post('erp/admin/parser-rules/test', [ERPAdministrationMasterDataController::class, 'testParserRule'])->name('erp.admin.parser-rules.test');
         Route::get('erp/admin/system-logs', [ErpSystemLogController::class, 'index'])->name('erp.admin.system-logs.index');
     });
 });

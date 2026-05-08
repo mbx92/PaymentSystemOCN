@@ -34,7 +34,10 @@ const submit = () => {
         </div>
         <p class="mt-2 text-sm text-base-content/70">Atur daftar kategori standar untuk klasifikasi seluruh produk inventory.</p>
       </div>
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Form tambah kategori</h2>
+        </div>
         <div class="card-body grid gap-3 md:grid-cols-4">
           <input v-model="form.name" class="input input-bordered" placeholder="Nama kategori" />
           <input v-model="form.description" class="input input-bordered" placeholder="Deskripsi" />
@@ -51,7 +54,10 @@ const submit = () => {
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Daftar kategori</h2>
+        </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra">
             <thead><tr><th>Nama</th><th>Deskripsi</th><th>Status</th></tr></thead>

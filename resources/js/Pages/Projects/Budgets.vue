@@ -94,7 +94,10 @@ const submit = () => {
                 </article>
             </div>
 
-            <div class="card bg-base-100 shadow">
+            <div class="ocn-panel">
+                <div class="ocn-panel__head">
+                    <h2 class="ocn-panel__title">Filter budget</h2>
+                </div>
                 <div class="card-body">
                     <div class="flex flex-wrap gap-3 items-center">
                         <label class="input input-bordered input-sm flex items-center gap-2 max-w-xs">
@@ -119,9 +122,11 @@ const submit = () => {
                 </div>
             </div>
 
-            <div class="card bg-base-100 shadow">
-                <div class="card-body p-0">
-                    <div class="p-4 border-b border-base-300"><h2 class="font-semibold">Daftar Budget</h2></div>
+            <div class="ocn-panel">
+                <div class="ocn-panel__head">
+                    <h2 class="ocn-panel__title">Daftar budget</h2>
+                </div>
+                <div class="overflow-x-auto">
                     <table class="table table-sm">
                         <thead><tr><th>Project</th><th>Klien</th><th>Tipe</th><th>Item</th><th>Estimasi</th><th>Status</th></tr></thead>
                         <tbody>

@@ -99,7 +99,10 @@ const openAddModal = () => {
         </span>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Filter penerimaan barang</h2>
+        </div>
         <div class="card-body">
           <div class="flex flex-wrap items-end gap-3">
             <div class="min-w-[200px]">
@@ -128,7 +131,10 @@ const openAddModal = () => {
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Daftar goods receipt (GRN)</h2>
+        </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra">
             <thead>

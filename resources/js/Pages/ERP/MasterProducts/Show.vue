@@ -197,10 +197,13 @@ const submitEditProduct = () => {
       </div>
 
       <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div class="card bg-base-100 shadow">
+        <div class="ocn-panel">
+          <div class="ocn-panel__head">
+            <h2 class="ocn-panel__title">Identitas produk</h2>
+          </div>
           <div class="card-body gap-4">
             <div>
-              <p class="text-xs uppercase text-base-content/50">Identitas Produk</p>
+              <p class="text-xs uppercase text-base-content/50">Nama &amp; SKU</p>
               <p class="text-xl font-semibold leading-tight">{{ product.name }}</p>
               <p class="mt-1 text-sm text-base-content/60">SKU: <span class="font-mono">{{ product.sku }}</span></p>
             </div>
@@ -231,11 +234,14 @@ const submitEditProduct = () => {
           </div>
         </div>
 
-        <div class="card bg-base-100 shadow">
+        <div class="ocn-panel">
+          <div class="ocn-panel__head">
+            <h2 class="ocn-panel__title">Komersial &amp; operasional</h2>
+          </div>
           <div class="card-body gap-4">
             <div class="flex items-start justify-between gap-3">
               <div>
-                <p class="text-xs uppercase text-base-content/50">Komersial & Operasional</p>
+                <p class="text-xs uppercase text-base-content/50">Ringkasan</p>
                 <p class="text-sm text-base-content/70">Data transaksi utama untuk penjualan dan stok.</p>
               </div>
               <StatusBadge :status="product.status" />
@@ -269,12 +275,12 @@ const submitEditProduct = () => {
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head flex flex-wrap items-center justify-between gap-2">
+          <h2 class="ocn-panel__title">Mapping UoM per produk</h2>
+          <button class="btn btn-primary btn-sm shrink-0" @click="openAddMappingModal">Tambah mapping</button>
+        </div>
         <div class="card-body p-0">
-          <div class="flex items-center justify-between border-b border-base-300 p-4">
-            <h2 class="font-semibold">Mapping UoM Per Produk</h2>
-            <button class="btn btn-primary btn-sm" @click="openAddMappingModal">Tambah Mapping</button>
-          </div>
           <div class="overflow-x-auto">
             <table class="table table-sm">
               <thead><tr><th>UoM</th><th>Multiplier</th><th>Rumus</th><th>Harga Jual</th><th>Status</th><th></th></tr></thead>

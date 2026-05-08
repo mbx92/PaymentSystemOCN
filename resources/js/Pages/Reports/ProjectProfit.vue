@@ -37,7 +37,11 @@ const exportExcel = () => window.location.href = route('export.project-profit', 
 
             <input v-model="search" type="text" placeholder="Cari project…" class="input input-bordered input-sm max-w-xs" />
 
-            <div class="card bg-base-100 shadow">
+            <div class="ocn-panel">
+                <div class="ocn-panel__head">
+                    <h2 class="ocn-panel__title">Ringkasan laba per project</h2>
+                    <p class="ocn-panel__desc">Data mengikuti kata kunci pencarian di atas.</p>
+                </div>
                 <div class="overflow-x-auto">
                     <table class="table table-zebra text-sm">
                         <thead>

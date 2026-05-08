@@ -165,16 +165,31 @@ const applyFilters = () => {
       </div>
 
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div class="card bg-base-100 shadow"><div class="card-body p-5"><p class="text-xs uppercase text-base-content/50">Total Produk</p><p class="text-2xl font-bold">{{ summary.total_products }}</p></div></div>
-        <div class="card bg-base-100 shadow"><div class="card-body p-5"><p class="text-xs uppercase text-base-content/50">Alert Stok Rendah</p><p class="text-2xl font-bold text-warning">{{ summary.low_stock_count }}</p></div></div>
-        <div class="card bg-base-100 shadow"><div class="card-body p-5"><p class="text-xs uppercase text-base-content/50">Total Unit In Stock</p><p class="text-2xl font-bold text-info">{{ summary.total_units_in_stock }}</p></div></div>
-        <div class="card bg-base-100 shadow"><div class="card-body p-5"><p class="text-xs uppercase text-base-content/50">Total Unit Sold</p><p class="text-2xl font-bold text-success">{{ summary.total_units_sold }}</p></div></div>
+        <div class="ocn-panel">
+          <div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Total produk</h2></div>
+          <div class="card-body p-5 pt-2"><p class="text-2xl font-bold">{{ summary.total_products }}</p></div>
+        </div>
+        <div class="ocn-panel">
+          <div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Alert stok rendah</h2></div>
+          <div class="card-body p-5 pt-2"><p class="text-2xl font-bold text-warning">{{ summary.low_stock_count }}</p></div>
+        </div>
+        <div class="ocn-panel">
+          <div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Total unit in stock</h2></div>
+          <div class="card-body p-5 pt-2"><p class="text-2xl font-bold text-info">{{ summary.total_units_in_stock }}</p></div>
+        </div>
+        <div class="ocn-panel">
+          <div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Total unit sold</h2></div>
+          <div class="card-body p-5 pt-2"><p class="text-2xl font-bold text-success">{{ summary.total_units_sold }}</p></div>
+        </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Filter grafik</h2>
+        </div>
         <div class="card-body">
           <div class="flex flex-wrap items-center gap-3">
-            <label class="text-xs font-semibold uppercase tracking-[0.12em] text-base-content/55">Filter Grafik</label>
+            <label class="text-xs font-semibold uppercase tracking-[0.12em] text-base-content/55">Periode &amp; produk</label>
             <select v-model="filterState.year" class="select select-bordered select-sm w-32" @change="applyFilters">
               <option v-for="year in years" :key="year" :value="year">{{ year }}</option>
             </select>
@@ -186,9 +201,11 @@ const applyFilters = () => {
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Grafik level stok bulanan</h2>
+        </div>
         <div class="card-body">
-          <h2 class="card-title text-lg">Grafik Level Stok Bulanan (Line)</h2>
           <div class="relative h-[320px] w-full">
             <Line :data="monthlyStockLevelData" :options="lineOptions" />
           </div>
@@ -208,9 +225,11 @@ const applyFilters = () => {
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Trend mutasi stok (transaksi)</h2>
+        </div>
         <div class="card-body">
-          <h2 class="card-title text-lg">Trend Bulanan Stok Masuk/Keluar (Transaksi Nyata)</h2>
           <div class="relative h-[320px] w-full">
             <Bar :data="monthlyTrendData" :options="stockBarOptions" />
           </div>
@@ -218,9 +237,11 @@ const applyFilters = () => {
       </div>
 
       <div class="grid gap-4 lg:grid-cols-2">
-        <div class="card bg-base-100 shadow">
+        <div class="ocn-panel">
+          <div class="ocn-panel__head">
+            <h2 class="ocn-panel__title text-warning">Alert stok rendah</h2>
+          </div>
           <div class="card-body">
-            <h2 class="card-title text-lg text-warning">Alert Stok Rendah</h2>
             <div class="overflow-x-auto">
               <table class="table table-zebra">
                 <thead><tr><th>SKU</th><th>Produk</th><th>Stok</th><th>Min</th></tr></thead>
@@ -238,9 +259,11 @@ const applyFilters = () => {
           </div>
         </div>
 
-        <div class="card bg-base-100 shadow">
+        <div class="ocn-panel">
+          <div class="ocn-panel__head">
+            <h2 class="ocn-panel__title text-success">Produk terlaris</h2>
+          </div>
           <div class="card-body">
-            <h2 class="card-title text-lg text-success">Produk Paling Banyak Terjual</h2>
             <div class="overflow-x-auto">
               <table class="table table-zebra">
                 <thead><tr><th>SKU</th><th>Produk</th><th>Total Terjual</th></tr></thead>
@@ -258,9 +281,12 @@ const applyFilters = () => {
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Saran reorder otomatis</h2>
+          <p class="ocn-panel__desc">Berdasarkan min stock dan lead time.</p>
+        </div>
         <div class="card-body">
-          <h2 class="card-title text-lg">Reorder Suggestion Otomatis (Min Stock + Lead Time)</h2>
           <div class="overflow-x-auto">
             <table class="table table-zebra">
               <thead><tr><th>SKU</th><th>Produk</th><th>Stock</th><th>Min</th><th>Lead Time</th><th>Saran Reorder</th></tr></thead>

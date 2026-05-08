@@ -16,6 +16,7 @@ class CashIn extends Model
         'project_id',
         'project_payment_id',
         'payment_method_id',
+        'cash_account_id',
         'category',
         'amount',
         'document_status',
@@ -54,5 +55,10 @@ class CashIn extends Model
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function cashAccount()
+    {
+        return $this->belongsTo(\App\ERP\Accounting\Models\Account::class, 'cash_account_id');
     }
 }

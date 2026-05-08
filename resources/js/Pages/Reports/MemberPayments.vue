@@ -47,7 +47,11 @@ const exportExcel = () => window.location.href = route('export.member-payments',
                 </div>
             </div>
 
-            <div class="card bg-base-100 shadow">
+            <div class="ocn-panel">
+                <div class="ocn-panel__head">
+                    <h2 class="ocn-panel__title">Distribusi pembayaran anggota</h2>
+                    <p class="ocn-panel__desc">Per project sesuai filter anggota dan tahun.</p>
+                </div>
                 <div class="overflow-x-auto">
                     <table class="table table-zebra text-sm">
                         <thead>

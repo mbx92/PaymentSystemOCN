@@ -332,7 +332,11 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="grid gap-4 xl:grid-cols-[1fr_320px]">
-        <div class="card bg-base-100 shadow">
+        <div class="ocn-panel">
+          <div class="ocn-panel__head">
+            <h2 class="ocn-panel__title">Keranjang</h2>
+            <p class="ocn-panel__desc">SKU, qty, diskon, dan subtotal per baris.</p>
+          </div>
           <div class="overflow-x-auto">
             <table class="table table-zebra">
               <thead>
@@ -375,9 +379,12 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div class="card bg-base-100 shadow">
+        <div class="ocn-panel">
+          <div class="ocn-panel__head">
+            <h2 class="ocn-panel__title">Ringkasan transaksi</h2>
+            <p class="ocn-panel__desc">Total, pembayaran, dan tindakan kasir.</p>
+          </div>
           <div class="card-body">
-            <h2 class="card-title text-lg">Ringkasan Transaksi</h2>
             <div class="space-y-2 text-sm">
               <div class="flex justify-between"><span>Gross Total</span><span>{{ format(grossTotal) }}</span></div>
               <div class="flex justify-between"><span>Total Diskon</span><span class="text-warning">- {{ format(discountTotal) }}</span></div>
@@ -473,7 +480,11 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="grid gap-4 xl:grid-cols-[1fr_320px]">
-        <div class="card bg-base-100 shadow">
+        <div class="ocn-panel">
+          <div class="ocn-panel__head">
+            <h2 class="ocn-panel__title">Keranjang</h2>
+            <p class="ocn-panel__desc">SKU, qty, diskon, dan subtotal per baris.</p>
+          </div>
           <div class="overflow-x-auto">
             <table class="table table-zebra">
               <thead>
@@ -510,9 +521,12 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div class="card bg-base-100 shadow">
+        <div class="ocn-panel">
+          <div class="ocn-panel__head">
+            <h2 class="ocn-panel__title">Ringkasan transaksi</h2>
+            <p class="ocn-panel__desc">Total, pembayaran, dan tindakan kasir.</p>
+          </div>
           <div class="card-body">
-            <h2 class="card-title text-lg">Ringkasan Transaksi</h2>
             <div class="space-y-2 text-sm">
               <div class="flex justify-between"><span>Gross Total</span><span>{{ format(grossTotal) }}</span></div>
               <div class="flex justify-between"><span>Total Diskon</span><span class="text-warning">- {{ format(discountTotal) }}</span></div>

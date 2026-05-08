@@ -11,11 +11,19 @@ class ERPModuleController extends Controller
     {
         return $this->renderModule('Accounting', [
             ['title' => 'CoA / Chart Of Account', 'description' => 'Daftar akun chart of accounts untuk semua posting akuntansi.', 'route' => 'erp.accounting.coa', 'icon' => 'book-open'],
-            ['title' => 'Kas Masuk', 'description' => 'Pencatatan penerimaan kas dan posting jurnal otomatis.', 'route' => 'cash-in.index', 'icon' => 'arrow-down-circle'],
-            ['title' => 'Kas Keluar', 'description' => 'Pencatatan pengeluaran kas dan kontrol biaya.', 'route' => 'cash-out.index', 'icon' => 'arrow-up-circle'],
+            ['title' => 'Cashflow', 'description' => 'Submenu kas masuk dan kas keluar dalam satu tempat.', 'route' => 'erp.accounting.cashflow', 'icon' => 'arrows-right-left'],
+            ['title' => 'Operational', 'description' => 'Pencatatan biaya operasional umum (non-project) atau per project.', 'route' => 'erp.accounting.operational', 'icon' => 'arrow-up-circle'],
+            ['title' => 'Kategori Pengeluaran', 'description' => 'Mapping kategori kas keluar ke akun CoA untuk jurnal yang valid.', 'route' => 'erp.accounting.expense-categories', 'icon' => 'book-open'],
+            ['title' => 'Pembayaran', 'description' => 'Pusat proses pembayaran project dan tim.', 'route' => 'erp.accounting.payments', 'icon' => 'credit-card'],
+            ['title' => 'Rekonsiliasi Kas', 'description' => 'Rekap mutasi kas/bank harian dan mingguan per sumber dana.', 'route' => 'erp.accounting.reconciliation', 'icon' => 'calendar-days'],
             ['title' => 'General Ledger', 'description' => 'Lihat jurnal umum yang sudah diposting.', 'route' => 'reports.general-ledger', 'icon' => 'book-open'],
             ['title' => 'Neraca Saldo', 'description' => 'Ringkasan saldo debit-kredit per akun.', 'route' => 'reports.trial-balance', 'icon' => 'scale'],
         ]);
+    }
+
+    public function payments(): Response
+    {
+        return Inertia::render('ERP/Accounting/Payments');
     }
 
     public function sales(): Response
@@ -66,6 +74,7 @@ class ERPModuleController extends Controller
     {
         return $this->renderModule('HR', [
             ['title' => 'Pembayaran Anggota', 'description' => 'Referensi pembayaran anggota saat ini.', 'route' => 'reports.member-payments', 'icon' => 'user-circle'],
+            ['title' => 'Legal', 'description' => 'Template dan dokumen legal untuk kontrak/perjanjian kerja sama.', 'route' => 'erp.hr.legal', 'icon' => 'document-text'],
         ]);
     }
 
@@ -83,8 +92,10 @@ class ERPModuleController extends Controller
     public function administration(): Response
     {
         return $this->renderModule('Administration', [
+            ['title' => 'ERP Setting', 'description' => 'Atur identitas aplikasi ERP seperti logo, nama aplikasi, dan tagline.', 'route' => 'erp.admin.erp-settings', 'icon' => 'document-text'],
             ['title' => 'Setting Nomor Dokumen', 'description' => 'Atur prefix dan sequence nomor dokumen agar konsisten lintas modul.', 'route' => 'erp.admin.document-sequences', 'icon' => 'document-text'],
             ['title' => 'Metode Pembayaran', 'description' => 'Kelola daftar metode pembayaran global untuk POS dan invoice.', 'route' => 'erp.admin.payment-methods', 'icon' => 'credit-card'],
+            ['title' => 'Landing Sites', 'description' => 'Atur mapping domain landing page dan warehouse default untuk masing-masing bisnis.', 'route' => 'erp.admin.landing-sites', 'icon' => 'globe-alt'],
             ['title' => 'Parser Rules Chatbot', 'description' => 'Atur rule parser berbasis keyword untuk chatbot ERP tanpa LLM.', 'route' => 'erp.admin.parser-rules', 'icon' => 'sparkles'],
             ['title' => 'Monitoring Log', 'description' => 'Pantau aktivitas ERP, transaksi, dan error aplikasi secara terpusat.', 'route' => 'erp.admin.system-logs.index', 'icon' => 'circle-stack'],
         ]);

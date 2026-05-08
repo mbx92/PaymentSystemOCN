@@ -90,7 +90,11 @@ const closeModal = () => {
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Log aktivitas & error</h2>
+          <p class="ocn-panel__desc">Saring berdasarkan level, channel, lalu klik baris untuk detail.</p>
+        </div>
         <div class="card-body space-y-4">
           <div class="flex flex-nowrap items-end gap-3 overflow-x-auto pb-1">
             <div class="min-w-[150px]">

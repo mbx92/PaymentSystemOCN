@@ -7,7 +7,7 @@ import { useForm, router } from '@inertiajs/vue3';
 import { ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 
-const props = defineProps({ cashIns: Object, total: Number, projects: Array, filters: Object });
+const props = defineProps({ cashIns: Object, total: Number, projects: Array, paymentMethods: Array, cashAccounts: Array, filters: Object });
 const { format } = useCurrency();
 
 const filters = ref({ ...props.filters });
@@ -17,9 +17,25 @@ watch(filters, (val) => {
     timer = setTimeout(() => router.get(route('cash-in.index'), val, { preserveState: true, replace: true }), 400);
 }, { deep: true });
 
-const form = useForm({ project_id: '', category: 'pendapatan_jasa', amount: 0, date: new Date().toISOString().slice(0,10), note: '' });
+const form = useForm({
+    project_id: '',
+    payment_method_id: '',
+    cash_account_id: '',
+    category: 'pendapatan_jasa',
+    amount: 0,
+    date: new Date().toISOString().slice(0,10),
+    note: '',
+});
 const editingId = ref(null);
-const editForm = useForm({ project_id: '', category: 'pendapatan_jasa', amount: 0, date: '', note: '' });
+const editForm = useForm({
+    project_id: '',
+    payment_method_id: '',
+    cash_account_id: '',
+    category: 'pendapatan_jasa',
+    amount: 0,
+    date: '',
+    note: '',
+});
 
 const submitAdd = () => form.post(route('cash-in.store'), {
     onSuccess: () => { form.reset(); document.getElementById('modal-add-cash-in').close(); }
@@ -27,7 +43,13 @@ const submitAdd = () => form.post(route('cash-in.store'), {
 
 const openEdit = (c) => {
     editingId.value = c.id;
-    Object.assign(editForm, { project_id: '', category: c.category, amount: c.amount, date: c.date, note: c.note ?? '' });
+    editForm.project_id = c.project_id;
+    editForm.payment_method_id = c.payment_method_id ?? '';
+    editForm.cash_account_id = c.cash_account_id ?? '';
+    editForm.category = c.category;
+    editForm.amount = c.amount;
+    editForm.date = c.date;
+    editForm.note = c.note ?? '';
     document.getElementById('modal-edit-cash-in').showModal();
 };
 const submitEdit = () => editForm.put(route('cash-in.update', editingId.value), {
@@ -71,16 +93,21 @@ const doDelete = () => { router.delete(route('cash-in.destroy', deletingId.value
             </div>
 
             <!-- Table -->
-            <div class="card bg-base-100 shadow">
+            <div class="ocn-panel">
+                <div class="ocn-panel__head">
+                    <h2 class="ocn-panel__title">Daftar kas masuk</h2>
+                    <p class="ocn-panel__desc">Transaksi sesuai filter di atas.</p>
+                </div>
                 <div class="overflow-x-auto">
                     <table class="table table-zebra">
                         <thead>
-                            <tr><th>Tanggal</th><th>Project</th><th>Kategori</th><th>Jumlah</th><th>Status</th><th>Jurnal</th><th>Keterangan</th><th>Oleh</th><th></th></tr>
+                            <tr><th>Tanggal</th><th>Project</th><th>Metode</th><th>Kategori</th><th>Jumlah</th><th>Status</th><th>Jurnal</th><th>Keterangan</th><th>Oleh</th><th></th></tr>
                         </thead>
                         <tbody>
                             <tr v-for="c in cashIns.data" :key="c.id">
                                 <td>{{ c.date }}</td>
                                 <td class="font-medium">{{ c.project_name }}</td>
+                                <td>{{ c.payment_method_name || '-' }}</td>
                                 <td><span class="badge badge-sm badge-ghost">{{ c.category }}</span></td>
                                 <td class="font-semibold text-success">{{ format(c.amount) }}</td>
                                 <td><StatusBadge :status="c.document_status" /></td>
@@ -95,7 +122,7 @@ const doDelete = () => { router.delete(route('cash-in.destroy', deletingId.value
                                 </td>
                             </tr>
                             <tr v-if="!cashIns.data.length">
-                                <td colspan="9" class="text-center py-10 text-base-content/50">Tidak ada data</td>
+                                <td colspan="10" class="text-center py-10 text-base-content/50">Tidak ada data</td>
                             </tr>
                         </tbody>
                     </table>
@@ -128,6 +155,22 @@ const doDelete = () => { router.delete(route('cash-in.destroy', deletingId.value
                             <option value="lainnya">Lainnya</option>
                         </select>
                     </div>
+                    <div>
+                        <label class="label"><span class="label-text">Sumber Dana Kas/Bank</span></label>
+                        <select v-model="form.cash_account_id" class="select select-bordered w-full">
+                            <option value="" disabled>-- Pilih Akun Kas/Bank --</option>
+                            <option v-for="acc in cashAccounts" :key="acc.id" :value="acc.id">{{ acc.code }} - {{ acc.name }}</option>
+                        </select>
+                        <p v-if="form.errors.cash_account_id" class="text-error text-xs mt-1">{{ form.errors.cash_account_id }}</p>
+                    </div>
+                    <div>
+                        <label class="label"><span class="label-text">Metode Pembayaran</span></label>
+                        <select v-model="form.payment_method_id" class="select select-bordered w-full">
+                            <option value="">-- Pilih Metode --</option>
+                            <option v-for="method in paymentMethods" :key="method.id" :value="method.id">{{ method.name }}</option>
+                        </select>
+                        <p v-if="form.errors.payment_method_id" class="text-error text-xs mt-1">{{ form.errors.payment_method_id }}</p>
+                    </div>
                     <CurrencyInput v-model="form.amount" label="Jumlah" :required="true" :error="form.errors.amount" />
                     <div>
                         <label class="label"><span class="label-text">Tanggal</span></label>
@@ -152,11 +195,34 @@ const doDelete = () => { router.delete(route('cash-in.destroy', deletingId.value
                 <h3 class="font-bold text-lg">Edit Kas Masuk</h3>
                 <div class="space-y-3 mt-4">
                     <div>
+                        <label class="label"><span class="label-text">Project <span class="text-error">*</span></span></label>
+                        <select v-model="editForm.project_id" class="select select-bordered w-full" :class="editForm.errors.project_id ? 'select-error' : ''">
+                            <option value="">-- Pilih Project --</option>
+                            <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
+                        </select>
+                    </div>
+                    <div>
                         <label class="label"><span class="label-text">Kategori</span></label>
                         <select v-model="editForm.category" class="select select-bordered w-full">
                             <option value="pendapatan_jasa">Pendapatan Jasa</option>
                             <option value="lainnya">Lainnya</option>
                         </select>
+                    </div>
+                    <div>
+                        <label class="label"><span class="label-text">Sumber Dana Kas/Bank</span></label>
+                        <select v-model="editForm.cash_account_id" class="select select-bordered w-full">
+                            <option value="" disabled>-- Pilih Akun Kas/Bank --</option>
+                            <option v-for="acc in cashAccounts" :key="acc.id" :value="acc.id">{{ acc.code }} - {{ acc.name }}</option>
+                        </select>
+                        <p v-if="editForm.errors.cash_account_id" class="text-error text-xs mt-1">{{ editForm.errors.cash_account_id }}</p>
+                    </div>
+                    <div>
+                        <label class="label"><span class="label-text">Metode Pembayaran</span></label>
+                        <select v-model="editForm.payment_method_id" class="select select-bordered w-full">
+                            <option value="">-- Pilih Metode --</option>
+                            <option v-for="method in paymentMethods" :key="method.id" :value="method.id">{{ method.name }}</option>
+                        </select>
+                        <p v-if="editForm.errors.payment_method_id" class="text-error text-xs mt-1">{{ editForm.errors.payment_method_id }}</p>
                     </div>
                     <CurrencyInput v-model="editForm.amount" label="Jumlah" :required="true" />
                     <div>

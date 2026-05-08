@@ -53,17 +53,21 @@ const exportExcel = () => window.location.href = route('export.monthly', { month
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                <div class="card bg-base-100 shadow">
+                <div class="ocn-panel">
+                    <div class="ocn-panel__head">
+                        <h2 class="ocn-panel__title">Breakdown pengeluaran</h2>
+                    </div>
                     <div class="card-body">
-                        <h2 class="card-title text-base">Breakdown Pengeluaran</h2>
                         <ExpensePieChart :data="expenseByCategory" />
                     </div>
                 </div>
 
                 <div class="space-y-4">
-                    <div class="card bg-base-100 shadow">
-                        <div class="card-body p-0">
-                            <div class="p-4 border-b border-base-300 font-semibold text-success">Kas Masuk</div>
+                    <div class="ocn-panel">
+                        <div class="ocn-panel__head">
+                            <h2 class="ocn-panel__title text-success">Kas masuk</h2>
+                        </div>
+                        <div class="overflow-x-auto">
                             <table class="table table-sm">
                                 <thead><tr><th>Project</th><th>Kategori</th><th class="text-right">Jumlah</th></tr></thead>
                                 <tbody>
@@ -77,9 +81,11 @@ const exportExcel = () => window.location.href = route('export.monthly', { month
                             </table>
                         </div>
                     </div>
-                    <div class="card bg-base-100 shadow">
-                        <div class="card-body p-0">
-                            <div class="p-4 border-b border-base-300 font-semibold text-error">Kas Keluar</div>
+                    <div class="ocn-panel">
+                        <div class="ocn-panel__head">
+                            <h2 class="ocn-panel__title text-error">Kas keluar</h2>
+                        </div>
+                        <div class="overflow-x-auto">
                             <table class="table table-sm">
                                 <thead><tr><th>Project</th><th>Kategori</th><th class="text-right">Jumlah</th></tr></thead>
                                 <tbody>

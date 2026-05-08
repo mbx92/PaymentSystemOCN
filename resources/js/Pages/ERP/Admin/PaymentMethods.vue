@@ -100,7 +100,10 @@ const toggleStatus = (method) => {
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Filter metode pembayaran</h2>
+        </div>
         <div class="card-body">
           <div class="flex flex-wrap items-end gap-3">
             <div class="min-w-[220px] grow">
@@ -120,7 +123,11 @@ const toggleStatus = (method) => {
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Daftar metode pembayaran</h2>
+          <p class="ocn-panel__desc">Digunakan di POS dan invoice project.</p>
+        </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra">
             <thead>

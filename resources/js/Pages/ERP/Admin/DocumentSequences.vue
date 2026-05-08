@@ -91,7 +91,11 @@ const filteredSequences = computed(() => {
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Filter sequence</h2>
+          <p class="ocn-panel__desc">Saring berdasarkan module, tipe dokumen, atau kata kunci.</p>
+        </div>
         <div class="card-body">
           <div class="flex flex-wrap items-end gap-3">
             <div class="min-w-[220px] grow">
@@ -117,7 +121,11 @@ const filteredSequences = computed(() => {
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Daftar nomor dokumen</h2>
+          <p class="ocn-panel__desc">Prefix, padding, dan angka berjalan per jenis dokumen.</p>
+        </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra">
             <thead><tr><th>Module</th><th>Document Type</th><th>Prefix</th><th>Padding</th><th>Next Number</th><th></th></tr></thead>

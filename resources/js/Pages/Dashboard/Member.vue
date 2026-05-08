@@ -13,18 +13,23 @@ const { format } = useCurrency();
             <h1 class="text-2xl font-bold">Dashboard Saya</h1>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
-                <div class="card bg-base-100 shadow">
+                <div class="ocn-panel">
+                    <div class="ocn-panel__head">
+                        <h2 class="ocn-panel__title">Ringkasan pendapatan</h2>
+                    </div>
                     <div class="card-body p-5">
-                        <h3 class="text-sm font-medium text-base-content/70">Total Pendapatan Saya</h3>
+                        <h3 class="text-sm font-medium text-base-content/70">Total pendapatan saya</h3>
                         <p class="text-3xl font-bold text-primary mt-1">{{ format(totalEarned) }}</p>
                         <p class="text-sm text-base-content/50 mt-1">dari {{ projectList.length }} project</p>
                     </div>
                 </div>
             </div>
 
-            <div class="card bg-base-100 shadow">
+            <div class="ocn-panel">
+                <div class="ocn-panel__head">
+                    <h2 class="ocn-panel__title">Riwayat project & pembayaran</h2>
+                </div>
                 <div class="card-body">
-                    <h2 class="card-title text-base">Riwayat Project & Pembayaran</h2>
                     <div class="overflow-x-auto">
                         <table class="table table-zebra table-sm">
                             <thead>

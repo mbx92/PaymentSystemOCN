@@ -127,6 +127,35 @@ body {
     box-shadow: 0 14px 36px rgba(15, 23, 42, 0.07), 0 2px 8px rgba(15, 23, 42, 0.04) !important;
 }
 
+/* Panel daftar / filter: radius & border selaras (bukan Daisy `card` generik) */
+.ocn-panel {
+    overflow: hidden;
+    border-radius: 1rem;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background-color: var(--color-base-100);
+    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.07), 0 2px 8px rgba(15, 23, 42, 0.04);
+}
+
+.ocn-panel__head {
+    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+    padding: 1rem 1.25rem;
+}
+
+.ocn-panel__title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--color-base-content);
+}
+
+.ocn-panel__desc {
+    margin: 0.35rem 0 0;
+    font-size: 0.875rem;
+    line-height: 1.45;
+    color: color-mix(in srgb, var(--color-base-content) 68%, transparent);
+}
+
 .card-title {
     letter-spacing: -0.02em;
 }

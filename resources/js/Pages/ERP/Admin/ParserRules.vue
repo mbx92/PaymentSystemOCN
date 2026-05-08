@@ -44,10 +44,6 @@ const editForm = useForm({
   response_text: '',
 });
 
-const parserTestForm = useForm({
-  message: '',
-});
-
 const selectedRule = ref(null);
 
 const toKeywordsArray = (value) => value
@@ -106,12 +102,6 @@ const submitEdit = () => {
     onSuccess: () => document.getElementById('modal-edit-parser-rule')?.close(),
   });
 };
-
-const submitParserTest = () => {
-  parserTestForm.post(route('erp.admin.parser-rules.test'), {
-    preserveScroll: true,
-  });
-};
 </script>
 
 <template>
@@ -129,45 +119,35 @@ const submitParserTest = () => {
         </div>
       </div>
 
-      <div class="grid gap-4 lg:grid-cols-3">
-        <div class="card bg-base-100 shadow lg:col-span-2">
-          <div class="card-body">
-            <div class="flex flex-wrap items-end gap-3">
-              <div class="min-w-[220px] grow">
-                <label class="label"><span class="label-text">Search</span></label>
-                <input v-model="filterSearch" type="text" class="input input-bordered w-full" placeholder="Cari nama rule / intent / catatan" />
-              </div>
-              <div class="w-full sm:w-48">
-                <label class="label"><span class="label-text">Status</span></label>
-                <select v-model="filterStatus" class="select select-bordered w-full">
-                  <option value="">Semua</option>
-                  <option value="active">active</option>
-                  <option value="inactive">inactive</option>
-                </select>
-              </div>
-              <button class="btn btn-outline" @click="applyFilters">Filter</button>
-              <button class="btn btn-primary" @click="openAddModal">+ Tambah Rule</button>
-            </div>
-          </div>
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Filter parser rule</h2>
         </div>
-
-        <div class="card bg-base-100 shadow">
-          <div class="card-body">
-            <h3 class="card-title text-base">Uji Parser</h3>
-            <textarea
-              v-model="parserTestForm.message"
-              class="textarea textarea-bordered min-h-[110px]"
-              placeholder="Contoh: tampilkan invoice yang belum dibayar"
-            />
-            <p v-if="parserTestForm.errors.message" class="text-error text-xs">{{ parserTestForm.errors.message }}</p>
-            <button class="btn btn-secondary btn-sm mt-2" :disabled="parserTestForm.processing" @click="submitParserTest">
-              Test Match Rule
-            </button>
+        <div class="card-body">
+          <div class="flex flex-wrap items-end gap-3">
+            <div class="min-w-[220px] grow">
+              <label class="label"><span class="label-text">Search</span></label>
+              <input v-model="filterSearch" type="text" class="input input-bordered w-full" placeholder="Cari nama rule / intent / catatan" />
+            </div>
+            <div class="w-full sm:w-48">
+              <label class="label"><span class="label-text">Status</span></label>
+              <select v-model="filterStatus" class="select select-bordered w-full">
+                <option value="">Semua</option>
+                <option value="active">active</option>
+                <option value="inactive">inactive</option>
+              </select>
+            </div>
+            <button class="btn btn-outline" @click="applyFilters">Filter</button>
+            <button class="btn btn-primary" @click="openAddModal">+ Tambah Rule</button>
           </div>
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Daftar parser rule</h2>
+          <p class="ocn-panel__desc">Keyword, intent, dan balasan untuk chatbot ERP.</p>
+        </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra">
             <thead>

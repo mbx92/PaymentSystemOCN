@@ -34,7 +34,6 @@ const paymentItems = computed(() => {
     || (payment.date || '').toLowerCase().includes(term)
   );
 });
-
 const paymentForm = useForm({
   amount: props.invoice.remaining_amount || 0,
   date: new Date().toISOString().slice(0, 10),
@@ -144,9 +143,11 @@ const downloadReceipt = (payment) => window.open(route('erp.sales.project-invoic
       </div>
 
       <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div class="card bg-base-100 shadow">
+        <div class="ocn-panel">
+          <div class="ocn-panel__head">
+            <h2 class="ocn-panel__title">Detail project</h2>
+          </div>
           <div class="card-body">
-            <h2 class="card-title text-base">Detail Project</h2>
             <div class="grid grid-cols-2 gap-2 text-sm">
               <div class="text-base-content/60">Client</div><div>{{ invoice.client }}</div>
               <div class="text-base-content/60">Kontak</div><div>{{ invoice.client_contact || '-' }}</div>
@@ -158,9 +159,11 @@ const downloadReceipt = (payment) => window.open(route('erp.sales.project-invoic
           </div>
         </div>
 
-        <div class="card bg-base-100 shadow">
+        <div class="ocn-panel">
+          <div class="ocn-panel__head">
+            <h2 class="ocn-panel__title">Termin project</h2>
+          </div>
           <div class="card-body">
-            <h2 class="card-title text-base">Termin Project</h2>
             <div class="space-y-2">
               <div v-for="term in invoice.payments" :key="term.id" class="rounded-lg border border-base-300 p-3 text-sm">
                 <div class="flex items-center justify-between gap-3">
@@ -175,13 +178,12 @@ const downloadReceipt = (payment) => window.open(route('erp.sales.project-invoic
         </div>
       </div>
 
-      <div class="card bg-base-100 shadow">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head flex flex-wrap items-center justify-between gap-2">
+          <h2 class="ocn-panel__title">Pembayaran invoice</h2>
+          <button class="btn btn-primary btn-sm shrink-0" :disabled="invoice.remaining_amount <= 0" @click="openPaymentModal">+ Pembayaran</button>
+        </div>
         <div class="card-body space-y-4">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <h2 class="font-semibold">Pembayaran Invoice</h2>
-            <button class="btn btn-primary btn-sm" :disabled="invoice.remaining_amount <= 0" @click="openPaymentModal">+ Pembayaran</button>
-          </div>
-
           <div class="rounded-xl border border-base-300 bg-base-200/40 p-4">
             <div class="flex items-center justify-between gap-3 text-sm">
               <span class="text-base-content/70">Progress pembayaran</span>
