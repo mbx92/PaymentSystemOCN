@@ -29,31 +29,13 @@ class PersonalModuleController extends Controller
                     'route' => 'personal.budgets',
                     'icon' => 'clipboard-list',
                 ],
+                [
+                    'title' => 'Investasi',
+                    'description' => 'Catat instrumen, setoran, penarikan, dan dividen.',
+                    'route' => 'personal.investments',
+                    'icon' => 'arrow-trending-up',
+                ],
             ],
-        ]);
-    }
-
-    public function overview(): Response
-    {
-        return Inertia::render('Personal/Workspace', [
-            'title' => 'Ringkasan keuangan',
-            'description' => 'Dashboard ringkas untuk keuangan pribadi dan keluarga.',
-        ]);
-    }
-
-    public function transactions(): Response
-    {
-        return Inertia::render('Personal/Workspace', [
-            'title' => 'Pemasukan & pengeluaran',
-            'description' => 'Daftar dan form transaksi akan ditambahkan di sini.',
-        ]);
-    }
-
-    public function budgets(): Response
-    {
-        return Inertia::render('Personal/Workspace', [
-            'title' => 'Anggaran keluarga',
-            'description' => 'Perencanaan dan pemantauan anggaran per periode.',
         ]);
     }
 }

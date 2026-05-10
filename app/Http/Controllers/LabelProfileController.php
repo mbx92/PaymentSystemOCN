@@ -5,16 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\LabelProfile;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
-use Inertia\Response;
 
 class LabelProfileController extends Controller
 {
-    public function index(): Response
+    public function index(): RedirectResponse
     {
-        return Inertia::render('ERP/Admin/LabelProfiles', [
-            'profiles' => LabelProfile::query()->orderBy('name')->get(),
-        ]);
+        return redirect()->route('erp.admin.printer-and-label', ['tab' => 'label-profiles']);
     }
 
     public function store(Request $request): RedirectResponse

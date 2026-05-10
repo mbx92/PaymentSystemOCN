@@ -6,6 +6,7 @@ import { computed, ref } from 'vue';
 const props = defineProps({
   landingSites: Array,
   warehouses: Array,
+  cmsModule: { type: Boolean, default: false },
 });
 
 const filterKeyword = ref('');
@@ -116,13 +117,13 @@ const toggleStatus = (site) => {
   <AppLayout>
     <div class="space-y-5">
       <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Administration Workspace</p>
+        <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">{{ cmsModule ? 'Website CMS' : 'Administration Workspace' }}</p>
         <div class="mt-2 flex items-center justify-between gap-3">
           <div>
             <h1 class="text-3xl font-bold tracking-tight">Landing Sites</h1>
             <p class="mt-2 text-sm text-base-content/70">Mapping domain landing page ke konfigurasi warehouse default.</p>
           </div>
-          <Link class="btn btn-ghost btn-sm" :href="route('erp.administration')">Back</Link>
+          <Link class="btn btn-ghost btn-sm" :href="cmsModule ? route('erp.cms') : route('erp.administration')">Back</Link>
         </div>
       </div>
 
@@ -184,6 +185,10 @@ const toggleStatus = (site) => {
                 </td>
                 <td class="text-right">
                   <div class="flex justify-end gap-2">
+                    <Link
+                      class="btn btn-ghost btn-xs"
+                      :href="`${route('erp.admin.landing-sites.cms', site.id)}${cmsModule ? '?cms=1' : ''}`"
+                    >CMS</Link>
                     <button class="btn btn-ghost btn-xs" @click="openEditModal(site)">Edit</button>
                     <button
                       class="btn btn-xs"
@@ -224,6 +229,7 @@ const toggleStatus = (site) => {
             <select v-model="form.layout_key" class="select select-bordered w-full">
               <option value="toko">Toko (retail)</option>
               <option value="cctv">CCTV & jaringan</option>
+              <option value="coming_soon">Coming Soon (simple)</option>
             </select>
             <p v-if="form.errors.layout_key" class="text-error text-xs mt-1">{{ form.errors.layout_key }}</p>
           </div>
@@ -274,6 +280,7 @@ const toggleStatus = (site) => {
             <select v-model="editForm.layout_key" class="select select-bordered w-full">
               <option value="toko">Toko (retail)</option>
               <option value="cctv">CCTV & jaringan</option>
+              <option value="coming_soon">Coming Soon (simple)</option>
             </select>
             <p v-if="editForm.errors.layout_key" class="text-error text-xs mt-1">{{ editForm.errors.layout_key }}</p>
           </div>

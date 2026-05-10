@@ -30,6 +30,7 @@ class Project extends Model
         'finished_at',
         'description',
         'legal_vault_path',
+        'import_key',
     ];
 
     protected $casts = [

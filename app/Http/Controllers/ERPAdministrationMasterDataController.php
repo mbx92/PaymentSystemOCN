@@ -4,10 +4,15 @@ namespace App\Http\Controllers;
 
 use App\ERP\Core\Models\DocumentSequence;
 use App\ERP\Inventory\Models\Warehouse;
+use App\Exports\MasterProductImportTemplateExport;
+use App\Exports\ProjectImportTemplateExport;
+use App\Imports\MasterProductsImport;
+use App\Imports\ProjectsImport;
 use App\Models\ErpChatParserRule;
 use App\Models\ErpSetting;
 use App\Models\LabelProfile;
 use App\Models\LandingSite;
+use App\Models\LandingSitePage;
 use App\Models\PaymentMethod;
 use App\Services\LanEscPosPrinter;
 use App\Services\LanTsplPrinter;
@@ -15,6 +20,7 @@ use App\Services\ServerMetricsService;
 use App\Services\ThermalPosReceiptData;
 use App\Services\ThermalPosReceiptRenderer;
 use App\Services\WindowsSmbRawPrinter;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -22,6 +28,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Maatwebsite\Excel\Facades\Excel;
 use RuntimeException;
 
 class ERPAdministrationMasterDataController extends Controller
@@ -80,7 +87,7 @@ class ERPAdministrationMasterDataController extends Controller
     {
         return Inertia::render('ERP/Admin/LandingSites', [
             'landingSites' => LandingSite::query()
-                ->with(['warehouse:id,code,name'])
+                ->with(['warehouse:id,code,name', 'page:id,landing_site_id,is_published'])
                 ->orderBy('is_active', 'desc')
                 ->orderBy('name')
                 ->get(),
@@ -95,7 +102,7 @@ class ERPAdministrationMasterDataController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:120',
             'domain' => 'required|string|max:190|unique:landing_sites,domain',
-            'layout_key' => 'required|string|in:toko,cctv',
+            'layout_key' => 'required|string|in:toko,cctv,coming_soon',
             'warehouse_id' => 'nullable|exists:warehouses,id',
             'is_active' => 'required|boolean',
         ]);
@@ -112,7 +119,7 @@ class ERPAdministrationMasterDataController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:120',
             'domain' => 'required|string|max:190|unique:landing_sites,domain,'.$landingSite->id,
-            'layout_key' => 'required|string|in:toko,cctv',
+            'layout_key' => 'required|string|in:toko,cctv,coming_soon',
             'warehouse_id' => 'nullable|exists:warehouses,id',
             'is_active' => 'required|boolean',
         ]);
@@ -122,6 +129,65 @@ class ERPAdministrationMasterDataController extends Controller
         $landingSite->update($validated);
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Landing site berhasil diperbarui.']);
+    }
+
+    public function landingSiteCms(Request $request, LandingSite $landingSite): Response
+    {
+        $landingSite->load('page');
+
+        return Inertia::render('ERP/Admin/LandingSiteCms', [
+            'landingSite' => $landingSite,
+            'cmsModule' => $request->boolean('cms'),
+            'pageContent' => [
+                'headline' => $landingSite->page?->headline ?? '',
+                'subheadline' => $landingSite->page?->subheadline ?? '',
+                'body' => $landingSite->page?->body ?? '',
+                'primary_cta_text' => $landingSite->page?->primary_cta_text ?? '',
+                'primary_cta_url' => $landingSite->page?->primary_cta_url ?? '',
+                'secondary_cta_text' => $landingSite->page?->secondary_cta_text ?? '',
+                'secondary_cta_url' => $landingSite->page?->secondary_cta_url ?? '',
+                'contact_text' => $landingSite->page?->contact_text ?? '',
+                'seo_title' => $landingSite->page?->seo_title ?? '',
+                'seo_description' => $landingSite->page?->seo_description ?? '',
+                'is_published' => (bool) ($landingSite->page?->is_published ?? true),
+            ],
+        ]);
+    }
+
+    public function updateLandingSiteCms(Request $request, LandingSite $landingSite): RedirectResponse
+    {
+        $validated = $request->validate([
+            'headline' => 'nullable|string|max:190',
+            'subheadline' => 'nullable|string|max:255',
+            'body' => 'nullable|string|max:4000',
+            'primary_cta_text' => 'nullable|string|max:80',
+            'primary_cta_url' => 'nullable|string|max:500',
+            'secondary_cta_text' => 'nullable|string|max:80',
+            'secondary_cta_url' => 'nullable|string|max:500',
+            'contact_text' => 'nullable|string|max:255',
+            'seo_title' => 'nullable|string|max:190',
+            'seo_description' => 'nullable|string|max:255',
+            'is_published' => 'required|boolean',
+        ]);
+
+        LandingSitePage::query()->updateOrCreate(
+            ['landing_site_id' => $landingSite->id],
+            [
+                'headline' => trim((string) ($validated['headline'] ?? '')) ?: null,
+                'subheadline' => trim((string) ($validated['subheadline'] ?? '')) ?: null,
+                'body' => trim((string) ($validated['body'] ?? '')) ?: null,
+                'primary_cta_text' => trim((string) ($validated['primary_cta_text'] ?? '')) ?: null,
+                'primary_cta_url' => trim((string) ($validated['primary_cta_url'] ?? '')) ?: null,
+                'secondary_cta_text' => trim((string) ($validated['secondary_cta_text'] ?? '')) ?: null,
+                'secondary_cta_url' => trim((string) ($validated['secondary_cta_url'] ?? '')) ?: null,
+                'contact_text' => trim((string) ($validated['contact_text'] ?? '')) ?: null,
+                'seo_title' => trim((string) ($validated['seo_title'] ?? '')) ?: null,
+                'seo_description' => trim((string) ($validated['seo_description'] ?? '')) ?: null,
+                'is_published' => (bool) $validated['is_published'],
+            ]
+        );
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Konten landing page berhasil disimpan.']);
     }
 
     public function parserRules(Request $request): Response
@@ -295,12 +361,25 @@ class ERPAdministrationMasterDataController extends Controller
         return back()->with('flash', ['type' => 'success', 'message' => 'Metode pembayaran berhasil diperbarui.']);
     }
 
-    public function thermalPrinter(): Response
+    public function thermalPrinter(): RedirectResponse
     {
-        $setting = ErpSetting::query()->first();
+        return redirect()->route('erp.admin.printer-and-label', ['tab' => 'thermal']);
+    }
+
+    public function printerAndLabelSettings(Request $request): Response
+    {
+        $tab = $request->string('tab')->toString();
+        if (! in_array($tab, ['thermal', 'label-smb', 'label-lan', 'label-profiles'], true)) {
+            $tab = 'thermal';
+        }
+
+        $setting = ErpSetting::query()->with(['labelProfile', 'labelLanProfile'])->first();
         $renderer = new ThermalPosReceiptRenderer;
 
-        return Inertia::render('ERP/Admin/ThermalPrinter', [
+        $proto = $setting?->labelProfile?->protocol ?? $setting?->label_smb_protocol ?? 'zpl';
+
+        return Inertia::render('ERP/Admin/PrinterAndLabelSettings', [
+            'activeTab' => $tab,
             'printer' => [
                 'thermal_printer_enabled' => (bool) ($setting?->thermal_printer_enabled ?? false),
                 'thermal_printer_host' => $setting?->thermal_printer_host ?? '',
@@ -321,6 +400,23 @@ class ERPAdministrationMasterDataController extends Controller
                 'item_line' => $renderer->defaultItemLineTemplate(),
                 'footer' => $renderer->defaultFooterTemplate(),
             ],
+            'labelSmb' => [
+                'label_smb_enabled' => (bool) ($setting?->label_smb_enabled ?? false),
+                'label_smb_unc' => $setting?->label_smb_unc ?? '',
+                'label_smb_protocol' => in_array($proto, ['zpl', 'epl'], true) ? $proto : 'zpl',
+                'label_smb_profile_id' => $setting?->label_smb_profile_id,
+            ],
+            'labelLan' => [
+                'label_lan_enabled' => (bool) ($setting?->label_lan_enabled ?? false),
+                'label_lan_host' => $setting?->label_lan_host ?? '',
+                'label_lan_port' => (int) ($setting?->label_lan_port ?? 9100),
+                'label_lan_profile_id' => $setting?->label_lan_profile_id,
+                'label_smb_profile_id' => $setting?->label_smb_profile_id,
+            ],
+            'labelProfiles' => LabelProfile::query()->orderBy('name')->get([
+                'id', 'name', 'width_mm', 'height_mm', 'dpi', 'margin_left_mm', 'margin_top_mm', 'gap_mm', 'protocol',
+            ]),
+            'serverIsWindows' => PHP_OS_FAMILY === 'Windows',
         ]);
     }
 
@@ -404,6 +500,50 @@ class ERPAdministrationMasterDataController extends Controller
         }
     }
 
+    public function previewThermalReceipt(Request $request, ThermalPosReceiptRenderer $renderer, LanEscPosPrinter $printer): JsonResponse
+    {
+        $validated = $request->validate([
+            'thermal_paper_width' => 'required|string|in:58,80',
+            'thermal_pos_header_template' => 'nullable|string|max:16000',
+            'thermal_pos_item_line_template' => 'nullable|string|max:16000',
+            'thermal_pos_footer_template' => 'nullable|string|max:16000',
+            'thermal_pos_margin_left_mm' => 'nullable|numeric|min:0|max:25',
+            'thermal_pos_header_align' => 'required|string|in:left,center,right',
+            'thermal_pos_item_align' => 'required|string|in:left,center,right',
+            'thermal_pos_footer_align' => 'required|string|in:left,center,right',
+            'thermal_pos_section_gap' => 'required|integer|min:0|max:3',
+            'thermal_pos_header_emphasis' => 'required|boolean',
+        ]);
+
+        $setting = ErpSetting::query()->first();
+        $sample = ThermalPosReceiptData::sample()->withAppName((string) ($setting?->app_name ?: 'OCN ERP Suite'));
+
+        $template = [
+            'header' => $validated['thermal_pos_header_template'] ?? null,
+            'item_line' => $validated['thermal_pos_item_line_template'] ?? null,
+            'footer' => $validated['thermal_pos_footer_template'] ?? null,
+        ];
+
+        $layout = [
+            'header_align' => $validated['thermal_pos_header_align'],
+            'item_align' => $validated['thermal_pos_item_align'],
+            'footer_align' => $validated['thermal_pos_footer_align'],
+            'section_gap' => (int) $validated['thermal_pos_section_gap'],
+            'header_emphasis' => (bool) $validated['thermal_pos_header_emphasis'],
+        ];
+
+        $paper = $printer->normalizePaperWidth($validated['thermal_paper_width']);
+        $cols = $printer->paperColumnWidth($paper);
+        $marginMm = (float) ($validated['thermal_pos_margin_left_mm'] ?? 0);
+        $marginChars = ThermalPosReceiptRenderer::marginCharsFromMm($marginMm, $paper, $cols);
+        $layout['content_cols'] = max(8, $cols - $marginChars);
+
+        $segments = $renderer->buildReceiptSegments($template, $sample, $paper, $cols, $layout);
+        $preview = $printer->previewReceiptVisual($segments, $paper, $marginChars);
+
+        return response()->json($preview);
+    }
+
     public function testThermalPosReceipt(Request $request, LanEscPosPrinter $printer, ThermalPosReceiptRenderer $renderer): RedirectResponse
     {
         $validated = $request->validate([
@@ -433,6 +573,7 @@ class ERPAdministrationMasterDataController extends Controller
         ];
         $marginMm = (float) ($setting?->thermal_pos_margin_left_mm ?? 0);
         $marginChars = ThermalPosReceiptRenderer::marginCharsFromMm($marginMm, $paper, $cols);
+        $layout['content_cols'] = max(8, $cols - $marginChars);
         $segments = $renderer->buildReceiptSegments($template, $sample, $paper, $cols, $layout);
 
         try {
@@ -456,24 +597,9 @@ class ERPAdministrationMasterDataController extends Controller
         }
     }
 
-    public function labelPrinterSmb(): Response
+    public function labelPrinterSmb(): RedirectResponse
     {
-        $setting = ErpSetting::query()->with('labelProfile')->first();
-
-        $proto = $setting?->labelProfile?->protocol ?? $setting?->label_smb_protocol ?? 'zpl';
-
-        return Inertia::render('ERP/Admin/LabelPrinterSmb', [
-            'labelSmb' => [
-                'label_smb_enabled' => (bool) ($setting?->label_smb_enabled ?? false),
-                'label_smb_unc' => $setting?->label_smb_unc ?? '',
-                'label_smb_protocol' => in_array($proto, ['zpl', 'epl'], true) ? $proto : 'zpl',
-                'label_smb_profile_id' => $setting?->label_smb_profile_id,
-            ],
-            'labelProfiles' => LabelProfile::query()->orderBy('name')->get([
-                'id', 'name', 'width_mm', 'height_mm', 'dpi', 'margin_left_mm', 'margin_top_mm', 'gap_mm', 'protocol',
-            ]),
-            'serverIsWindows' => PHP_OS_FAMILY === 'Windows',
-        ]);
+        return redirect()->route('erp.admin.printer-and-label', ['tab' => 'label-smb']);
     }
 
     public function updateLabelPrinterSmb(Request $request, WindowsSmbRawPrinter $smb): RedirectResponse
@@ -555,22 +681,88 @@ class ERPAdministrationMasterDataController extends Controller
         }
     }
 
-    public function labelPrinterLan(): Response
+    public function labelPrinterLan(): RedirectResponse
     {
-        $setting = ErpSetting::query()->with(['labelProfile', 'labelLanProfile'])->first();
+        return redirect()->route('erp.admin.printer-and-label', ['tab' => 'label-lan']);
+    }
 
-        return Inertia::render('ERP/Admin/LabelPrinterLan', [
-            'labelLan' => [
-                'label_lan_enabled' => (bool) ($setting?->label_lan_enabled ?? false),
-                'label_lan_host' => $setting?->label_lan_host ?? '',
-                'label_lan_port' => (int) ($setting?->label_lan_port ?? 9100),
-                'label_lan_profile_id' => $setting?->label_lan_profile_id,
-                'label_smb_profile_id' => $setting?->label_smb_profile_id,
-            ],
-            'labelProfiles' => LabelProfile::query()->orderBy('name')->get([
-                'id', 'name', 'width_mm', 'height_mm', 'dpi', 'margin_left_mm', 'margin_top_mm', 'gap_mm', 'protocol',
-            ]),
+    public function dataImport(Request $request): Response
+    {
+        $tab = $request->string('tab')->toString();
+        if (! in_array($tab, ['products', 'projects'], true)) {
+            $tab = 'products';
+        }
+
+        return Inertia::render('ERP/Admin/DataImport', [
+            'activeTab' => $tab,
         ]);
+    }
+
+    public function masterProductImport(): RedirectResponse
+    {
+        return redirect()->route('erp.admin.data-import', ['tab' => 'products']);
+    }
+
+    public function downloadMasterProductImportTemplate()
+    {
+        return Excel::download(new MasterProductImportTemplateExport, 'template-import-produk-master.xlsx');
+    }
+
+    public function downloadProjectImportTemplate()
+    {
+        return Excel::download(new ProjectImportTemplateExport, 'template-import-project.xlsx');
+    }
+
+    public function importMasterProducts(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:xlsx,xls,csv|max:10240',
+        ]);
+
+        $import = new MasterProductsImport;
+        Excel::import($import, $request->file('file'));
+
+        $errCount = count($import->errors);
+        $msg = "Impor produk selesai: {$import->imported} baris disimpan.";
+        if ($errCount > 0) {
+            $msg .= " {$errCount} baris dilewati (lihat detail di bawah).";
+        }
+
+        return redirect()
+            ->route('erp.admin.data-import', ['tab' => 'products'])
+            ->with('flash', [
+                'type' => $errCount && $import->imported === 0 ? 'error' : ($errCount ? 'warning' : 'success'),
+                'message' => $msg,
+                'import_errors' => $import->errors,
+                'imported_count' => $import->imported,
+                'import_kind' => 'products',
+            ]);
+    }
+
+    public function importProjects(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:xlsx,xls,csv|max:10240',
+        ]);
+
+        $import = new ProjectsImport;
+        Excel::import($import, $request->file('file'));
+
+        $errCount = count($import->errors);
+        $msg = "Impor project selesai: {$import->imported} baris disimpan.";
+        if ($errCount > 0) {
+            $msg .= " {$errCount} baris dilewati (lihat detail di bawah).";
+        }
+
+        return redirect()
+            ->route('erp.admin.data-import', ['tab' => 'projects'])
+            ->with('flash', [
+                'type' => $errCount && $import->imported === 0 ? 'error' : ($errCount ? 'warning' : 'success'),
+                'message' => $msg,
+                'import_errors' => $import->errors,
+                'imported_count' => $import->imported,
+                'import_kind' => 'projects',
+            ]);
     }
 
     public function updateLabelPrinterLan(Request $request): RedirectResponse

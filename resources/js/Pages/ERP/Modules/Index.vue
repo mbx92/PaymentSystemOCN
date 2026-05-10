@@ -4,6 +4,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import {
   ArrowDownCircleIcon,
   ArrowUpCircleIcon,
+  ArrowUpTrayIcon,
   BookOpenIcon,
   ScaleIcon,
   ChartBarIcon,
@@ -28,7 +29,6 @@ import {
   CreditCardIcon,
   PrinterIcon,
   ShareIcon,
-  RectangleStackIcon,
 } from '@heroicons/vue/24/outline';
 
 defineProps({
@@ -39,6 +39,7 @@ defineProps({
 const iconMap = {
   'arrow-down-circle': ArrowDownCircleIcon,
   'arrow-up-circle': ArrowUpCircleIcon,
+  'arrow-up-tray': ArrowUpTrayIcon,
   'book-open': BookOpenIcon,
   scale: ScaleIcon,
   'chart-bar': ChartBarIcon,
@@ -62,7 +63,6 @@ const iconMap = {
   'credit-card': CreditCardIcon,
   printer: PrinterIcon,
   share: ShareIcon,
-  'rectangle-stack': RectangleStackIcon,
 };
 
 const iconFor = (menu) => iconMap[menu.icon] ?? Squares2X2Icon;

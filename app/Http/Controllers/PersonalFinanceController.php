@@ -1,0 +1,499 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\PersonalBudget;
+use App\Models\PersonalCategory;
+use App\Models\PersonalInvestment;
+use App\Models\PersonalInvestmentMovement;
+use App\Models\PersonalTransaction;
+use App\Models\PersonalWallet;
+use Carbon\Carbon;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class PersonalFinanceController extends Controller
+{
+    public function overview(Request $request): Response
+    {
+        $userId = (int) $request->user()->id;
+        $this->ensureDefaults($userId);
+
+        $wallets = PersonalWallet::query()
+            ->where('user_id', $userId)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+
+        $walletRows = $wallets->map(function (PersonalWallet $w) {
+            $in = (float) PersonalTransaction::query()->where('wallet_id', $w->id)->where('type', 'income')->sum('amount');
+            $out = (float) PersonalTransaction::query()->where('wallet_id', $w->id)->where('type', 'expense')->sum('amount');
+
+            return [
+                'id' => $w->id,
+                'name' => $w->name,
+                'currency' => $w->currency,
+                'balance' => round($in - $out, 2),
+            ];
+        });
+
+        $now = now();
+        $monthStart = $now->copy()->startOfMonth()->toDateString();
+        $monthEnd = $now->copy()->endOfMonth()->toDateString();
+
+        $monthIncome = (float) PersonalTransaction::query()
+            ->where('user_id', $userId)
+            ->where('type', 'income')
+            ->whereBetween('occurred_on', [$monthStart, $monthEnd])
+            ->sum('amount');
+
+        $monthExpense = (float) PersonalTransaction::query()
+            ->where('user_id', $userId)
+            ->where('type', 'expense')
+            ->whereBetween('occurred_on', [$monthStart, $monthEnd])
+            ->sum('amount');
+
+        $chartLabels = [];
+        $chartIncome = [];
+        $chartExpense = [];
+        for ($i = 5; $i >= 0; $i--) {
+            $d = now()->subMonths($i);
+            $chartLabels[] = $d->translatedFormat('M Y');
+            $chartIncome[] = round((float) PersonalTransaction::query()
+                ->where('user_id', $userId)
+                ->where('type', 'income')
+                ->whereYear('occurred_on', $d->year)
+                ->whereMonth('occurred_on', $d->month)
+                ->sum('amount'), 2);
+            $chartExpense[] = round((float) PersonalTransaction::query()
+                ->where('user_id', $userId)
+                ->where('type', 'expense')
+                ->whereYear('occurred_on', $d->year)
+                ->whereMonth('occurred_on', $d->month)
+                ->sum('amount'), 2);
+        }
+
+        return Inertia::render('Personal/Overview', [
+            'wallets' => $walletRows,
+            'month' => [
+                'label' => $now->translatedFormat('F Y'),
+                'income' => round($monthIncome, 2),
+                'expense' => round($monthExpense, 2),
+                'net' => round($monthIncome - $monthExpense, 2),
+            ],
+            'chart' => [
+                'labels' => $chartLabels,
+                'income' => $chartIncome,
+                'expense' => $chartExpense,
+            ],
+        ]);
+    }
+
+    public function transactions(Request $request): Response
+    {
+        $userId = (int) $request->user()->id;
+        $this->ensureDefaults($userId);
+
+        $wallets = PersonalWallet::query()->where('user_id', $userId)->orderBy('name')->get(['id', 'name', 'currency']);
+        $categories = PersonalCategory::query()->where('user_id', $userId)->orderBy('type')->orderBy('name')->get(['id', 'name', 'type', 'color']);
+
+        $transactions = PersonalTransaction::query()
+            ->where('user_id', $userId)
+            ->with(['wallet:id,name', 'category:id,name,type'])
+            ->orderByDesc('occurred_on')
+            ->orderByDesc('id')
+            ->limit(200)
+            ->get()
+            ->map(fn (PersonalTransaction $t) => [
+                'id' => $t->id,
+                'wallet_id' => $t->wallet_id,
+                'category_id' => $t->category_id,
+                'type' => $t->type,
+                'amount' => (float) $t->amount,
+                'occurred_on' => $t->occurred_on->format('Y-m-d'),
+                'note' => $t->note,
+                'wallet' => $t->wallet?->name,
+                'category' => $t->category?->name,
+                'category_type' => $t->category?->type,
+            ]);
+
+        return Inertia::render('Personal/Transactions', [
+            'wallets' => $wallets,
+            'categories' => $categories,
+            'transactions' => $transactions,
+        ]);
+    }
+
+    public function storeTransaction(Request $request): RedirectResponse
+    {
+        $userId = (int) $request->user()->id;
+        $this->ensureDefaults($userId);
+
+        $validated = $request->validate([
+            'wallet_id' => ['required', Rule::exists('personal_wallets', 'id')->where('user_id', $userId)],
+            'category_id' => ['nullable', Rule::exists('personal_categories', 'id')->where('user_id', $userId)],
+            'type' => ['required', Rule::in(['income', 'expense'])],
+            'amount' => 'required|numeric|min:0.01',
+            'occurred_on' => 'required|date',
+            'note' => 'nullable|string|max:500',
+        ]);
+
+        if (! empty($validated['category_id'])) {
+            $cat = PersonalCategory::query()->where('user_id', $userId)->findOrFail((int) $validated['category_id']);
+            if ($cat->type !== $validated['type']) {
+                return back()->with('flash', ['type' => 'error', 'message' => 'Kategori tidak cocok dengan tipe transaksi.']);
+            }
+        }
+
+        PersonalTransaction::query()->create([
+            'user_id' => $userId,
+            'wallet_id' => (int) $validated['wallet_id'],
+            'category_id' => isset($validated['category_id']) ? (int) $validated['category_id'] : null,
+            'type' => $validated['type'],
+            'amount' => number_format((float) $validated['amount'], 2, '.', ''),
+            'occurred_on' => Carbon::parse($validated['occurred_on'])->format('Y-m-d'),
+            'note' => $validated['note'] ?? null,
+        ]);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Transaksi tersimpan.']);
+    }
+
+    public function updateTransaction(Request $request, PersonalTransaction $transaction): RedirectResponse
+    {
+        $this->assertTransactionOwner($request, $transaction);
+
+        $validated = $request->validate([
+            'wallet_id' => ['required', Rule::exists('personal_wallets', 'id')->where('user_id', $transaction->user_id)],
+            'category_id' => ['nullable', Rule::exists('personal_categories', 'id')->where('user_id', $transaction->user_id)],
+            'type' => ['required', Rule::in(['income', 'expense'])],
+            'amount' => 'required|numeric|min:0.01',
+            'occurred_on' => 'required|date',
+            'note' => 'nullable|string|max:500',
+        ]);
+
+        if (! empty($validated['category_id'])) {
+            $cat = PersonalCategory::query()->where('user_id', $transaction->user_id)->findOrFail((int) $validated['category_id']);
+            if ($cat->type !== $validated['type']) {
+                return back()->with('flash', ['type' => 'error', 'message' => 'Kategori tidak cocok dengan tipe transaksi.']);
+            }
+        }
+
+        $transaction->update([
+            'wallet_id' => (int) $validated['wallet_id'],
+            'category_id' => isset($validated['category_id']) ? (int) $validated['category_id'] : null,
+            'type' => $validated['type'],
+            'amount' => number_format((float) $validated['amount'], 2, '.', ''),
+            'occurred_on' => Carbon::parse($validated['occurred_on'])->format('Y-m-d'),
+            'note' => $validated['note'] ?? null,
+        ]);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Transaksi diperbarui.']);
+    }
+
+    public function destroyTransaction(Request $request, PersonalTransaction $transaction): RedirectResponse
+    {
+        $this->assertTransactionOwner($request, $transaction);
+        $transaction->delete();
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Transaksi dihapus.']);
+    }
+
+    public function storeCategory(Request $request): RedirectResponse
+    {
+        $userId = (int) $request->user()->id;
+        $this->ensureDefaults($userId);
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:120',
+            'type' => ['required', Rule::in(['income', 'expense'])],
+            'color' => 'nullable|string|max:16',
+        ]);
+
+        PersonalCategory::query()->firstOrCreate(
+            [
+                'user_id' => $userId,
+                'name' => trim($validated['name']),
+                'type' => $validated['type'],
+            ],
+            ['color' => $validated['color'] ?? null]
+        );
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Kategori ditambahkan.']);
+    }
+
+    public function budgets(Request $request): Response
+    {
+        $userId = (int) $request->user()->id;
+        $this->ensureDefaults($userId);
+
+        $year = (int) $request->input('year', now()->year);
+        $month = (int) $request->input('month', now()->month);
+        $year = max(2000, min(2100, $year));
+        $month = max(1, min(12, $month));
+
+        $start = Carbon::createFromDate($year, $month, 1)->startOfMonth()->toDateString();
+        $end = Carbon::createFromDate($year, $month, 1)->endOfMonth()->toDateString();
+
+        $expenseCategories = PersonalCategory::query()
+            ->where('user_id', $userId)
+            ->where('type', 'expense')
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        $budgets = PersonalBudget::query()
+            ->where('user_id', $userId)
+            ->where('year', $year)
+            ->where('month', $month)
+            ->get()
+            ->keyBy('category_id');
+
+        $rows = $expenseCategories->map(function (PersonalCategory $c) use ($budgets, $userId, $start, $end) {
+            $b = $budgets->get($c->id);
+            $spent = (float) PersonalTransaction::query()
+                ->where('user_id', $userId)
+                ->where('category_id', $c->id)
+                ->where('type', 'expense')
+                ->whereBetween('occurred_on', [$start, $end])
+                ->sum('amount');
+            $limit = $b ? (float) $b->amount_limit : null;
+
+            return [
+                'category_id' => $c->id,
+                'category_name' => $c->name,
+                'amount_limit' => $limit,
+                'spent' => round($spent, 2),
+                'remaining' => $limit !== null ? round($limit - $spent, 2) : null,
+                'pct' => $limit !== null && $limit > 0 ? round(min(100, ($spent / $limit) * 100), 1) : null,
+            ];
+        });
+
+        return Inertia::render('Personal/Budgets', [
+            'period' => ['year' => $year, 'month' => $month, 'label' => Carbon::createFromDate($year, $month, 1)->translatedFormat('F Y')],
+            'rows' => $rows,
+        ]);
+    }
+
+    public function storeBudget(Request $request): RedirectResponse
+    {
+        $userId = (int) $request->user()->id;
+        $this->ensureDefaults($userId);
+
+        $validated = $request->validate([
+            'category_id' => ['required', Rule::exists('personal_categories', 'id')->where('user_id', $userId)],
+            'year' => 'required|integer|min:2000|max:2100',
+            'month' => 'required|integer|min:1|max:12',
+            'amount_limit' => 'required|numeric|min:0.01',
+        ]);
+
+        $cat = PersonalCategory::query()->where('user_id', $userId)->findOrFail((int) $validated['category_id']);
+        if ($cat->type !== 'expense') {
+            return back()->with('flash', ['type' => 'error', 'message' => 'Anggaran hanya untuk kategori pengeluaran.']);
+        }
+
+        PersonalBudget::query()->updateOrCreate(
+            [
+                'user_id' => $userId,
+                'category_id' => (int) $validated['category_id'],
+                'year' => (int) $validated['year'],
+                'month' => (int) $validated['month'],
+            ],
+            ['amount_limit' => number_format((float) $validated['amount_limit'], 2, '.', '')]
+        );
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Anggaran disimpan.']);
+    }
+
+    public function investments(Request $request): Response
+    {
+        $userId = (int) $request->user()->id;
+
+        $investments = PersonalInvestment::query()
+            ->where('user_id', $userId)
+            ->with(['movements' => fn ($q) => $q->orderByDesc('occurred_on')->orderByDesc('id')->limit(80)])
+            ->orderByDesc('is_active')
+            ->orderBy('name')
+            ->get();
+
+        $netByInvestment = PersonalInvestmentMovement::query()
+            ->whereIn('investment_id', $investments->pluck('id'))
+            ->get()
+            ->groupBy('investment_id')
+            ->map(function ($group) {
+                return round($group->sum(function (PersonalInvestmentMovement $m) {
+                    $a = (float) $m->amount;
+
+                    return match ($m->flow) {
+                        'withdrawal' => -$a,
+                        default => $a,
+                    };
+                }), 2);
+            });
+
+        $items = $investments->map(function (PersonalInvestment $inv) use ($netByInvestment) {
+            $net = (float) ($netByInvestment[$inv->id] ?? 0);
+
+            return [
+                'id' => $inv->id,
+                'name' => $inv->name,
+                'asset_type' => $inv->asset_type,
+                'institution' => $inv->institution,
+                'notes' => $inv->notes,
+                'opened_at' => $inv->opened_at?->format('Y-m-d'),
+                'is_active' => (bool) $inv->is_active,
+                'net_flow' => round($net, 2),
+                'movements' => $inv->movements->map(fn (PersonalInvestmentMovement $m) => [
+                    'id' => $m->id,
+                    'occurred_on' => $m->occurred_on->format('Y-m-d'),
+                    'flow' => $m->flow,
+                    'amount' => (float) $m->amount,
+                    'note' => $m->note,
+                ]),
+            ];
+        });
+
+        return Inertia::render('Personal/Investments', [
+            'investments' => $items,
+            'assetTypes' => [
+                ['value' => 'tabungan', 'label' => 'Tabungan / deposito'],
+                ['value' => 'saham', 'label' => 'Saham'],
+                ['value' => 'reksadana', 'label' => 'Reksadana'],
+                ['value' => 'emas', 'label' => 'Emas / logam mulia'],
+                ['value' => 'crypto', 'label' => 'Crypto'],
+                ['value' => 'lainnya', 'label' => 'Lainnya'],
+            ],
+        ]);
+    }
+
+    public function storeInvestment(Request $request): RedirectResponse
+    {
+        $userId = (int) $request->user()->id;
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:160',
+            'asset_type' => ['required', 'string', 'max:32'],
+            'institution' => 'nullable|string|max:160',
+            'notes' => 'nullable|string|max:2000',
+            'opened_at' => 'nullable|date',
+            'is_active' => 'required|boolean',
+        ]);
+
+        PersonalInvestment::query()->create([
+            'user_id' => $userId,
+            'name' => trim($validated['name']),
+            'asset_type' => $validated['asset_type'],
+            'institution' => isset($validated['institution']) ? trim((string) $validated['institution']) ?: null : null,
+            'notes' => $validated['notes'] ?? null,
+            'opened_at' => isset($validated['opened_at']) ? Carbon::parse($validated['opened_at'])->format('Y-m-d') : null,
+            'is_active' => (bool) $validated['is_active'],
+        ]);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Investasi ditambahkan.']);
+    }
+
+    public function updateInvestment(Request $request, PersonalInvestment $investment): RedirectResponse
+    {
+        $this->assertInvestmentOwner($request, $investment);
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:160',
+            'asset_type' => ['required', 'string', 'max:32'],
+            'institution' => 'nullable|string|max:160',
+            'notes' => 'nullable|string|max:2000',
+            'opened_at' => 'nullable|date',
+            'is_active' => 'required|boolean',
+        ]);
+
+        $investment->update([
+            'name' => trim($validated['name']),
+            'asset_type' => $validated['asset_type'],
+            'institution' => isset($validated['institution']) ? trim((string) $validated['institution']) ?: null : null,
+            'notes' => $validated['notes'] ?? null,
+            'opened_at' => isset($validated['opened_at']) ? Carbon::parse($validated['opened_at'])->format('Y-m-d') : null,
+            'is_active' => (bool) $validated['is_active'],
+        ]);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Investasi diperbarui.']);
+    }
+
+    public function destroyInvestment(Request $request, PersonalInvestment $investment): RedirectResponse
+    {
+        $this->assertInvestmentOwner($request, $investment);
+        $investment->delete();
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Investasi dihapus.']);
+    }
+
+    public function storeInvestmentMovement(Request $request, PersonalInvestment $investment): RedirectResponse
+    {
+        $this->assertInvestmentOwner($request, $investment);
+
+        $validated = $request->validate([
+            'flow' => ['required', Rule::in(['deposit', 'withdrawal', 'dividend'])],
+            'amount' => 'required|numeric|min:0.01',
+            'occurred_on' => 'required|date',
+            'note' => 'nullable|string|max:500',
+        ]);
+
+        PersonalInvestmentMovement::query()->create([
+            'investment_id' => $investment->id,
+            'flow' => $validated['flow'],
+            'amount' => number_format((float) $validated['amount'], 2, '.', ''),
+            'occurred_on' => Carbon::parse($validated['occurred_on'])->format('Y-m-d'),
+            'note' => $validated['note'] ?? null,
+        ]);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Mutasi investasi tersimpan.']);
+    }
+
+    private function ensureDefaults(int $userId): void
+    {
+        if (! PersonalWallet::query()->where('user_id', $userId)->exists()) {
+            PersonalWallet::query()->create([
+                'user_id' => $userId,
+                'name' => 'Dompet utama',
+                'currency' => 'IDR',
+                'sort_order' => 0,
+                'is_default' => true,
+            ]);
+        }
+
+        if (! PersonalCategory::query()->where('user_id', $userId)->exists()) {
+            $defs = [
+                ['name' => 'Gaji & penghasilan', 'type' => 'income'],
+                ['name' => 'Bisnis / freelance', 'type' => 'income'],
+                ['name' => 'Makan & belanja', 'type' => 'expense'],
+                ['name' => 'Transport', 'type' => 'expense'],
+                ['name' => 'Tagihan & utilitas', 'type' => 'expense'],
+                ['name' => 'Hiburan', 'type' => 'expense'],
+                ['name' => 'Lain-lain (keluar)', 'type' => 'expense'],
+            ];
+            foreach ($defs as $d) {
+                PersonalCategory::query()->firstOrCreate(
+                    [
+                        'user_id' => $userId,
+                        'name' => $d['name'],
+                        'type' => $d['type'],
+                    ],
+                    []
+                );
+            }
+        }
+    }
+
+    private function assertTransactionOwner(Request $request, PersonalTransaction $transaction): void
+    {
+        if ((int) $transaction->user_id !== (int) $request->user()->id) {
+            abort(404);
+        }
+    }
+
+    private function assertInvestmentOwner(Request $request, PersonalInvestment $investment): void
+    {
+        if ((int) $investment->user_id !== (int) $request->user()->id) {
+            abort(404);
+        }
+    }
+}

@@ -96,14 +96,11 @@ class ERPModuleController extends Controller
             ['title' => 'ERP Setting', 'description' => 'Atur identitas aplikasi ERP seperti logo, nama aplikasi, dan tagline.', 'route' => 'erp.admin.erp-settings', 'icon' => 'document-text'],
             ['title' => 'Setting Nomor Dokumen', 'description' => 'Atur prefix dan sequence nomor dokumen agar konsisten lintas modul.', 'route' => 'erp.admin.document-sequences', 'icon' => 'document-text'],
             ['title' => 'Metode Pembayaran', 'description' => 'Kelola daftar metode pembayaran global untuk POS dan invoice.', 'route' => 'erp.admin.payment-methods', 'icon' => 'credit-card'],
-            ['title' => 'Landing Sites', 'description' => 'Atur mapping domain landing page dan warehouse default untuk masing-masing bisnis.', 'route' => 'erp.admin.landing-sites', 'icon' => 'globe-alt'],
             ['title' => 'Parser Rules Chatbot', 'description' => 'Atur rule parser berbasis keyword untuk chatbot ERP tanpa LLM.', 'route' => 'erp.admin.parser-rules', 'icon' => 'sparkles'],
             ['title' => 'Monitoring Log', 'description' => 'Pantau aktivitas ERP, transaksi, dan error aplikasi secara terpusat.', 'route' => 'erp.admin.system-logs.index', 'icon' => 'circle-stack'],
             ['title' => 'Monitoring server', 'description' => 'Latensi kueri DB, ukuran basis data, TCP ke host DB, dan latensi HTTP keluar dari server.', 'route' => 'erp.admin.server-monitoring', 'icon' => 'chart-bar'],
-            ['title' => 'Printer Thermal LAN', 'description' => 'Atur alamat IP dan port RAW (9100) untuk Epson TM di jaringan, serta uji cetak ESC/POS.', 'route' => 'erp.admin.thermal-printer', 'icon' => 'printer'],
-            ['title' => 'Label Windows (SMB)', 'description' => 'Cetak raw ZPL/EPL ke printer share Windows (path UNC). Uji dari server PHP di Windows.', 'route' => 'erp.admin.label-printer-smb', 'icon' => 'share'],
-            ['title' => 'Label LAN (TSPL)', 'description' => 'Printer label jaringan (IP, port RAW 9100) dengan perintah TSPL/TSC. Cocok untuk server Linux atau Windows.', 'route' => 'erp.admin.label-printer-lan', 'icon' => 'identification'],
-            ['title' => 'Profil label', 'description' => 'Ukuran kertas (mm), DPI, margin, dan bahasa ZPL/EPL per stok label.', 'route' => 'erp.admin.label-profiles', 'icon' => 'rectangle-stack'],
+            ['title' => 'Printer & label', 'description' => 'Thermal LAN (struk POS), label Windows (SMB), label LAN (TSPL), dan profil label (ZPL/EPL) dalam satu halaman.', 'route' => 'erp.admin.printer-and-label', 'icon' => 'printer'],
+            ['title' => 'Impor data (Excel)', 'description' => 'Unduh template dan impor master produk atau project dari .xlsx / .xls / .csv.', 'route' => 'erp.admin.data-import', 'icon' => 'arrow-up-tray'],
         ]);
     }
 

@@ -5,6 +5,7 @@ import {
   ChartBarIcon,
   ArrowsRightLeftIcon,
   ClipboardDocumentListIcon,
+  ArrowTrendingUpIcon,
   Squares2X2Icon,
 } from '@heroicons/vue/24/outline';
 
@@ -16,6 +17,7 @@ const iconMap = {
   'chart-bar': ChartBarIcon,
   'arrows-right-left': ArrowsRightLeftIcon,
   'clipboard-list': ClipboardDocumentListIcon,
+  'arrow-trending-up': ArrowTrendingUpIcon,
 };
 
 const iconFor = (menu) => iconMap[menu.icon] ?? Squares2X2Icon;

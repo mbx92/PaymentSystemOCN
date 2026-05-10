@@ -24,6 +24,9 @@ const applyFilters = () => {
 
 const filteredRules = computed(() => props.rules ?? []);
 
+/** Contoh template custom reply (harga string — hindari {{ }} literal di atribut template Vue) */
+const parserReplyPlaceholderExample = 'Contoh:\n**{{name}}**\nStok: {{stock}} {{uom}}\n{{stock_status}}';
+
 const emptyForm = () => ({
   name: '',
   intent_key: '',
@@ -280,10 +283,29 @@ const confirmDelete = () => {
           <div class="md:col-span-2 rounded-xl border border-base-300 bg-base-200/50 p-3">
             <fieldset class="fieldset">
               <legend class="fieldset-legend">Custom Reply (opsional)</legend>
+              <p class="text-xs text-base-content/65 mb-2">
+                Tanpa <code v-pre>{{...}}</code>: balasan tetap (semua intent). Untuk intent
+                <span class="font-mono">stock_lookup</span> /
+                <span class="font-mono">product_price_lookup</span>, Anda bisa memakai template, mis.
+                <span v-pre class="font-mono text-[11px] break-all">**{{name}}** — Stok: {{stock}} {{uom}}</span> atau
+                <span v-pre class="font-mono text-[11px] break-all">Harga: Rp {{price}} / {{uom}}</span>.
+                Placeholder:
+                <span v-pre class="font-mono text-[11px]">{{name}}</span>,
+                <span v-pre class="font-mono text-[11px]">{{sku}}</span>,
+                <span v-pre class="font-mono text-[11px]">{{barcode}}</span>,
+                <span v-pre class="font-mono text-[11px]">{{uom}}</span> /
+                <span v-pre class="font-mono text-[11px]">{{satuan}}</span>,
+                <span v-pre class="font-mono text-[11px]">{{stock}}</span>,
+                <span v-pre class="font-mono text-[11px]">{{min_stock}}</span>,
+                <span v-pre class="font-mono text-[11px]">{{price}}</span> /
+                <span v-pre class="font-mono text-[11px]">{{harga}}</span>,
+                <span v-pre class="font-mono text-[11px]">{{stock_status}}</span>.
+                Jika produk tidak unik / tidak ketemu, chatbot memakai balasan bawaan.
+              </p>
               <textarea
                 v-model="form.response_text"
                 class="textarea textarea-bordered textarea-sm w-full min-h-[100px] resize-y"
-                placeholder="Jika diisi, chatbot memakai balasan ini langsung tanpa memanggil handler."
+                :placeholder="parserReplyPlaceholderExample"
               />
             </fieldset>
           </div>
@@ -346,6 +368,13 @@ const confirmDelete = () => {
           <div class="md:col-span-2 rounded-xl border border-base-300 bg-base-200/50 p-3">
             <fieldset class="fieldset">
               <legend class="fieldset-legend">Custom Reply (opsional)</legend>
+              <p class="text-xs text-base-content/65 mb-2">
+                Template produk (intent <span class="font-mono">stock_lookup</span> /
+                <span class="font-mono">product_price_lookup</span>):
+                <span v-pre class="font-mono text-[11px]">{{uom}}</span>,
+                <span v-pre class="font-mono text-[11px]">{{stock}}</span>,
+                <span v-pre class="font-mono text-[11px]">{{price}}</span>, dll. — lihat form tambah rule untuk daftar lengkap.
+              </p>
               <textarea v-model="editForm.response_text" class="textarea textarea-bordered textarea-sm w-full min-h-[100px] resize-y" />
             </fieldset>
           </div>

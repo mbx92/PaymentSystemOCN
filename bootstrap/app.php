@@ -3,6 +3,7 @@
 use App\ERP\Shared\Services\ErpSystemLogger;
 use App\Http\Middleware\ErpMaintenanceMode;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\LogCmsAdminPanelAccess;
 use App\Http\Middleware\LogErpActivity;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -42,6 +43,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => RoleMiddleware::class,
             'permission' => PermissionMiddleware::class,
             'role_or_permission' => RoleOrPermissionMiddleware::class,
+            'log.cms.admin.access' => LogCmsAdminPanelAccess::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

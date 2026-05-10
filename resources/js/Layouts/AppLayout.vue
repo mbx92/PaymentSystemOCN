@@ -7,6 +7,9 @@ import {
     ShoppingCartIcon, ArchiveBoxIcon, UserCircleIcon, BanknotesIcon, CircleStackIcon, ChatBubbleLeftRightIcon, PaperAirplaneIcon,
     TrashIcon,
     WalletIcon,
+    NewspaperIcon,
+    PhotoIcon,
+    GlobeAltIcon,
 } from '@heroicons/vue/24/outline';
 import FlashMessage from '@/Components/FlashMessage.vue';
 
@@ -107,26 +110,38 @@ const sidebarModules = computed(() => {
     const modules = [{ title: 'Main', items: [{ name: 'Dashboard', href: route('dashboard'), icon: HomeIcon }] }];
 
     if (role === 'admin' || role === 'manajer') {
-        modules.push(
-            {
-                title: 'Modul ERP',
-                items: [
-                    { name: 'Accounting', href: route('erp.accounting'), icon: ArrowDownCircleIcon },
-                    { name: 'Sales', href: route('erp.sales'), icon: BanknotesIcon },
-                    { name: 'Purchasing', href: route('erp.purchasing'), icon: ShoppingCartIcon },
-                    { name: 'Inventory', href: route('erp.inventory'), icon: ArchiveBoxIcon },
-                    { name: 'Projects', href: route('erp.projects'), icon: CodeBracketIcon },
-                    { name: 'HR', href: route('erp.hr'), icon: UserCircleIcon },
-                    { name: 'Reporting', href: route('erp.reporting'), icon: ChartBarIcon },
-                ],
-            },
-            {
-                title: 'Personal',
-                items: [
-                    { name: 'Keuangan pribadi', href: route('personal'), icon: WalletIcon },
-                ],
-            },
-        );
+        modules.push({
+            title: 'Modul ERP',
+            items: [
+                { name: 'Accounting', href: route('erp.accounting'), icon: ArrowDownCircleIcon },
+                { name: 'Sales', href: route('erp.sales'), icon: BanknotesIcon },
+                { name: 'Purchasing', href: route('erp.purchasing'), icon: ShoppingCartIcon },
+                { name: 'Inventory', href: route('erp.inventory'), icon: ArchiveBoxIcon },
+                { name: 'Projects', href: route('erp.projects'), icon: CodeBracketIcon },
+                { name: 'HR', href: route('erp.hr'), icon: UserCircleIcon },
+                { name: 'Reporting', href: route('erp.reporting'), icon: ChartBarIcon },
+            ],
+        });
+    }
+
+    if (role === 'admin') {
+        modules.push({
+            title: 'Website CMS',
+            items: [
+                { name: 'Dashboard CMS', href: route('erp.cms'), icon: NewspaperIcon },
+                { name: 'Landing sites', href: route('erp.cms.sites'), icon: GlobeAltIcon },
+                { name: 'Media library', href: route('erp.cms.media'), icon: PhotoIcon },
+            ],
+        });
+    }
+
+    if (role === 'admin' || role === 'manajer') {
+        modules.push({
+            title: 'Personal',
+            items: [
+                { name: 'Beranda', href: route('personal'), icon: WalletIcon },
+            ],
+        });
     }
 
     if (role === 'admin') {
@@ -154,6 +169,7 @@ const topbarContext = computed(() => {
     if (pathname.includes('/projects')) return { label: 'Projects Workspace', subtitle: 'Pantau proyek, termin pembayaran, dan profitabilitas.' };
     if (pathname.includes('/erp/hr/legal')) return { label: 'Legal Workspace', subtitle: 'File manager dokumen legal di server.' };
     if (pathname.startsWith('/personal')) return { label: 'Personal Workspace', subtitle: 'Pencatatan keuangan pribadi dan keluarga.' };
+    if (pathname.startsWith('/erp/cms')) return { label: 'Website CMS', subtitle: 'Konten landing publik, media, dan publikasi halaman.' };
 
     return { label: 'ERP Command Center', subtitle: 'Satu dashboard untuk finance, project, dan operasional.' };
 });
@@ -164,7 +180,13 @@ const isActive = (href) => {
     if (!href) return false;
     const path = new URL(href).pathname;
     const currentPath = page.url.split('?')[0];
-    return path === '/' ? currentPath === '/' : currentPath === path || currentPath.startsWith(`${path}/`);
+    if (path === '/') return currentPath === '/';
+    if (path === '/personal') {
+        return currentPath === '/personal' || currentPath.startsWith('/personal/');
+    }
+    const exactOnly = ['/erp/cms'];
+    if (exactOnly.includes(path)) return currentPath === path;
+    return currentPath === path || currentPath.startsWith(`${path}/`);
 };
 
 const toggleChatPanel = () => {

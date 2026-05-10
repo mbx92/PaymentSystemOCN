@@ -1,8 +1,8 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { reactive, watch } from 'vue';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
+import { computed, reactive, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 
 const props = defineProps({
@@ -12,6 +12,8 @@ const props = defineProps({
   uoms: Array,
 });
 const { parse, formatInput } = useCurrency();
+const page = usePage();
+const isAdmin = computed(() => page.props.auth?.user?.role === 'admin');
 
 const filters = reactive({
   q: props.filters?.q ?? '',
@@ -110,7 +112,14 @@ const goToDetail = (id) => {
               <option value="finished_goods">Barang Jual</option>
               <option value="project_material">Material Project</option>
               </select>
-              <div class="ml-auto">
+              <div class="ml-auto flex flex-wrap items-center gap-2">
+                <Link
+                  v-if="isAdmin"
+                  :href="route('erp.admin.data-import', { tab: 'products' })"
+                  class="btn btn-outline btn-sm whitespace-nowrap"
+                >
+                  Impor Excel
+                </Link>
                 <button class="btn btn-primary btn-sm whitespace-nowrap" onclick="document.getElementById('modal-add-product').showModal()">
                   + Add Product
                 </button>

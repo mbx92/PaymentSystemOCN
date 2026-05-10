@@ -3,6 +3,8 @@
 use App\Http\Controllers\CashflowController;
 use App\Http\Controllers\CashInController;
 use App\Http\Controllers\CashOutController;
+use App\Http\Controllers\CmsMediaController;
+use App\Http\Controllers\CmsModuleController;
 use App\Http\Controllers\ERPAdministrationMasterDataController;
 use App\Http\Controllers\ErpChatbotController;
 use App\Http\Controllers\ERPInventoryController;
@@ -18,6 +20,7 @@ use App\Http\Controllers\HREmployeeController;
 use App\Http\Controllers\HRLegalController;
 use App\Http\Controllers\LabelProfileController;
 use App\Http\Controllers\OperationalController;
+use App\Http\Controllers\PersonalFinanceController;
 use App\Http\Controllers\PersonalModuleController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectBudgetController;
@@ -189,9 +192,19 @@ Route::middleware('auth')->group(function () {
 
         // Personal — keuangan pribadi & keluarga (terpisah dari ERP bisnis)
         Route::get('personal', [PersonalModuleController::class, 'index'])->name('personal');
-        Route::get('personal/overview', [PersonalModuleController::class, 'overview'])->name('personal.overview');
-        Route::get('personal/transactions', [PersonalModuleController::class, 'transactions'])->name('personal.transactions');
-        Route::get('personal/budgets', [PersonalModuleController::class, 'budgets'])->name('personal.budgets');
+        Route::get('personal/overview', [PersonalFinanceController::class, 'overview'])->name('personal.overview');
+        Route::get('personal/transactions', [PersonalFinanceController::class, 'transactions'])->name('personal.transactions');
+        Route::post('personal/transactions', [PersonalFinanceController::class, 'storeTransaction'])->name('personal.transactions.store');
+        Route::patch('personal/transactions/{transaction}', [PersonalFinanceController::class, 'updateTransaction'])->name('personal.transactions.update');
+        Route::delete('personal/transactions/{transaction}', [PersonalFinanceController::class, 'destroyTransaction'])->name('personal.transactions.destroy');
+        Route::post('personal/categories', [PersonalFinanceController::class, 'storeCategory'])->name('personal.categories.store');
+        Route::get('personal/budgets', [PersonalFinanceController::class, 'budgets'])->name('personal.budgets');
+        Route::post('personal/budgets', [PersonalFinanceController::class, 'storeBudget'])->name('personal.budgets.store');
+        Route::get('personal/investments', [PersonalFinanceController::class, 'investments'])->name('personal.investments');
+        Route::post('personal/investments', [PersonalFinanceController::class, 'storeInvestment'])->name('personal.investments.store');
+        Route::patch('personal/investments/{investment}', [PersonalFinanceController::class, 'updateInvestment'])->name('personal.investments.update');
+        Route::delete('personal/investments/{investment}', [PersonalFinanceController::class, 'destroyInvestment'])->name('personal.investments.destroy');
+        Route::post('personal/investments/{investment}/movements', [PersonalFinanceController::class, 'storeInvestmentMovement'])->name('personal.investments.movements.store');
     });
 
     // User Management (Admin only)
@@ -215,15 +228,28 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/admin/landing-sites', [ERPAdministrationMasterDataController::class, 'landingSites'])->name('erp.admin.landing-sites');
         Route::post('erp/admin/landing-sites', [ERPAdministrationMasterDataController::class, 'storeLandingSite'])->name('erp.admin.landing-sites.store');
         Route::patch('erp/admin/landing-sites/{landingSite}', [ERPAdministrationMasterDataController::class, 'updateLandingSite'])->name('erp.admin.landing-sites.update');
+        Route::get('erp/admin/landing-sites/{landingSite}/cms', [ERPAdministrationMasterDataController::class, 'landingSiteCms'])->name('erp.admin.landing-sites.cms');
+        Route::post('erp/admin/landing-sites/{landingSite}/cms', [ERPAdministrationMasterDataController::class, 'updateLandingSiteCms'])->name('erp.admin.landing-sites.cms.update');
         Route::get('erp/admin/parser-rules', [ERPAdministrationMasterDataController::class, 'parserRules'])->name('erp.admin.parser-rules');
         Route::post('erp/admin/parser-rules', [ERPAdministrationMasterDataController::class, 'storeParserRule'])->name('erp.admin.parser-rules.store');
         Route::patch('erp/admin/parser-rules/{parserRule}', [ERPAdministrationMasterDataController::class, 'updateParserRule'])->name('erp.admin.parser-rules.update');
         Route::delete('erp/admin/parser-rules/{parserRule}', [ERPAdministrationMasterDataController::class, 'destroyParserRule'])->name('erp.admin.parser-rules.destroy');
         Route::get('erp/admin/system-logs', [ErpSystemLogController::class, 'index'])->name('erp.admin.system-logs.index');
+        Route::get('erp/admin/printer-and-label', [ERPAdministrationMasterDataController::class, 'printerAndLabelSettings'])->name('erp.admin.printer-and-label');
+        Route::get('erp/admin/data-import', [ERPAdministrationMasterDataController::class, 'dataImport'])->name('erp.admin.data-import');
+        Route::get('erp/admin/data-import/products/template', [ERPAdministrationMasterDataController::class, 'downloadMasterProductImportTemplate'])->name('erp.admin.data-import.products.template');
+        Route::post('erp/admin/data-import/products', [ERPAdministrationMasterDataController::class, 'importMasterProducts'])->name('erp.admin.data-import.products.store');
+        Route::get('erp/admin/data-import/projects/template', [ERPAdministrationMasterDataController::class, 'downloadProjectImportTemplate'])->name('erp.admin.data-import.projects.template');
+        Route::post('erp/admin/data-import/projects', [ERPAdministrationMasterDataController::class, 'importProjects'])->name('erp.admin.data-import.projects.store');
+
+        Route::get('erp/admin/master-products/import', [ERPAdministrationMasterDataController::class, 'masterProductImport'])->name('erp.admin.master-products.import');
+        Route::get('erp/admin/master-products/import/template', [ERPAdministrationMasterDataController::class, 'downloadMasterProductImportTemplate'])->name('erp.admin.master-products.import.template');
+        Route::post('erp/admin/master-products/import', [ERPAdministrationMasterDataController::class, 'importMasterProducts'])->name('erp.admin.master-products.import.store');
         Route::get('erp/admin/thermal-printer', [ERPAdministrationMasterDataController::class, 'thermalPrinter'])->name('erp.admin.thermal-printer');
         Route::post('erp/admin/thermal-printer', [ERPAdministrationMasterDataController::class, 'updateThermalPrinter'])->name('erp.admin.thermal-printer.update');
         Route::post('erp/admin/thermal-printer/test', [ERPAdministrationMasterDataController::class, 'testThermalPrinter'])->name('erp.admin.thermal-printer.test');
         Route::post('erp/admin/thermal-printer/test-pos-receipt', [ERPAdministrationMasterDataController::class, 'testThermalPosReceipt'])->name('erp.admin.thermal-printer.test-pos-receipt');
+        Route::post('erp/admin/thermal-printer/preview', [ERPAdministrationMasterDataController::class, 'previewThermalReceipt'])->name('erp.admin.thermal-printer.preview');
         Route::get('erp/admin/label-printer-smb', [ERPAdministrationMasterDataController::class, 'labelPrinterSmb'])->name('erp.admin.label-printer-smb');
         Route::post('erp/admin/label-printer-smb', [ERPAdministrationMasterDataController::class, 'updateLabelPrinterSmb'])->name('erp.admin.label-printer-smb.update');
         Route::post('erp/admin/label-printer-smb/test', [ERPAdministrationMasterDataController::class, 'testLabelPrinterSmb'])->name('erp.admin.label-printer-smb.test');
@@ -234,6 +260,15 @@ Route::middleware('auth')->group(function () {
         Route::post('erp/admin/label-profiles', [LabelProfileController::class, 'store'])->name('erp.admin.label-profiles.store');
         Route::patch('erp/admin/label-profiles/{labelProfile}', [LabelProfileController::class, 'update'])->name('erp.admin.label-profiles.update');
         Route::delete('erp/admin/label-profiles/{labelProfile}', [LabelProfileController::class, 'destroy'])->name('erp.admin.label-profiles.destroy');
+
+        Route::middleware('log.cms.admin.access')->group(function () {
+            Route::get('erp/cms', [CmsModuleController::class, 'dashboard'])->name('erp.cms');
+            Route::get('erp/cms/sites', [CmsModuleController::class, 'sites'])->name('erp.cms.sites');
+            Route::get('erp/cms/media', [CmsMediaController::class, 'index'])->name('erp.cms.media');
+        });
+        Route::get('erp/cms/media/{cmsMedia}/file', [CmsMediaController::class, 'file'])->name('erp.cms.media.file');
+        Route::post('erp/cms/media', [CmsMediaController::class, 'store'])->name('erp.cms.media.store');
+        Route::delete('erp/cms/media/{cmsMedia}', [CmsMediaController::class, 'destroy'])->name('erp.cms.media.destroy');
     });
 });
 

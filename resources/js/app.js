@@ -7,10 +7,10 @@ import { createApp, h } from 'vue';
 import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 import { createPinia } from 'pinia';
 
-const appName = import.meta.env.VITE_APP_NAME || 'Pembukuan OCN';
+const appName = import.meta.env.VITE_APP_NAME || 'ERP OCN System';
 
 createInertiaApp({
-    title: (title) => `${title} - ${appName}`,
+    title: (title) => (title ? `${title} - ${appName}` : appName),
     resolve: (name) =>
         resolvePageComponent(
             `./Pages/${name}.vue`,

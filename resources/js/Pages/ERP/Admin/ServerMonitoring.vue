@@ -1,6 +1,20 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
+import { computed } from 'vue';
+import { Line } from 'vue-chartjs';
+import {
+  Chart as ChartJS,
+  Title,
+  Tooltip,
+  Legend,
+  LineElement,
+  PointElement,
+  CategoryScale,
+  LinearScale,
+} from 'chart.js';
+
+ChartJS.register(Title, Tooltip, Legend, LineElement, PointElement, CategoryScale, LinearScale);
 
 const props = defineProps({
   metrics: Object,
@@ -9,6 +23,54 @@ const props = defineProps({
 const db = () => props.metrics?.database ?? {};
 const net = () => props.metrics?.network ?? {};
 const app = () => props.metrics?.app ?? {};
+const system = () => props.metrics?.system ?? {};
+const storage = () => props.metrics?.storage ?? {};
+const history = () => props.metrics?.history ?? {};
+
+const memoryHistoryChart = computed(() => ({
+  labels: history().labels ?? [],
+  datasets: [
+    {
+      label: 'Memory terpakai (%)',
+      data: history().memory_usage_pct ?? [],
+      borderColor: '#0ea5e9',
+      backgroundColor: 'rgba(14,165,233,0.12)',
+      tension: 0.3,
+      fill: true,
+      pointRadius: 2,
+    },
+  ],
+}));
+
+const processHistoryChart = computed(() => ({
+  labels: history().labels ?? [],
+  datasets: [
+    {
+      label: 'Jumlah process',
+      data: history().process_count ?? [],
+      borderColor: '#8b5cf6',
+      backgroundColor: 'rgba(139,92,246,0.12)',
+      tension: 0.25,
+      fill: true,
+      pointRadius: 2,
+    },
+  ],
+}));
+
+const lineOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { display: false },
+  },
+  scales: {
+    x: { grid: { display: false } },
+    y: {
+      beginAtZero: true,
+      grid: { color: 'rgba(148,163,184,0.16)', drawBorder: false },
+    },
+  },
+};
 
 const refresh = () => {
   router.visit(route('erp.admin.server-monitoring'), { preserveScroll: true });
@@ -28,7 +90,9 @@ const refresh = () => {
               Metrik diambil di sisi <strong>server PHP</strong> saat halaman dimuat: waktu kueri ke basis data, perkiraan ukuran DB, koneksi TCP ke host DB (jika bukan SQLite), dan satu permintaan HTTP keluar untuk mengukur jaringan keluar.
             </p>
             <p class="mt-1 text-xs text-base-content/60">
-              Diukur: {{ metrics?.collected_at ?? '—' }}
+              Diukur: {{ metrics?.collected_at_display ?? metrics?.collected_at ?? '—' }}
+              <span v-if="metrics?.timezone">({{ metrics.timezone }} {{ metrics?.timezone_offset ?? '' }})</span>
+              <span v-if="metrics?.collected_at_human">· {{ metrics.collected_at_human }}</span>
             </p>
           </div>
           <div class="flex flex-wrap gap-2">
@@ -112,6 +176,82 @@ const refresh = () => {
           <p class="mt-3 text-xs text-base-content/60">
             Firewall atau proxy dapat memperlambat atau memblokir; ini bukan latensi browser pengguna.
           </p>
+        </article>
+
+        <article class="rounded-2xl border border-emerald-200/60 bg-emerald-50/70 p-5 shadow-sm md:col-span-2 xl:col-span-3">
+          <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700/80">Server memory & process</p>
+          <div v-if="system().memory_error" role="alert" class="alert alert-warning mt-3 text-xs">{{ system().memory_error }}</div>
+          <div v-if="system().process_error" role="alert" class="alert alert-warning mt-3 text-xs">{{ system().process_error }}</div>
+          <dl class="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4 text-sm">
+            <div class="rounded-xl border border-base-200 bg-base-100/80 p-3">
+              <dt class="text-xs text-base-content/60">Memory terpakai</dt>
+              <dd class="mt-1 text-2xl font-bold tabular-nums text-emerald-700">
+                {{ system().memory_usage_pct != null ? `${system().memory_usage_pct}%` : '—' }}
+              </dd>
+            </div>
+            <div class="rounded-xl border border-base-200 bg-base-100/80 p-3">
+              <dt class="text-xs text-base-content/60">Jumlah process</dt>
+              <dd class="mt-1 text-2xl font-bold tabular-nums text-emerald-700">
+                {{ system().process_count != null ? system().process_count.toLocaleString() : '—' }}
+              </dd>
+            </div>
+            <div class="rounded-xl border border-base-200 bg-base-100/80 p-3">
+              <dt class="text-xs text-base-content/60">Memory total / used</dt>
+              <dd class="mt-1 text-sm font-semibold">
+                {{ system().memory?.total_human ?? '—' }} / {{ system().memory?.used_human ?? '—' }}
+              </dd>
+              <p class="mt-1 text-[11px] text-base-content/55">Available: {{ system().memory?.available_human ?? '—' }}</p>
+            </div>
+            <div class="rounded-xl border border-base-200 bg-base-100/80 p-3">
+              <dt class="text-xs text-base-content/60">PHP memory (request ini)</dt>
+              <dd class="mt-1 text-sm font-semibold">
+                {{ system().memory?.php_usage_human ?? '—' }} / peak {{ system().memory?.php_peak_human ?? '—' }}
+              </dd>
+              <p class="mt-1 text-[11px] text-base-content/55">Load avg 1m: {{ system().load_avg_1m ?? '—' }}</p>
+            </div>
+          </dl>
+
+          <div class="mt-4 grid gap-4 lg:grid-cols-2">
+            <div class="rounded-xl border border-base-200 bg-base-100 p-3">
+              <p class="text-xs text-base-content/60 mb-2">Tren memory usage (%)</p>
+              <div class="h-44">
+                <Line :data="memoryHistoryChart" :options="lineOptions" />
+              </div>
+            </div>
+            <div class="rounded-xl border border-base-200 bg-base-100 p-3">
+              <p class="text-xs text-base-content/60 mb-2">Tren jumlah process</p>
+              <div class="h-44">
+                <Line :data="processHistoryChart" :options="lineOptions" />
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="rounded-2xl border border-amber-200/70 bg-amber-50/70 p-5 shadow-sm md:col-span-2 xl:col-span-3">
+          <p class="text-xs font-semibold uppercase tracking-wide text-amber-800/80">Storage upload documents</p>
+          <div v-if="storage().upload_documents_error" role="alert" class="alert alert-warning mt-3 text-xs">{{ storage().upload_documents_error }}</div>
+          <dl class="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4 text-sm">
+            <div class="rounded-xl border border-base-200 bg-base-100/80 p-3 md:col-span-2 xl:col-span-2">
+              <dt class="text-xs text-base-content/60">Path direktori upload dokumen</dt>
+              <dd class="mt-1 font-mono text-xs break-all">{{ storage().upload_documents_path ?? '—' }}</dd>
+            </div>
+            <div class="rounded-xl border border-base-200 bg-base-100/80 p-3">
+              <dt class="text-xs text-base-content/60">Ukuran terpakai</dt>
+              <dd class="mt-1 text-2xl font-bold tabular-nums text-amber-700">{{ storage().upload_documents_human ?? '—' }}</dd>
+              <p v-if="storage().upload_documents_bytes != null" class="mt-1 text-[11px] text-base-content/55">{{ storage().upload_documents_bytes.toLocaleString() }} byte</p>
+            </div>
+            <div class="rounded-xl border border-base-200 bg-base-100/80 p-3">
+              <dt class="text-xs text-base-content/60">Jumlah file / folder</dt>
+              <dd class="mt-1 text-sm font-semibold">{{ storage().upload_documents_files ?? 0 }} file · {{ storage().upload_documents_dirs ?? 0 }} folder</dd>
+            </div>
+            <div class="rounded-xl border border-base-200 bg-base-100/80 p-3">
+              <dt class="text-xs text-base-content/60">Disk terpakai (volume storage)</dt>
+              <dd class="mt-1 text-sm font-semibold">
+                {{ storage().disk_used_human ?? '—' }} / {{ storage().disk_total_human ?? '—' }}
+              </dd>
+              <p class="mt-1 text-[11px] text-base-content/55">Free: {{ storage().disk_free_human ?? '—' }} · {{ storage().disk_used_pct ?? '—' }}%</p>
+            </div>
+          </dl>
         </article>
       </div>
     </div>

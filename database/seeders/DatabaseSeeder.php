@@ -343,5 +343,7 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Budi Developer', 'password' => bcrypt('password')]
         );
         $anggota->assignRole('anggota');
+
+        $this->call(FillThermalPosReceiptTemplatesSeeder::class);
     }
 }

@@ -170,6 +170,78 @@ class LanEscPosPrinter
         return $buf;
     }
 
+    /**
+     * Baris pratinjau struk di browser (UTF-8), mengikuti lebar kolom & padding yang sama dengan {@see buildReceiptFromSegments}.
+     *
+     * @param  list<array{type: 'lines', align: string, lines: list<string>, double_height_first?: bool}|array{type: 'separator'}|array{type: 'spacer', count: int}>  $segments
+     * @return array{cols: int, paper_mm: string, rows: list<array<string, mixed>>}
+     */
+    public function previewReceiptVisual(array $segments, string $paperWidth, int $marginChars): array
+    {
+        $paper = $this->normalizePaperWidth($paperWidth);
+        $cols = $this->paperColumnWidth($paper);
+        $marginChars = max(0, min($cols - 4, $marginChars));
+        $rows = [];
+        $globalFirstLine = true;
+
+        foreach ($segments as $segment) {
+            $type = $segment['type'] ?? '';
+
+            if ($type === 'separator') {
+                $dashLen = max(8, $cols - $marginChars);
+                $latinRule = str_repeat(' ', $marginChars).str_repeat('-', $dashLen);
+                $rows[] = [
+                    'kind' => 'rule',
+                    'text' => $this->latin1VisualToUtf8($latinRule),
+                ];
+                $globalFirstLine = false;
+
+                continue;
+            }
+
+            if ($type === 'spacer') {
+                $n = max(0, min(10, (int) ($segment['count'] ?? 0)));
+                for ($i = 0; $i < $n; $i++) {
+                    $rows[] = ['kind' => 'blank'];
+                }
+
+                continue;
+            }
+
+            if ($type !== 'lines') {
+                continue;
+            }
+
+            $align = $this->normalizeAlign((string) ($segment['align'] ?? 'left'));
+            $lines = $segment['lines'] ?? [];
+            $doubleFirst = (bool) ($segment['double_height_first'] ?? false);
+
+            foreach ($lines as $i => $line) {
+                $useDouble = $doubleFirst && $globalFirstLine && $i === 0;
+                $latinLine = $this->formatLineForColumn($line, $align, $cols, $marginChars);
+                $rows[] = [
+                    'kind' => 'text',
+                    'text' => $this->latin1VisualToUtf8($latinLine),
+                    'double' => $useDouble,
+                ];
+                $globalFirstLine = false;
+            }
+        }
+
+        return [
+            'cols' => $cols,
+            'paper_mm' => $paper,
+            'rows' => $rows,
+        ];
+    }
+
+    private function latin1VisualToUtf8(string $latin): string
+    {
+        $utf = @iconv('ISO-8859-1', 'UTF-8//TRANSLIT', $latin);
+
+        return $utf !== false ? $utf : $latin;
+    }
+
     private function normalizeAlign(string $align): string
     {
         $a = strtolower(trim($align));

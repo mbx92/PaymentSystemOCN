@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -9,23 +10,38 @@ use Throwable;
 
 class ServerMetricsService
 {
+    private const HISTORY_CACHE_KEY = 'server_metrics:history:v1';
+
+    private const HISTORY_LIMIT = 30;
+
     /**
      * @return array<string, mixed>
      */
     public function collect(): array
     {
+        $collectedAt = now();
         $connName = (string) config('database.default');
         $config = config("database.connections.{$connName}", []);
         $driver = (string) ($config['driver'] ?? 'unknown');
 
+        $system = $this->systemMetrics();
+        $history = $this->appendHistory($system);
+
         return [
-            'collected_at' => now()->toIso8601String(),
+            'collected_at' => $collectedAt->toIso8601String(),
+            'collected_at_display' => $collectedAt->translatedFormat('d M Y H:i:s'),
+            'collected_at_human' => $collectedAt->diffForHumans(),
+            'timezone' => config('app.timezone'),
+            'timezone_offset' => $collectedAt->format('P'),
             'app' => [
                 'php_version' => PHP_VERSION,
                 'laravel_version' => app()->version(),
             ],
             'database' => $this->databaseMetrics($connName, $driver, $config),
             'network' => $this->networkMetrics(),
+            'system' => $system,
+            'history' => $history,
+            'storage' => $this->storageMetrics(),
         ];
     }
 
@@ -208,5 +224,245 @@ class ServerMetricsService
         }
 
         return round($v, $i === 0 ? 0 : 2).' '.$units[$i];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function systemMetrics(): array
+    {
+        $procCount = null;
+        $procError = null;
+        try {
+            $procCount = $this->processCount();
+        } catch (Throwable $e) {
+            $procError = $e->getMessage();
+        }
+
+        $memoryError = null;
+        try {
+            $memory = $this->serverMemorySummary();
+        } catch (Throwable $e) {
+            $memory = [
+                'php_usage_bytes' => memory_get_usage(true),
+                'php_usage_human' => $this->formatBytes((int) memory_get_usage(true)),
+                'php_peak_bytes' => memory_get_peak_usage(true),
+                'php_peak_human' => $this->formatBytes((int) memory_get_peak_usage(true)),
+            ];
+            $memoryError = $e->getMessage();
+        }
+        $memoryUsagePct = null;
+        if (isset($memory['used_bytes'], $memory['total_bytes']) && (int) $memory['total_bytes'] > 0) {
+            $memoryUsagePct = round((((int) $memory['used_bytes']) / ((int) $memory['total_bytes'])) * 100, 2);
+        }
+
+        return [
+            'process_count' => $procCount,
+            'process_error' => $procError,
+            'load_avg_1m' => function_exists('sys_getloadavg') ? round((float) (sys_getloadavg()[0] ?? 0), 3) : null,
+            'memory_usage_pct' => $memoryUsagePct,
+            'memory' => $memory,
+            'memory_error' => $memoryError,
+        ];
+    }
+
+    /**
+     * @return array{labels: list<string>, memory_usage_pct: list<float>, process_count: list<int>}
+     */
+    private function appendHistory(array $system): array
+    {
+        $history = Cache::get(self::HISTORY_CACHE_KEY, []);
+        if (! is_array($history)) {
+            $history = [];
+        }
+
+        $ts = now()->format('H:i:s');
+        $memoryPct = isset($system['memory_usage_pct']) ? (float) $system['memory_usage_pct'] : 0.0;
+        $proc = isset($system['process_count']) ? (int) $system['process_count'] : 0;
+
+        $history[] = ['t' => $ts, 'memory_usage_pct' => $memoryPct, 'process_count' => $proc];
+        if (count($history) > self::HISTORY_LIMIT) {
+            $history = array_slice($history, -self::HISTORY_LIMIT);
+        }
+
+        Cache::put(self::HISTORY_CACHE_KEY, $history, now()->addHours(12));
+
+        return [
+            'labels' => array_map(fn ($row) => (string) ($row['t'] ?? ''), $history),
+            'memory_usage_pct' => array_map(fn ($row) => (float) ($row['memory_usage_pct'] ?? 0), $history),
+            'process_count' => array_map(fn ($row) => (int) ($row['process_count'] ?? 0), $history),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function storageMetrics(): array
+    {
+        $target = storage_path('app/legal-vault');
+        $bytes = null;
+        $human = null;
+        $files = 0;
+        $dirs = 0;
+        $error = null;
+
+        try {
+            if (! is_dir($target)) {
+                $bytes = 0;
+                $human = $this->formatBytes(0);
+            } else {
+                $bytes = 0;
+                $it = new \RecursiveIteratorIterator(
+                    new \RecursiveDirectoryIterator($target, \FilesystemIterator::SKIP_DOTS)
+                );
+                foreach ($it as $entry) {
+                    if (! $entry instanceof \SplFileInfo) {
+                        continue;
+                    }
+                    if ($entry->isFile()) {
+                        $files++;
+                        $bytes += (int) $entry->getSize();
+                    } elseif ($entry->isDir()) {
+                        $dirs++;
+                    }
+                }
+                $human = $this->formatBytes($bytes);
+            }
+        } catch (Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        $diskTotal = @disk_total_space($target) ?: @disk_total_space(storage_path('app'));
+        $diskFree = @disk_free_space($target) ?: @disk_free_space(storage_path('app'));
+        $diskUsed = null;
+        $diskUsedPct = null;
+        if (is_numeric($diskTotal) && is_numeric($diskFree) && (float) $diskTotal > 0) {
+            $diskUsed = (int) ((float) $diskTotal - (float) $diskFree);
+            $diskUsedPct = round(($diskUsed / (float) $diskTotal) * 100, 2);
+        }
+
+        return [
+            'upload_documents_path' => $target,
+            'upload_documents_bytes' => $bytes,
+            'upload_documents_human' => $human,
+            'upload_documents_files' => $files,
+            'upload_documents_dirs' => $dirs,
+            'upload_documents_error' => $error,
+            'disk_total_bytes' => is_numeric($diskTotal) ? (int) $diskTotal : null,
+            'disk_total_human' => is_numeric($diskTotal) ? $this->formatBytes((int) $diskTotal) : null,
+            'disk_free_bytes' => is_numeric($diskFree) ? (int) $diskFree : null,
+            'disk_free_human' => is_numeric($diskFree) ? $this->formatBytes((int) $diskFree) : null,
+            'disk_used_bytes' => $diskUsed,
+            'disk_used_human' => $diskUsed !== null ? $this->formatBytes($diskUsed) : null,
+            'disk_used_pct' => $diskUsedPct,
+        ];
+    }
+
+    private function processCount(): int
+    {
+        $out = [];
+        $code = 0;
+        @exec('ps -A -o pid= 2>/dev/null | wc -l', $out, $code);
+        $val = isset($out[0]) ? trim((string) $out[0]) : '';
+        if ($code !== 0 || $val === '' || ! is_numeric($val)) {
+            throw new RuntimeException('Gagal membaca jumlah proses dari sistem.');
+        }
+
+        return (int) $val;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function serverMemorySummary(): array
+    {
+        if (PHP_OS_FAMILY === 'Linux' && is_readable('/proc/meminfo')) {
+            return $this->linuxMemorySummary();
+        }
+        if (PHP_OS_FAMILY === 'Darwin') {
+            return $this->darwinMemorySummary();
+        }
+
+        return [
+            'php_usage_bytes' => memory_get_usage(true),
+            'php_usage_human' => $this->formatBytes((int) memory_get_usage(true)),
+            'php_peak_bytes' => memory_get_peak_usage(true),
+            'php_peak_human' => $this->formatBytes((int) memory_get_peak_usage(true)),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function linuxMemorySummary(): array
+    {
+        $content = @file_get_contents('/proc/meminfo');
+        if (! is_string($content) || $content === '') {
+            throw new RuntimeException('Gagal membaca /proc/meminfo.');
+        }
+        preg_match('/^MemTotal:\s+(\d+)\s+kB$/m', $content, $mTotal);
+        preg_match('/^MemAvailable:\s+(\d+)\s+kB$/m', $content, $mAvail);
+        $total = isset($mTotal[1]) ? ((int) $mTotal[1]) * 1024 : null;
+        $avail = isset($mAvail[1]) ? ((int) $mAvail[1]) * 1024 : null;
+        $used = ($total !== null && $avail !== null) ? max($total - $avail, 0) : null;
+
+        return [
+            'total_bytes' => $total,
+            'total_human' => $total !== null ? $this->formatBytes($total) : null,
+            'available_bytes' => $avail,
+            'available_human' => $avail !== null ? $this->formatBytes($avail) : null,
+            'used_bytes' => $used,
+            'used_human' => $used !== null ? $this->formatBytes($used) : null,
+            'php_usage_bytes' => memory_get_usage(true),
+            'php_usage_human' => $this->formatBytes((int) memory_get_usage(true)),
+            'php_peak_bytes' => memory_get_peak_usage(true),
+            'php_peak_human' => $this->formatBytes((int) memory_get_peak_usage(true)),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function darwinMemorySummary(): array
+    {
+        $out = [];
+        $code = 0;
+        @exec('vm_stat', $out, $code);
+        if ($code !== 0 || $out === []) {
+            throw new RuntimeException('Gagal membaca vm_stat.');
+        }
+
+        $pageSize = 4096;
+        $pages = [];
+        foreach ($out as $line) {
+            if (preg_match('/page size of (\d+) bytes/i', $line, $m)) {
+                $pageSize = (int) $m[1];
+
+                continue;
+            }
+            if (preg_match('/^([^:]+):\s+([0-9\.]+)\./', trim($line), $m)) {
+                $pages[trim($m[1])] = (int) $m[2];
+            }
+        }
+
+        $free = (($pages['Pages free'] ?? 0) + ($pages['Pages speculative'] ?? 0)) * $pageSize;
+        $active = ($pages['Pages active'] ?? 0) * $pageSize;
+        $inactive = ($pages['Pages inactive'] ?? 0) * $pageSize;
+        $wired = (($pages['Pages wired down'] ?? 0) + ($pages['Pages wired'] ?? 0)) * $pageSize;
+        $used = $active + $inactive + $wired;
+        $total = $used + $free;
+
+        return [
+            'total_bytes' => $total > 0 ? $total : null,
+            'total_human' => $total > 0 ? $this->formatBytes($total) : null,
+            'available_bytes' => $free > 0 ? $free : 0,
+            'available_human' => $this->formatBytes(max($free, 0)),
+            'used_bytes' => $used > 0 ? $used : null,
+            'used_human' => $used > 0 ? $this->formatBytes($used) : null,
+            'php_usage_bytes' => memory_get_usage(true),
+            'php_usage_human' => $this->formatBytes((int) memory_get_usage(true)),
+            'php_peak_bytes' => memory_get_peak_usage(true),
+            'php_peak_human' => $this->formatBytes((int) memory_get_peak_usage(true)),
+        ];
     }
 }

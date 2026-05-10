@@ -1,114 +1,119 @@
 <script setup>
-import AppLayout from '@/Layouts/AppLayout.vue';
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import ConfirmModal from '@/Components/ConfirmModal.vue';
+import { router, useForm } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
 
-const props = defineProps({
-  profiles: Array,
+defineProps({
+    profiles: { type: Array, default: () => [] },
 });
 
 const form = useForm({
-  name: '',
-  width_mm: 76.2,
-  height_mm: 127,
-  dpi: 203,
-  margin_left_mm: 4,
-  margin_top_mm: 4,
-  gap_mm: 3,
-  protocol: 'zpl',
+    name: '',
+    width_mm: 76.2,
+    height_mm: 127,
+    dpi: 203,
+    margin_left_mm: 4,
+    margin_top_mm: 4,
+    gap_mm: 3,
+    protocol: 'zpl',
 });
 
 const submit = () => {
-  form.post(route('erp.admin.label-profiles.store'), {
-    preserveScroll: true,
-    onSuccess: () => {
-      form.reset();
-      form.width_mm = 76.2;
-      form.height_mm = 127;
-      form.dpi = 203;
-      form.margin_left_mm = 4;
-      form.margin_top_mm = 4;
-      form.gap_mm = 3;
-      form.protocol = 'zpl';
-      document.getElementById('modal-add-label-profile')?.close();
-    },
-  });
+    form.post(route('erp.admin.label-profiles.store'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            form.reset();
+            form.width_mm = 76.2;
+            form.height_mm = 127;
+            form.dpi = 203;
+            form.margin_left_mm = 4;
+            form.margin_top_mm = 4;
+            form.gap_mm = 3;
+            form.protocol = 'zpl';
+            document.getElementById('modal-add-label-profile')?.close();
+        },
+    });
 };
 
 const openAddModal = () => {
-  form.clearErrors();
-  form.reset();
-  form.width_mm = 76.2;
-  form.height_mm = 127;
-  form.dpi = 203;
-  form.margin_left_mm = 4;
-  form.margin_top_mm = 4;
-  form.gap_mm = 3;
-  form.protocol = 'zpl';
-  document.getElementById('modal-add-label-profile')?.showModal();
+    form.clearErrors();
+    form.reset();
+    form.width_mm = 76.2;
+    form.height_mm = 127;
+    form.dpi = 203;
+    form.margin_left_mm = 4;
+    form.margin_top_mm = 4;
+    form.gap_mm = 3;
+    form.protocol = 'zpl';
+    document.getElementById('modal-add-label-profile')?.showModal();
 };
 
 const editing = ref(null);
 const editForm = useForm({
-  name: '',
-  width_mm: 0,
-  height_mm: 0,
-  dpi: 203,
-  margin_left_mm: 0,
-  margin_top_mm: 0,
-  gap_mm: 0,
-  protocol: 'zpl',
+    name: '',
+    width_mm: 0,
+    height_mm: 0,
+    dpi: 203,
+    margin_left_mm: 0,
+    margin_top_mm: 0,
+    gap_mm: 0,
+    protocol: 'zpl',
 });
 
 const openEditModal = (row) => {
-  editing.value = row;
-  editForm.name = row.name;
-  editForm.width_mm = Number(row.width_mm);
-  editForm.height_mm = Number(row.height_mm);
-  editForm.dpi = row.dpi;
-  editForm.margin_left_mm = Number(row.margin_left_mm);
-  editForm.margin_top_mm = Number(row.margin_top_mm);
-  editForm.gap_mm = Number(row.gap_mm);
-  editForm.protocol = row.protocol;
-  document.getElementById('modal-edit-label-profile')?.showModal();
+    editing.value = row;
+    editForm.name = row.name;
+    editForm.width_mm = Number(row.width_mm);
+    editForm.height_mm = Number(row.height_mm);
+    editForm.dpi = row.dpi;
+    editForm.margin_left_mm = Number(row.margin_left_mm);
+    editForm.margin_top_mm = Number(row.margin_top_mm);
+    editForm.gap_mm = Number(row.gap_mm);
+    editForm.protocol = row.protocol;
+    document.getElementById('modal-edit-label-profile')?.showModal();
 };
 
 const submitEdit = () => {
-  if (!editing.value) return;
-  editForm.patch(route('erp.admin.label-profiles.update', editing.value.id), {
-    preserveScroll: true,
-    onSuccess: () => document.getElementById('modal-edit-label-profile')?.close(),
-  });
+    if (!editing.value) return;
+    editForm.patch(route('erp.admin.label-profiles.update', editing.value.id), {
+        preserveScroll: true,
+        onSuccess: () => document.getElementById('modal-edit-label-profile')?.close(),
+    });
 };
 
+const deletingRow = ref(null);
+const deleteMessage = computed(() => (deletingRow.value
+    ? `Yakin hapus profil “${deletingRow.value.name}”?`
+    : ''));
+
 const confirmDelete = (row) => {
-  if (!confirm(`Hapus profil "${row.name}"?`)) return;
-  router.delete(route('erp.admin.label-profiles.destroy', row.id), { preserveScroll: true });
+    deletingRow.value = row;
+    document.getElementById('modal-delete-label-profile')?.showModal();
+};
+
+const doDelete = () => {
+    if (!deletingRow.value) return;
+    router.delete(route('erp.admin.label-profiles.destroy', deletingRow.value.id), {
+        preserveScroll: true,
+        onFinish: () => { deletingRow.value = null; },
+    });
 };
 </script>
 
 <template>
-  <Head title="Administration - Profil label" />
-  <AppLayout>
-    <div class="space-y-5">
-      <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Administration Workspace</p>
-        <div class="mt-2 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 class="text-3xl font-bold tracking-tight">Profil label</h1>
-            <p class="mt-2 text-sm text-base-content/70">
-              Satu profil = satu kombinasi <strong>lebar × tinggi (mm)</strong>, <strong>DPI</strong>, margin, gap antar-label, dan bahasa <strong>ZPL / EPL</strong>.
-              Dipakai saat uji cetak SMB dan nanti saat cetak label dari modul lain.
-            </p>
-          </div>
-          <div class="flex gap-2">
-            <button type="button" class="btn btn-primary btn-sm" @click="openAddModal">Tambah profil</button>
-            <Link class="btn btn-ghost btn-sm" :href="route('erp.administration')">Back</Link>
-          </div>
+  <div class="space-y-5">
+    <div class="ocn-panel">
+      <div class="ocn-panel__head flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 class="ocn-panel__title">Profil label</h2>
+          <p class="ocn-panel__desc">
+            Satu profil = kombinasi <strong>lebar × tinggi (mm)</strong>, <strong>DPI</strong>, margin, gap, dan <strong>ZPL / EPL</strong>.
+            Dipakai untuk uji cetak SMB/LAN dan cetak label dari modul lain.
+          </p>
         </div>
+        <button type="button" class="btn btn-primary btn-sm" @click="openAddModal">Tambah profil</button>
       </div>
-
-      <div class="ocn-panel overflow-x-auto">
+      <div class="overflow-x-auto">
         <table class="table table-sm">
           <thead>
             <tr>
@@ -142,11 +147,11 @@ const confirmDelete = (row) => {
           </tbody>
         </table>
       </div>
-
-      <p class="text-xs text-base-content/60">
-        Contoh: label 3×5 inch ≈ 76,2 × 127 mm. Sesuaikan DPI dengan resolusi head printer (umum 203 atau 300).
-      </p>
     </div>
+
+    <p class="text-xs text-base-content/60">
+      Contoh: label 3×5 inch ≈ 76,2 × 127 mm. Sesuaikan DPI dengan resolusi head printer (umum 203 atau 300).
+    </p>
 
     <dialog id="modal-add-label-profile" class="modal">
       <div class="modal-box max-w-lg">
@@ -203,7 +208,12 @@ const confirmDelete = (row) => {
         </div>
         <div class="modal-action">
           <form method="dialog"><button class="btn">Batal</button></form>
-          <button class="btn btn-primary" :disabled="form.processing" @click="submit">Simpan</button>
+          <button
+            class="btn"
+            :class="form.processing ? 'btn-secondary' : 'btn-primary'"
+            :disabled="form.processing"
+            @click="submit"
+          >Simpan</button>
         </div>
       </div>
       <form method="dialog" class="modal-backdrop"><button>close</button></form>
@@ -261,10 +271,22 @@ const confirmDelete = (row) => {
         </div>
         <div class="modal-action">
           <form method="dialog"><button class="btn">Tutup</button></form>
-          <button class="btn btn-primary" :disabled="editForm.processing" @click="submitEdit">Simpan</button>
+          <button
+            class="btn"
+            :class="editForm.processing ? 'btn-secondary' : 'btn-primary'"
+            :disabled="editForm.processing"
+            @click="submitEdit"
+          >Simpan</button>
         </div>
       </div>
       <form method="dialog" class="modal-backdrop"><button>close</button></form>
     </dialog>
-  </AppLayout>
+
+    <ConfirmModal
+      id="modal-delete-label-profile"
+      title="Hapus profil label"
+      :message="deleteMessage"
+      @confirm="doDelete"
+    />
+  </div>
 </template>

@@ -12,6 +12,7 @@ use App\Models\PosSale;
 use App\Models\Project;
 use App\Models\ProjectPayment;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -44,26 +45,26 @@ class ErpChatbotController extends Controller
             return response()->json([
                 'ok' => true,
                 'intent' => $intent,
-                'answer' => $customResponse,
+                'answer' => $this->formatParserRuleResponse($intent, $customResponse, $message),
             ]);
         }
 
         $answer = match ($intent) {
-            'stock_lookup'          => $this->answerStockLookup($message),
-            'product_price_lookup'  => $this->answerPriceLookup($message),
-            'invoice_unpaid_list'   => $this->answerUnpaidInvoiceList(),
-            'invoice_due_list'      => $this->answerInvoiceDueList(),
-            'pos_sales_today'       => $this->answerPosSalesToday(),
-            'pos_sales_month'       => $this->answerPosSalesMonth(),
-            'cashflow_today'        => $this->answerCashflowToday(),
-            'cashflow_month'        => $this->answerCashflowMonth(),
-            'project_active_list'   => $this->answerProjectActiveList(),
-            'low_stock_alert'       => $this->answerLowStockAlert(),
-            'operational_summary'   => $this->answerOperationalSummary(),
-            'send_invoice'          => $this->answerSendInvoice($message),
-            'invoice_sent_list'     => $this->answerInvoiceSentList(),
-            'help'                  => $this->answerHelp(),
-            default                 => 'Intent dikenali tapi handler belum tersedia untuk: '.$intent,
+            'stock_lookup' => $this->answerStockLookup($message),
+            'product_price_lookup' => $this->answerPriceLookup($message),
+            'invoice_unpaid_list' => $this->answerUnpaidInvoiceList(),
+            'invoice_due_list' => $this->answerInvoiceDueList(),
+            'pos_sales_today' => $this->answerPosSalesToday(),
+            'pos_sales_month' => $this->answerPosSalesMonth(),
+            'cashflow_today' => $this->answerCashflowToday(),
+            'cashflow_month' => $this->answerCashflowMonth(),
+            'project_active_list' => $this->answerProjectActiveList(),
+            'low_stock_alert' => $this->answerLowStockAlert(),
+            'operational_summary' => $this->answerOperationalSummary(),
+            'send_invoice' => $this->answerSendInvoice($message),
+            'invoice_sent_list' => $this->answerInvoiceSentList(),
+            'help' => $this->answerHelp(),
+            default => 'Intent dikenali tapi handler belum tersedia untuk: '.$intent,
         };
 
         return response()->json([
@@ -76,6 +77,86 @@ class ErpChatbotController extends Controller
     // ──────────────────────────────────────────────────────────────────────────
     // Intent handlers
     // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Custom reply dari parser rule: teks statis, atau template dengan placeholder produk
+     * (mis. {{name}}, {{uom}}, {{stock}}, {{price}}) untuk intent stok/harga.
+     */
+    private function formatParserRuleResponse(?string $intent, string $template, string $message): string
+    {
+        if (! $this->parserTemplateHasProductPlaceholders($template)) {
+            return $template;
+        }
+
+        if (! in_array($intent, ['stock_lookup', 'product_price_lookup'], true)) {
+            return $template;
+        }
+
+        $term = $this->extractProductTerm($message);
+        if ($term === '') {
+            return match ($intent) {
+                'stock_lookup' => $this->answerStockLookup($message),
+                'product_price_lookup' => $this->answerPriceLookup($message),
+                default => $template,
+            };
+        }
+
+        $products = $this->searchProducts($term);
+        if ($products->isEmpty()) {
+            return match ($intent) {
+                'stock_lookup' => $this->answerStockLookup($message),
+                'product_price_lookup' => $this->answerPriceLookup($message),
+                default => $template,
+            };
+        }
+
+        if ($products->count() > 1) {
+            return match ($intent) {
+                'stock_lookup' => $this->answerStockLookup($message),
+                'product_price_lookup' => $this->answerPriceLookup($message),
+                default => $template,
+            };
+        }
+
+        return $this->replaceParserProductPlaceholders($template, $products->first());
+    }
+
+    private function parserTemplateHasProductPlaceholders(string $template): bool
+    {
+        return (bool) preg_match('/\{\{\s*[a-zA-Z0-9_]+\s*\}\}/', $template);
+    }
+
+    private function replaceParserProductPlaceholders(string $template, MasterProduct $p): string
+    {
+        $priceFmt = number_format((float) $p->selling_price, 0, ',', '.');
+        $low = (int) $p->stock <= (int) ($p->min_stock ?? 0);
+        $stockWarning = $low ? '⚠️ stok rendah' : '';
+
+        $map = [
+            'name' => (string) $p->name,
+            'nama' => (string) $p->name,
+            'sku' => (string) ($p->sku ?? ''),
+            'barcode' => (string) ($p->barcode ?? ''),
+            'uom' => (string) ($p->uom ?? ''),
+            'satuan' => (string) ($p->uom ?? ''),
+            'stock' => (string) $p->stock,
+            'min_stock' => (string) ($p->min_stock ?? 0),
+            'selling_price' => $priceFmt,
+            'price' => $priceFmt,
+            'harga' => $priceFmt,
+            'stock_status' => $stockWarning,
+        ];
+
+        return (string) preg_replace_callback(
+            '/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/',
+            function (array $m) use ($map): string {
+                $key = Str::lower((string) $m[1]);
+
+                return array_key_exists($key, $map) ? $map[$key] : (string) $m[0];
+            },
+            $template
+        );
+    }
 
     private function answerNoMatch(RuleBasedErpChatParser $parser): string
     {
@@ -182,7 +263,7 @@ class ErpChatbotController extends Controller
 
         $lines = $soon->map(function (ProjectPayment $p): string {
             $proj = $p->project?->name ?? 'Project';
-            $due = $p->due_date ? \Carbon\Carbon::parse($p->due_date)->format('d/m/Y') : '-';
+            $due = $p->due_date ? Carbon::parse($p->due_date)->format('d/m/Y') : '-';
             $amt = number_format((float) $p->amount, 0, ',', '.');
 
             return "- {$proj} | Jatuh tempo: {$due} | Rp {$amt}";
@@ -337,7 +418,7 @@ class ErpChatbotController extends Controller
             ."- biaya operasional\n"
             ."- kirim invoice INV-PRJ-000123 ke client@mail.com\n"
             ."- konfirmasi kirim invoice INV-PRJ-000123 ke client@mail.com\n"
-            ."- list invoice yang dikirim";
+            .'- list invoice yang dikirim';
     }
 
     private function answerSendInvoice(string $message): string
@@ -457,6 +538,7 @@ class ErpChatbotController extends Controller
 
         $lines = $logs->map(function (InvoiceSendLog $log): string {
             $when = $log->sent_at?->format('d/m/Y H:i') ?? '-';
+
             return "- {$log->invoice_number} | {$log->recipient_email} | {$log->status} | {$when}";
         })->implode("\n");
 
@@ -508,7 +590,7 @@ class ErpChatbotController extends Controller
             })
             ->orderBy('name')
             ->limit(6)
-            ->get(['id', 'name', 'sku', 'uom', 'stock', 'min_stock', 'selling_price']);
+            ->get(['id', 'name', 'sku', 'barcode', 'uom', 'stock', 'min_stock', 'selling_price']);
     }
 
     private function parseSendInvoiceCommand(string $message): array
