@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Laravel 11 + Vite/Vue + Inertia — untuk Coolify (PostgreSQL di layanan terpisah).
-# Set di Coolify: APP_KEY, APP_URL, DB_*, dll. Migrasi otomatis saat container start.
+# Set di Coolify: APP_KEY, APP_URL, DB_*, INITIAL_ADMIN_PASSWORD (admin pertama), dll.
 
 # Ziggy diimpor dari vendor/ di resources/js/app.js; .dockerignore mengabaikan vendor,
 # jadi kita pasang paket Composer sekali di sini dan menyalin hanya tightenco/ziggy ke stage Vite.
@@ -87,6 +87,7 @@ ENV APP_ENV=production
 ENV APP_DEBUG=false
 ENV LOG_CHANNEL=stderr
 ENV RUN_MIGRATIONS=true
+ENV RUN_INITIAL_ADMIN_SEED=true
 ENV DB_WAIT_TIMEOUT=120
 
 EXPOSE 8081

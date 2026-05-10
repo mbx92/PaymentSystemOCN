@@ -38,9 +38,14 @@ wait_for_database() {
     return 1
 }
 
+wait_for_database
+
 if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
-    wait_for_database
     php artisan migrate --force --ansi
+fi
+
+if [ "${RUN_INITIAL_ADMIN_SEED:-true}" = "true" ]; then
+    php artisan db:seed --class=InitialAdminSeeder --force --ansi
 fi
 
 php artisan optimize --ansi >/dev/null 2>&1 || true
