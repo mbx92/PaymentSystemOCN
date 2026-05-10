@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Laravel 11 + Vite/Vue + Inertia — untuk Coolify (PostgreSQL di layanan terpisah).
-# Set di Coolify: APP_KEY, APP_URL, DB_*, dll. Post-deploy: php artisan migrate --force
+# Set di Coolify: APP_KEY, APP_URL, DB_*, dll. Migrasi otomatis saat container start.
 
 # Ziggy diimpor dari vendor/ di resources/js/app.js; .dockerignore mengabaikan vendor,
 # jadi kita pasang paket Composer sekali di sini dan menyalin hanya tightenco/ziggy ke stage Vite.
@@ -42,6 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxml2-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j"$(nproc)" \
+        pdo_mysql \
         pdo_pgsql \
         mbstring \
         exif \
@@ -83,11 +84,14 @@ RUN mkdir -p /var/log/supervisor \
     && chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
 ENV APP_ENV=production
+ENV APP_DEBUG=false
 ENV LOG_CHANNEL=stderr
+ENV RUN_MIGRATIONS=true
+ENV DB_WAIT_TIMEOUT=120
 
 EXPOSE 8081
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
     CMD curl -fsS http://127.0.0.1:8081/up || exit 1
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
