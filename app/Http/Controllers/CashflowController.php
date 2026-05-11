@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\ERP\Accounting\Models\Account;
+use App\ERP\Accounting\Models\JournalEntry;
+use App\ERP\Accounting\Services\CoaSettingService;
 use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Shared\Enums\DocumentStatus;
 use App\Models\CategoryCoaMapping;
@@ -10,6 +12,7 @@ use App\Models\CashIn;
 use App\Models\CashOut;
 use App\Models\CashCategory;
 use App\Models\PaymentMethod;
+use App\Models\PosSale;
 use App\Models\Project;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -154,6 +157,10 @@ class CashflowController extends Controller
             ->map(fn (CashIn $entry) => [
                 'id' => $entry->id,
                 'type' => 'in',
+                'source_name' => $entry->project_payment_id
+                    ? 'Termin Project'
+                    : ($entry->category === 'pendapatan_project' ? 'Invoice Project' : 'Kas Masuk'),
+                'reference_no' => $entry->project_payment_id ? 'TERM-'.$entry->project_payment_id : (string) $entry->id,
                 'date' => $entry->date?->format('Y-m-d'),
                 'project_name' => $entry->project?->name ?? '-',
                 'project_id' => $entry->project_id,
@@ -181,6 +188,8 @@ class CashflowController extends Controller
             ->map(fn (CashOut $entry) => [
                 'id' => $entry->id,
                 'type' => 'out',
+                'source_name' => 'Kas Keluar',
+                'reference_no' => (string) $entry->id,
                 'date' => $entry->date?->format('Y-m-d'),
                 'project_name' => $entry->project?->name ?? '-',
                 'project_id' => $entry->project_id,
@@ -198,7 +207,11 @@ class CashflowController extends Controller
                 'created_at' => optional($entry->created_at)->timestamp ?? 0,
             ]);
 
+        $posCashAccount = app(CoaSettingService::class)->resolveAccountByKey('pos_sale_cash_account', '1001');
+        $posSales = $this->buildPosEntries($request, $posCashAccount);
+
         $merged = $cashIns->merge($cashOuts)
+            ->merge($posSales)
             ->sortByDesc(fn (array $row) => sprintf('%s-%d', $row['date'] ?? '0000-00-00', $row['created_at']));
 
         if (! $request->filled('type') && ! $request->filled('q')) {
@@ -215,8 +228,11 @@ class CashflowController extends Controller
             $filtered = $filtered->filter(function (array $row) use ($term): bool {
                 $haystacks = [
                     $row['project_name'],
+                    $row['source_name'] ?? null,
+                    $row['reference_no'] ?? null,
                     $row['category'],
                     $row['payment_method_name'],
+                    $row['cash_account_name'],
                     $row['recipient_name'],
                     $row['note'],
                     $row['creator_name'],
@@ -234,6 +250,66 @@ class CashflowController extends Controller
         }
 
         return $filtered->take(500)->values();
+    }
+
+    private function buildPosEntries(Request $request, Account $posCashAccount): Collection
+    {
+        if ($request->filled('project_id')) {
+            return collect();
+        }
+
+        $sales = PosSale::query()
+            ->with(['paymentMethod:id,name', 'soldBy:id,name'])
+            ->when($request->filled('date_from'), fn ($q) => $q->whereDate('sold_at', '>=', $request->date('date_from')))
+            ->when($request->filled('date_to'), fn ($q) => $q->whereDate('sold_at', '<=', $request->date('date_to')))
+            ->get();
+
+        if ($sales->isEmpty()) {
+            return collect();
+        }
+
+        $journalMap = JournalEntry::query()
+            ->whereIn('source_module', ['pos_sale', 'pos_sale_refund', 'pos_sale_reopen'])
+            ->whereIn('source_reference', $sales->pluck('number')->all())
+            ->get(['id', 'source_module', 'source_reference'])
+            ->keyBy(fn (JournalEntry $entry) => $entry->source_module.'|'.$entry->source_reference);
+
+        return $sales->map(function (PosSale $sale) use ($posCashAccount, $journalMap): array {
+            $status = (string) $sale->status;
+            $type = $status === 'refunded' ? 'out' : 'in';
+            $category = $status === 'refunded' ? 'refund_penjualan_pos' : 'penjualan_pos';
+            $sourceModule = match ($status) {
+                'refunded' => 'pos_sale_refund',
+                'reopened' => 'pos_sale_reopen',
+                default => 'pos_sale',
+            };
+
+            return [
+                'id' => 'pos-'.$sale->id,
+                'type' => $type,
+                'source_name' => 'POS',
+                'reference_no' => $sale->number,
+                'date' => $sale->sold_at?->format('Y-m-d'),
+                'project_name' => 'POS',
+                'project_id' => null,
+                'category' => $category,
+                'amount' => (float) $sale->grand_total,
+                'payment_method_name' => $type === 'in' ? ($sale->paymentMethod?->name ?? '-') : null,
+                'payment_method_id' => $type === 'in' ? $sale->payment_method_id : null,
+                'cash_account_id' => $posCashAccount->id,
+                'cash_account_name' => $posCashAccount->code.' - '.$posCashAccount->name,
+                'recipient_name' => $type === 'out' ? 'Customer Refund POS' : null,
+                'note' => trim(collect([
+                    'Transaksi POS '.$sale->number,
+                    $status !== 'paid' ? 'Status '.strtoupper($status) : null,
+                    $sale->note,
+                ])->filter()->implode(' | ')),
+                'creator_name' => $sale->soldBy?->name ?? '-',
+                'document_status' => DocumentStatus::Posted->value,
+                'journal_entry_id' => $journalMap->get($sourceModule.'|'.$sale->number)?->id,
+                'created_at' => optional($sale->sold_at)->timestamp ?? 0,
+            ];
+        });
     }
 
     private function storeCashInEntry(array $validated): void

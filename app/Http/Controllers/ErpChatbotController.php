@@ -16,6 +16,7 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
@@ -31,10 +32,15 @@ class ErpChatbotController extends Controller
         $parsed = $parser->parse($message);
 
         if (! $parsed['matched']) {
+            $followUp = $this->tryFollowUp($message);
+            if ($followUp !== null) {
+                return response()->json(['ok' => true, 'intent' => 'follow_up', 'answer' => $followUp]);
+            }
+
             return response()->json([
                 'ok' => true,
                 'intent' => null,
-                'answer' => $this->answerNoMatch($parser),
+                'answer' => $this->answerNoMatch($message, $parser),
             ]);
         }
 
@@ -50,21 +56,28 @@ class ErpChatbotController extends Controller
         }
 
         $answer = match ($intent) {
-            'stock_lookup' => $this->answerStockLookup($message),
+            'greeting'             => $this->answerGreeting(),
+            'stock_lookup'         => $this->answerStockLookup($message),
             'product_price_lookup' => $this->answerPriceLookup($message),
-            'invoice_unpaid_list' => $this->answerUnpaidInvoiceList(),
-            'invoice_due_list' => $this->answerInvoiceDueList(),
-            'pos_sales_today' => $this->answerPosSalesToday(),
-            'pos_sales_month' => $this->answerPosSalesMonth(),
-            'cashflow_today' => $this->answerCashflowToday(),
-            'cashflow_month' => $this->answerCashflowMonth(),
-            'project_active_list' => $this->answerProjectActiveList(),
-            'low_stock_alert' => $this->answerLowStockAlert(),
-            'operational_summary' => $this->answerOperationalSummary(),
-            'send_invoice' => $this->answerSendInvoice($message),
-            'invoice_sent_list' => $this->answerInvoiceSentList(),
-            'help' => $this->answerHelp(),
-            default => 'Intent dikenali tapi handler belum tersedia untuk: '.$intent,
+            'product_detail'       => $this->answerProductDetail($message),
+            'invoice_unpaid_list'  => $this->answerUnpaidInvoiceList(),
+            'invoice_due_list'     => $this->answerInvoiceDueList(),
+            'pos_sales_today'      => $this->answerPosSalesToday(),
+            'pos_sales_yesterday'  => $this->answerPosSalesYesterday(),
+            'pos_sales_month'      => $this->answerPosSalesMonth(),
+            'pos_sales_last_month' => $this->answerPosSalesLastMonth(),
+            'cashflow_today'       => $this->answerCashflowToday(),
+            'cashflow_yesterday'   => $this->answerCashflowYesterday(),
+            'cashflow_month'       => $this->answerCashflowMonth(),
+            'cashflow_last_month'  => $this->answerCashflowLastMonth(),
+            'project_active_list'  => $this->answerProjectActiveList(),
+            'low_stock_alert'      => $this->answerLowStockAlert(),
+            'operational_summary'  => $this->answerOperationalSummary(),
+            'top_selling_products' => $this->answerTopSellingProducts(),
+            'send_invoice'         => $this->answerSendInvoice($message),
+            'invoice_sent_list'    => $this->answerInvoiceSentList(),
+            'help'                 => $this->answerHelp(),
+            default                => 'Intent dikenali tapi handler belum tersedia untuk: '.$intent,
         };
 
         return response()->json([
@@ -75,13 +88,71 @@ class ErpChatbotController extends Controller
     }
 
     // ──────────────────────────────────────────────────────────────────────────
+    // Follow-up context
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private function contextKey(): string
+    {
+        return 'chatbot_ctx_'.Auth::id();
+    }
+
+    private function rememberProduct(MasterProduct $product): void
+    {
+        Cache::put($this->contextKey(), [
+            'product_id' => $product->id,
+            'product_name' => $product->name,
+        ], now()->addMinutes(10));
+    }
+
+    private function tryFollowUp(string $message): ?string
+    {
+        $lower = Str::of($message)->lower()->squish()->toString();
+
+        $stockTriggers = ['stoknya', 'stocknya', 'sisa stok', 'stok nya', 'berapa stok', 'cek stok'];
+        $priceTriggers = ['harganya', 'brapa harga', 'berapa harga', 'harga nya', 'brp harga', 'pricenya'];
+        $detailTriggers = ['detailnya', 'infonya', 'detail nya', 'info nya', 'lengkapnya'];
+
+        $ctx = Cache::get($this->contextKey());
+        if (! $ctx || ! ($ctx['product_id'] ?? null)) {
+            return null;
+        }
+
+        $product = MasterProduct::find($ctx['product_id']);
+        if (! $product) {
+            return null;
+        }
+
+        $isStock = collect($stockTriggers)->some(fn ($t) => Str::contains($lower, $t));
+        $isPrice = collect($priceTriggers)->some(fn ($t) => Str::contains($lower, $t));
+        $isDetail = collect($detailTriggers)->some(fn ($t) => Str::contains($lower, $t));
+
+        if ($isStock) {
+            $this->rememberProduct($product);
+            $status = $product->stock <= ($product->min_stock ?? 0) ? ' ⚠️ *stok rendah*' : '';
+
+            return "**{$product->name}**\nStok: {$product->stock} {$product->uom}{$status}";
+        }
+
+        if ($isPrice) {
+            $this->rememberProduct($product);
+            $price = number_format((float) $product->selling_price, 0, ',', '.');
+
+            return "**{$product->name}**\nHarga: Rp {$price} / {$product->uom}";
+        }
+
+        if ($isDetail) {
+            $this->rememberProduct($product);
+
+            return $this->formatProductDetail($product);
+        }
+
+        return null;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
     // Intent handlers
     // ──────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Custom reply dari parser rule: teks statis, atau template dengan placeholder produk
-     * (mis. {{name}}, {{uom}}, {{stock}}, {{price}}) untuk intent stok/harga.
-     */
     private function formatParserRuleResponse(?string $intent, string $template, string $message): string
     {
         if (! $this->parserTemplateHasProductPlaceholders($template)) {
@@ -102,15 +173,7 @@ class ErpChatbotController extends Controller
         }
 
         $products = $this->searchProducts($term);
-        if ($products->isEmpty()) {
-            return match ($intent) {
-                'stock_lookup' => $this->answerStockLookup($message),
-                'product_price_lookup' => $this->answerPriceLookup($message),
-                default => $template,
-            };
-        }
-
-        if ($products->count() > 1) {
+        if ($products->isEmpty() || $products->count() > 1) {
             return match ($intent) {
                 'stock_lookup' => $this->answerStockLookup($message),
                 'product_price_lookup' => $this->answerPriceLookup($message),
@@ -158,8 +221,18 @@ class ErpChatbotController extends Controller
         );
     }
 
-    private function answerNoMatch(RuleBasedErpChatParser $parser): string
+    private function answerNoMatch(string $message, RuleBasedErpChatParser $parser): string
     {
+        $suggestion = $parser->suggestClosest($message);
+
+        if ($suggestion) {
+            $hint = $suggestion['hint'];
+
+            return "Maaf, saya belum yakin maksudnya. Mungkin yang Anda cari:\n"
+                ."- **{$suggestion['name']}** (kata kunci: {$hint})\n\n"
+                .'Coba ulangi dengan kata kunci di atas, atau ketik **bantuan**.';
+        }
+
         $hints = $parser->activeRules()
             ->filter(fn ($rule) => ! empty($rule->keywords))
             ->take(6)
@@ -174,6 +247,21 @@ class ErpChatbotController extends Controller
         return $base.' Coba ketik **bantuan** untuk melihat contoh pertanyaan.';
     }
 
+    private function answerGreeting(): string
+    {
+        $hour = (int) now()->format('H');
+        $greeting = match (true) {
+            $hour < 11  => 'Selamat pagi',
+            $hour < 15  => 'Selamat siang',
+            $hour < 18  => 'Selamat sore',
+            default     => 'Selamat malam',
+        };
+
+        $user = Auth::user()?->name ?? 'Kak';
+
+        return "{$greeting}, **{$user}**! 👋\nAda yang bisa saya bantu hari ini?\n\nKetik **bantuan** untuk melihat semua fitur yang tersedia.";
+    }
+
     private function answerStockLookup(string $message): string
     {
         $term = $this->extractProductTerm($message);
@@ -183,19 +271,20 @@ class ErpChatbotController extends Controller
 
         $products = $this->searchProducts($term);
         if ($products->isEmpty()) {
-            return "Produk \"**{$term}**\" tidak ditemukan.";
+            return "Produk \"**{$term}**\" tidak ditemukan. Pastikan nama/SKU sudah benar.";
         }
 
-        if ($products->count() > 1) {
-            $names = $products->take(5)->map(fn ($p) => "- {$p->name}")->implode("\n");
+        if ($products->count() === 1) {
+            $p = $products->first();
+            $this->rememberProduct($p);
+            $status = $p->stock <= ($p->min_stock ?? 0) ? ' ⚠️ *stok rendah*' : '';
 
-            return "Ditemukan beberapa produk:\n{$names}\n\nMohon sebutkan lebih spesifik.";
+            return "**{$p->name}**\nStok: {$p->stock} {$p->uom}{$status}\n\n💡 Tanya lagi: \"harganya?\" atau \"detailnya?\"";
         }
 
-        $p = $products->first();
-        $status = $p->stock <= ($p->min_stock ?? 0) ? ' ⚠️ *stok rendah*' : '';
+        $names = $products->take(5)->map(fn ($p) => "- {$p->name} — Stok: {$p->stock} {$p->uom}")->implode("\n");
 
-        return "**{$p->name}**\nStok: {$p->stock} {$p->uom}{$status}";
+        return "Ditemukan {$products->count()} produk:\n{$names}\n\nMohon sebutkan lebih spesifik.";
     }
 
     private function answerPriceLookup(string $message): string
@@ -207,19 +296,58 @@ class ErpChatbotController extends Controller
 
         $products = $this->searchProducts($term);
         if ($products->isEmpty()) {
+            return "Produk \"**{$term}**\" tidak ditemukan. Pastikan nama/SKU sudah benar.";
+        }
+
+        if ($products->count() === 1) {
+            $p = $products->first();
+            $this->rememberProduct($p);
+            $price = number_format((float) $p->selling_price, 0, ',', '.');
+
+            return "**{$p->name}**\nHarga: Rp {$price} / {$p->uom}\n\n💡 Tanya lagi: \"stoknya?\" atau \"detailnya?\"";
+        }
+
+        $lines = $products->take(5)->map(fn ($p) => "- {$p->name}: Rp ".number_format((float) $p->selling_price, 0, ',', '.'))->implode("\n");
+
+        return "Ditemukan {$products->count()} produk:\n{$lines}";
+    }
+
+    private function answerProductDetail(string $message): string
+    {
+        $term = $this->extractProductTerm($message);
+        if ($term === '') {
+            return 'Silakan sebutkan produk yang ingin dilihat detailnya. Contoh: "detail produk lid cup".';
+        }
+
+        $products = $this->searchProducts($term);
+        if ($products->isEmpty()) {
             return "Produk \"**{$term}**\" tidak ditemukan.";
         }
 
-        if ($products->count() > 1) {
-            $lines = $products->take(5)->map(fn ($p) => "- {$p->name}: Rp ".number_format((float) $p->selling_price, 0, ',', '.'))->implode("\n");
+        if ($products->count() === 1) {
+            $p = $products->first();
+            $this->rememberProduct($p);
 
-            return "Ditemukan beberapa produk:\n{$lines}";
+            return $this->formatProductDetail($p);
         }
 
-        $p = $products->first();
-        $price = number_format((float) $p->selling_price, 0, ',', '.');
+        $names = $products->take(5)->map(fn ($p) => "- {$p->name}")->implode("\n");
 
-        return "**{$p->name}**\nHarga: Rp {$price} / {$p->uom}";
+        return "Ditemukan {$products->count()} produk:\n{$names}\n\nMohon sebutkan lebih spesifik.";
+    }
+
+    private function formatProductDetail(MasterProduct $p): string
+    {
+        $price = number_format((float) $p->selling_price, 0, ',', '.');
+        $status = $p->stock <= ($p->min_stock ?? 0) ? '⚠️ Stok rendah' : '✅ Stok aman';
+        $barcode = $p->barcode ? "\nBarcode: `{$p->barcode}`" : '';
+        $sku = $p->sku ? "\nSKU: `{$p->sku}`" : '';
+
+        return "**{$p->name}**{$sku}{$barcode}\n"
+            ."Satuan: {$p->uom}\n"
+            ."Harga jual: Rp {$price}\n"
+            ."Stok: {$p->stock} (min: ".((int) ($p->min_stock ?? 0)).")\n"
+            ."Status: {$status}";
     }
 
     private function answerUnpaidInvoiceList(): string
@@ -235,6 +363,9 @@ class ErpChatbotController extends Controller
             return '✅ Tidak ada invoice termin yang belum dibayar saat ini.';
         }
 
+        $total = $unpaid->sum(fn ($p) => (float) $p->amount);
+        $totalFmt = number_format($total, 0, ',', '.');
+
         $lines = $unpaid->map(function (ProjectPayment $p): string {
             $proj = $p->project?->name ?? 'Project';
             $inv = $p->project?->invoice_number ?? '-';
@@ -243,7 +374,7 @@ class ErpChatbotController extends Controller
             return "- {$proj} | {$inv} | Termin {$p->term_number} | Rp {$amt}";
         })->implode("\n");
 
-        return "**Invoice belum dibayar** ({$unpaid->count()}):\n{$lines}";
+        return "**Invoice belum dibayar** ({$unpaid->count()}):\n{$lines}\n\n**Total: Rp {$totalFmt}**";
     }
 
     private function answerInvoiceDueList(): string
@@ -261,84 +392,114 @@ class ErpChatbotController extends Controller
             return '✅ Tidak ada invoice yang jatuh tempo dalam 14 hari ke depan.';
         }
 
-        $lines = $soon->map(function (ProjectPayment $p): string {
+        $overdue = $soon->filter(fn ($p) => Carbon::parse($p->due_date)->isPast());
+
+        $lines = $soon->map(function (ProjectPayment $p) use ($overdue): string {
             $proj = $p->project?->name ?? 'Project';
             $due = $p->due_date ? Carbon::parse($p->due_date)->format('d/m/Y') : '-';
             $amt = number_format((float) $p->amount, 0, ',', '.');
+            $flag = $overdue->contains($p) ? ' 🔴' : '';
 
-            return "- {$proj} | Jatuh tempo: {$due} | Rp {$amt}";
+            return "- {$proj} | Jatuh tempo: {$due} | Rp {$amt}{$flag}";
         })->implode("\n");
 
-        return "**Invoice jatuh tempo 14 hari ke depan** ({$soon->count()}):\n{$lines}";
+        $overdueNote = $overdue->isNotEmpty()
+            ? "\n\n🔴 = sudah melewati jatuh tempo ({$overdue->count()} item)"
+            : '';
+
+        return "**Invoice jatuh tempo 14 hari ke depan** ({$soon->count()}):\n{$lines}{$overdueNote}";
     }
 
     private function answerPosSalesToday(): string
     {
-        $q = PosSale::query()->whereDate('sold_at', now()->toDateString());
-        $count = $q->count();
-        $total = number_format((float) $q->sum('grand_total'), 0, ',', '.');
+        return $this->formatPosSalesSummary(now()->toDateString(), now()->toDateString(), 'POS hari ini');
+    }
 
-        if ($count === 0) {
-            return 'Belum ada transaksi POS hari ini.';
-        }
+    private function answerPosSalesYesterday(): string
+    {
+        $date = now()->subDay()->toDateString();
 
-        return "**POS hari ini**\nTransaksi: {$count}\nTotal penjualan: Rp {$total}";
+        return $this->formatPosSalesSummary($date, $date, 'POS kemarin ('.now()->subDay()->format('d/m/Y').')');
     }
 
     private function answerPosSalesMonth(): string
     {
-        $q = PosSale::query()
-            ->whereYear('sold_at', now()->year)
-            ->whereMonth('sold_at', now()->month);
-
-        $count = $q->count();
-        $total = number_format((float) $q->sum('grand_total'), 0, ',', '.');
+        $start = now()->startOfMonth()->toDateString();
+        $end = now()->toDateString();
         $month = now()->translatedFormat('F Y');
 
+        return $this->formatPosSalesSummary($start, $end, "POS {$month}");
+    }
+
+    private function answerPosSalesLastMonth(): string
+    {
+        $lastMonth = now()->subMonth();
+        $start = $lastMonth->copy()->startOfMonth()->toDateString();
+        $end = $lastMonth->copy()->endOfMonth()->toDateString();
+        $month = $lastMonth->translatedFormat('F Y');
+
+        return $this->formatPosSalesSummary($start, $end, "POS {$month}");
+    }
+
+    private function formatPosSalesSummary(string $startDate, string $endDate, string $label): string
+    {
+        $q = PosSale::query()->whereBetween('sold_at', [$startDate.' 00:00:00', $endDate.' 23:59:59']);
+        $count = $q->count();
+        $total = (float) $q->sum('grand_total');
+        $totalFmt = number_format($total, 0, ',', '.');
+
         if ($count === 0) {
-            return "Belum ada transaksi POS bulan {$month}.";
+            return "Belum ada transaksi {$label}.";
         }
 
-        return "**POS {$month}**\nTransaksi: {$count}\nTotal penjualan: Rp {$total}";
+        $avg = $count > 0 ? number_format($total / $count, 0, ',', '.') : '0';
+
+        return "**{$label}**\nTransaksi: {$count}\nTotal penjualan: Rp {$totalFmt}\nRata-rata/trx: Rp {$avg}";
     }
 
     private function answerCashflowToday(): string
     {
-        $today = now()->toDateString();
+        return $this->formatCashflowSummary(now()->toDateString(), now()->toDateString(), 'Cashflow hari ini');
+    }
 
-        $cashIn = (float) CashIn::query()->whereDate('date', $today)->sum('amount');
-        $cashOut = (float) CashOut::query()->whereDate('date', $today)->sum('amount');
-        $net = $cashIn - $cashOut;
+    private function answerCashflowYesterday(): string
+    {
+        $date = now()->subDay()->toDateString();
 
-        $inFmt = number_format($cashIn, 0, ',', '.');
-        $outFmt = number_format($cashOut, 0, ',', '.');
-        $netFmt = number_format(abs($net), 0, ',', '.');
-        $netLabel = $net >= 0 ? "**+Rp {$netFmt}**" : "**-Rp {$netFmt}**";
-
-        return "**Cashflow hari ini**\nKas masuk : Rp {$inFmt}\nKas keluar : Rp {$outFmt}\nNet        : {$netLabel}";
+        return $this->formatCashflowSummary($date, $date, 'Cashflow kemarin ('.now()->subDay()->format('d/m/Y').')');
     }
 
     private function answerCashflowMonth(): string
     {
-        $cashIn = (float) CashIn::query()
-            ->whereYear('date', now()->year)
-            ->whereMonth('date', now()->month)
-            ->sum('amount');
-
-        $cashOut = (float) CashOut::query()
-            ->whereYear('date', now()->year)
-            ->whereMonth('date', now()->month)
-            ->sum('amount');
-
-        $net = $cashIn - $cashOut;
+        $start = now()->startOfMonth()->toDateString();
+        $end = now()->toDateString();
         $month = now()->translatedFormat('F Y');
+
+        return $this->formatCashflowSummary($start, $end, "Cashflow {$month}");
+    }
+
+    private function answerCashflowLastMonth(): string
+    {
+        $lastMonth = now()->subMonth();
+        $start = $lastMonth->copy()->startOfMonth()->toDateString();
+        $end = $lastMonth->copy()->endOfMonth()->toDateString();
+        $month = $lastMonth->translatedFormat('F Y');
+
+        return $this->formatCashflowSummary($start, $end, "Cashflow {$month}");
+    }
+
+    private function formatCashflowSummary(string $startDate, string $endDate, string $label): string
+    {
+        $cashIn = (float) CashIn::query()->whereBetween('date', [$startDate, $endDate])->sum('amount');
+        $cashOut = (float) CashOut::query()->whereBetween('date', [$startDate, $endDate])->sum('amount');
+        $net = $cashIn - $cashOut;
 
         $inFmt = number_format($cashIn, 0, ',', '.');
         $outFmt = number_format($cashOut, 0, ',', '.');
         $netFmt = number_format(abs($net), 0, ',', '.');
-        $netLabel = $net >= 0 ? "**+Rp {$netFmt}**" : "**-Rp {$netFmt}**";
+        $netLabel = $net >= 0 ? "**+Rp {$netFmt}** ✅" : "**-Rp {$netFmt}** ⚠️";
 
-        return "**Cashflow {$month}**\nKas masuk : Rp {$inFmt}\nKas keluar : Rp {$outFmt}\nNet        : {$netLabel}";
+        return "**{$label}**\nKas masuk : Rp {$inFmt}\nKas keluar : Rp {$outFmt}\nNet        : {$netLabel}";
     }
 
     private function answerProjectActiveList(): string
@@ -353,6 +514,9 @@ class ErpChatbotController extends Controller
             return 'Tidak ada project yang sedang berjalan saat ini.';
         }
 
+        $totalValue = $projects->sum(fn ($p) => (float) $p->total_value);
+        $totalFmt = number_format($totalValue, 0, ',', '.');
+
         $lines = $projects->map(function (Project $p): string {
             $value = number_format((float) $p->total_value, 0, ',', '.');
             $client = $p->client_name ? " ({$p->client_name})" : '';
@@ -360,7 +524,7 @@ class ErpChatbotController extends Controller
             return "- {$p->name}{$client} | Rp {$value}";
         })->implode("\n");
 
-        return "**Project aktif** ({$projects->count()}):\n{$lines}";
+        return "**Project aktif** ({$projects->count()}):\n{$lines}\n\n**Total nilai: Rp {$totalFmt}**";
     }
 
     private function answerLowStockAlert(): string
@@ -399,26 +563,71 @@ class ErpChatbotController extends Controller
         $thisFmt = number_format((float) $thisMonth, 0, ',', '.');
         $lastFmt = number_format((float) $lastMonth, 0, ',', '.');
 
-        return "**Biaya Operasional**\nBulan ini ({$month}): Rp {$thisFmt}\nBulan lalu            : Rp {$lastFmt}";
+        $diff = (float) $thisMonth - (float) $lastMonth;
+        $trend = $diff > 0 ? '📈 Naik' : ($diff < 0 ? '📉 Turun' : '➡️ Sama');
+        $diffFmt = number_format(abs($diff), 0, ',', '.');
+        $trendLine = $diff !== 0.0 ? "\nTren: {$trend} Rp {$diffFmt} dari bulan lalu" : '';
+
+        return "**Biaya Operasional**\nBulan ini ({$month}): Rp {$thisFmt}\nBulan lalu            : Rp {$lastFmt}{$trendLine}";
+    }
+
+    private function answerTopSellingProducts(): string
+    {
+        $month = now()->translatedFormat('F Y');
+        $start = now()->startOfMonth()->toDateString().' 00:00:00';
+        $end = now()->toDateString().' 23:59:59';
+
+        $topProducts = \App\Models\PosSaleItem::query()
+            ->join('pos_sales', 'pos_sales.id', '=', 'pos_sale_items.pos_sale_id')
+            ->whereBetween('pos_sales.sold_at', [$start, $end])
+            ->selectRaw('pos_sale_items.product_name, SUM(pos_sale_items.qty) as total_qty, SUM(pos_sale_items.line_total) as total_revenue')
+            ->groupBy('pos_sale_items.product_name')
+            ->orderByDesc('total_qty')
+            ->limit(10)
+            ->get();
+
+        if ($topProducts->isEmpty()) {
+            return "Belum ada data penjualan bulan {$month}.";
+        }
+
+        $lines = $topProducts->map(function ($row, $idx) {
+            $rank = $idx + 1;
+            $qty = number_format((float) $row->total_qty, 0, ',', '.');
+            $rev = number_format((float) $row->total_revenue, 0, ',', '.');
+
+            return "- {$rank}. {$row->product_name} — {$qty} terjual (Rp {$rev})";
+        })->implode("\n");
+
+        return "**Produk terlaris {$month}** (Top 10):\n{$lines}";
     }
 
     private function answerHelp(): string
     {
-        return "**Contoh pertanyaan:**\n"
+        return "**📋 Fitur yang tersedia:**\n\n"
+            ."**Produk & Stok**\n"
             ."- stok lid cup\n"
             ."- harga standing pouch\n"
+            ."- detail produk lid cup\n"
+            ."- stok rendah\n"
+            ."- produk terlaris\n\n"
+            ."**Penjualan POS**\n"
+            ."- pos hari ini\n"
+            ."- pos kemarin\n"
+            ."- penjualan bulan ini\n"
+            ."- penjualan bulan lalu\n\n"
+            ."**Keuangan**\n"
+            ."- cashflow hari ini\n"
+            ."- cashflow kemarin\n"
+            ."- cashflow bulan ini\n"
+            ."- cashflow bulan lalu\n"
+            ."- biaya operasional\n\n"
+            ."**Invoice & Project**\n"
             ."- invoice belum dibayar\n"
             ."- invoice jatuh tempo\n"
-            ."- pos hari ini\n"
-            ."- penjualan bulan ini\n"
-            ."- cashflow hari ini\n"
-            ."- cashflow bulan ini\n"
             ."- project aktif\n"
-            ."- stok rendah\n"
-            ."- biaya operasional\n"
-            ."- kirim invoice INV-PRJ-000123 ke client@mail.com\n"
-            ."- konfirmasi kirim invoice INV-PRJ-000123 ke client@mail.com\n"
-            .'- list invoice yang dikirim';
+            ."- kirim invoice INV-PRJ-000123 ke email@mail.com\n"
+            ."- list invoice yang dikirim\n\n"
+            .'💡 Setelah cek produk, Anda bisa tanya "harganya?", "stoknya?", atau "detailnya?" untuk lanjut.';
     }
 
     private function answerSendInvoice(string $message): string
@@ -538,8 +747,9 @@ class ErpChatbotController extends Controller
 
         $lines = $logs->map(function (InvoiceSendLog $log): string {
             $when = $log->sent_at?->format('d/m/Y H:i') ?? '-';
+            $icon = $log->status === 'sent' ? '✅' : '❌';
 
-            return "- {$log->invoice_number} | {$log->recipient_email} | {$log->status} | {$when}";
+            return "- {$icon} {$log->invoice_number} | {$log->recipient_email} | {$when}";
         })->implode("\n");
 
         return "**Riwayat invoice terkirim** (10 terakhir):\n{$lines}";
@@ -562,10 +772,14 @@ class ErpChatbotController extends Controller
         }
 
         $noiseWords = [
-            'saya', 'sy', 'aku', 'mau', 'ingin', 'tanya', 'nanya', 'cek', 'tolong', 'please', 'dong',
+            'saya', 'sy', 'aku', 'gue', 'gw', 'mau', 'ingin', 'pengen', 'minta',
+            'tanya', 'nanya', 'cek', 'tolong', 'please', 'dong', 'deh', 'lah', 'kah',
             'berapa', 'ada', 'sisa', 'total', 'untuk', 'dari', 'yang', 'di', 'ke',
-            'produk', 'barang', 'item', 'nya', 'ya', 'nih', 'ini', 'itu',
+            'produk', 'barang', 'item', 'nya', 'ya', 'nih', 'ini', 'itu', 'the',
             'stok', 'stock', 'harga', 'price', 'of', 'sekarang', 'saat', 'ini',
+            'lihat', 'tampilkan', 'show', 'kasih', 'tau', 'tahu', 'bisa', 'boleh',
+            'gimana', 'bagaimana', 'detail', 'info', 'informasi', 'data',
+            'cari', 'carikan', 'cekkan',
         ];
 
         $parts = preg_split('/\s+/', $normalized) ?: [];

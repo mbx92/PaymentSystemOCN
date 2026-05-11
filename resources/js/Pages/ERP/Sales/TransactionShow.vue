@@ -2,7 +2,7 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 
 const props = defineProps({
@@ -47,7 +47,9 @@ const reopenTransaction = () => {
 
 const canRefund = computed(() => props.detail.status !== 'refunded');
 const canReopen = computed(() => props.detail.status !== 'reopened');
-const printReceipt = () => window.print();
+const printingReceipt = ref(false);
+const printReceiptError = ref('');
+const printReceiptSuccess = ref('');
 
 const authPayload = () => ({
   data: {
@@ -63,6 +65,49 @@ const submitPaymentMethodUpdate = () => {
 };
 
 const openConfirmModal = (id) => document.getElementById(id)?.showModal();
+
+const getCookieValue = (name) => {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop()?.split(';').shift() || '';
+  return '';
+};
+
+const printReceipt = async () => {
+  if (printingReceipt.value) return;
+
+  printingReceipt.value = true;
+  printReceiptError.value = '';
+  printReceiptSuccess.value = '';
+
+  try {
+    const response = await fetch(route('erp.sales.pos.print-receipt'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+        'X-XSRF-TOKEN': decodeURIComponent(getCookieValue('XSRF-TOKEN') || ''),
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        transaction_number: props.detail.number,
+      }),
+    });
+
+    const payload = await response.json();
+    if (!response.ok) {
+      const firstError = payload?.errors ? Object.values(payload.errors)[0]?.[0] : null;
+      throw new Error(firstError || payload?.message || 'Gagal mencetak struk ke printer thermal.');
+    }
+
+    printReceiptSuccess.value = payload?.message || `Struk ${props.detail.number} berhasil dikirim ke printer.`;
+  } catch (error) {
+    printReceiptError.value = error?.message || 'Gagal mencetak struk ke printer thermal.';
+  } finally {
+    printingReceipt.value = false;
+  }
+};
 </script>
 
 <template>
@@ -83,7 +128,7 @@ const openConfirmModal = (id) => document.getElementById(id)?.showModal();
         </div>
       </div>
 
-      <div class="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div class="grid grid-cols-2 gap-3 lg:grid-cols-6">
         <div class="rounded-xl border border-base-300 bg-base-100 p-3 shadow-sm">
           <p class="text-[11px] uppercase text-base-content/50">Gross</p>
           <p class="mt-1 font-semibold">{{ format(detail.gross_total) }}</p>
@@ -91,6 +136,10 @@ const openConfirmModal = (id) => document.getElementById(id)?.showModal();
         <div class="rounded-xl border border-base-300 bg-base-100 p-3 shadow-sm">
           <p class="text-[11px] uppercase text-base-content/50">Diskon</p>
           <p class="mt-1 font-semibold text-warning">- {{ format(detail.discount_total) }}</p>
+        </div>
+        <div class="rounded-xl border border-base-300 bg-base-100 p-3 shadow-sm">
+          <p class="text-[11px] uppercase text-base-content/50">Biaya Tambahan</p>
+          <p class="mt-1 font-semibold">{{ format(detail.additional_fee) }}</p>
         </div>
         <div class="rounded-xl border border-base-300 bg-base-100 p-3 shadow-sm">
           <p class="text-[11px] uppercase text-base-content/50">Grand Total</p>
@@ -107,46 +156,77 @@ const openConfirmModal = (id) => document.getElementById(id)?.showModal();
       </div>
 
       <div class="grid gap-5 xl:grid-cols-[1fr_340px]">
-        <div class="ocn-panel">
-          <div class="ocn-panel__head">
-            <h2 class="ocn-panel__title">Item transaksi</h2>
+        <div class="space-y-5">
+          <div class="ocn-panel">
+            <div class="ocn-panel__head">
+              <h2 class="ocn-panel__title">Item transaksi</h2>
+            </div>
+            <div class="card-body p-0">
+              <div class="overflow-x-auto">
+                <table class="table table-zebra">
+                  <thead>
+                    <tr>
+                      <th>SKU</th>
+                      <th>Produk</th>
+                      <th class="text-right">Qty</th>
+                      <th>UoM</th>
+                      <th class="text-right">Harga</th>
+                      <th class="text-right">Disc %</th>
+                      <th class="text-right">Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="item in detail.items" :key="item.id">
+                      <td class="font-mono text-xs">{{ item.sku }}</td>
+                      <td>{{ item.product_name }}</td>
+                      <td class="text-right">{{ item.qty }}</td>
+                      <td>{{ item.uom }}</td>
+                      <td class="text-right">{{ format(item.unit_price) }}</td>
+                      <td class="text-right">{{ item.discount_percent }}</td>
+                      <td class="text-right font-semibold">{{ format(item.line_total) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
-          <div class="card-body p-0">
-            <div class="overflow-x-auto">
-              <table class="table table-zebra">
-                <thead>
-                  <tr>
-                    <th>SKU</th>
-                    <th>Produk</th>
-                    <th class="text-right">Qty</th>
-                    <th>UoM</th>
-                    <th class="text-right">Harga</th>
-                    <th class="text-right">Disc %</th>
-                    <th class="text-right">Subtotal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="item in detail.items" :key="item.id">
-                    <td class="font-mono text-xs">{{ item.sku }}</td>
-                    <td>{{ item.product_name }}</td>
-                    <td class="text-right">{{ item.qty }}</td>
-                    <td>{{ item.uom }}</td>
-                    <td class="text-right">{{ format(item.unit_price) }}</td>
-                    <td class="text-right">{{ item.discount_percent }}</td>
-                    <td class="text-right font-semibold">{{ format(item.line_total) }}</td>
-                  </tr>
-                </tbody>
-              </table>
+
+          <div class="ocn-panel">
+            <div class="ocn-panel__head">
+              <h2 class="ocn-panel__title">Biaya tambahan</h2>
+            </div>
+            <div class="card-body p-0">
+              <div class="overflow-x-auto">
+                <table class="table table-zebra">
+                  <thead>
+                    <tr>
+                      <th>Nama Biaya</th>
+                      <th class="text-right">Nominal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="charge in detail.additional_charges" :key="charge.id">
+                      <td>{{ charge.charge_name }}</td>
+                      <td class="text-right font-semibold">{{ format(charge.amount) }}</td>
+                    </tr>
+                    <tr v-if="!detail.additional_charges?.length">
+                      <td colspan="2" class="py-8 text-center text-base-content/50">Tidak ada biaya tambahan.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
 
-        <div class="card border border-primary/20 bg-primary/5 shadow">
+        <div class="card border border-primary/20 bg-primary/5 shadow xl:sticky xl:top-24 xl:self-start">
           <div class="card-body">
             <h2 class="card-title text-lg">Quick Actions</h2>
             <p class="text-sm text-base-content/70">Utilitas transaksi untuk operasional kasir.</p>
 
-            <button class="btn btn-primary btn-sm" type="button" @click="printReceipt">Cetak Ulang Receipt</button>
+            <button class="btn btn-primary btn-sm" type="button" :disabled="printingReceipt" @click="printReceipt">{{ printingReceipt ? 'Mencetak...' : 'Cetak Ulang Receipt' }}</button>
+            <p v-if="printReceiptSuccess" class="text-xs text-success">{{ printReceiptSuccess }}</p>
+            <p v-if="printReceiptError" class="text-xs text-error">{{ printReceiptError }}</p>
 
             <div class="rounded-lg border border-base-300 bg-base-100 p-3">
               <p class="text-xs uppercase tracking-wide text-base-content/60">Metode Pembayaran Saat Ini</p>
@@ -229,4 +309,3 @@ const openConfirmModal = (id) => document.getElementById(id)?.showModal();
     </div>
   </AppLayout>
 </template>
-

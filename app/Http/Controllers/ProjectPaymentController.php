@@ -32,7 +32,7 @@ class ProjectPaymentController extends Controller
                 ['project_payment_id' => $payment->id],
                 [
                     'project_id'  => $payment->project_id,
-                    'category'    => 'pendapatan_jasa',
+                    'category'    => 'pendapatan_project',
                     'amount'      => $payment->amount,
                     'date'        => $validated['paid_at'],
                     'note'        => $cashNote,

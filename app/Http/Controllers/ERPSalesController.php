@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Accounting\Services\GlPostingService;
+use App\ERP\Accounting\Services\CoaSettingService;
 use App\ERP\Inventory\Models\Warehouse;
 use App\ERP\Shared\Enums\DocumentStatus;
 use App\ERP\Shared\Services\DocumentNumberService;
@@ -16,6 +17,10 @@ use App\Models\PosSale;
 use App\Models\ProductStockMovement;
 use App\Models\Project;
 use App\Models\User;
+use App\Models\ErpSetting;
+use App\Services\LanEscPosPrinter;
+use App\Services\ThermalPosReceiptData;
+use App\Services\ThermalPosReceiptRenderer;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -93,7 +98,7 @@ class ERPSalesController extends Controller
     public function posTransactions(): Response
     {
         $query = PosSale::query()
-            ->with(['paymentMethod:id,name', 'soldBy:id,name', 'items:id,pos_sale_id,qty,base_qty_used'])
+            ->with(['paymentMethod:id,name', 'soldBy:id,name', 'items:id,pos_sale_id,qty,base_qty_used', 'additionalCharges:id,pos_sale_id,charge_name,amount'])
             ->latest('sold_at')
             ->when(request()->filled('q'), function ($q): void {
                 $term = request()->string('q')->toString();
@@ -114,6 +119,10 @@ class ERPSalesController extends Controller
                 'items_count' => $sale->items->count(),
                 'total_qty' => (float) $sale->items->sum('qty'),
                 'base_qty_used' => (int) $sale->items->sum('base_qty_used'),
+                'additional_fee' => (float) $sale->additional_fee,
+                'additional_charge_labels' => $sale->additionalCharges->map(
+                    fn ($charge) => $charge->charge_name.' ('.number_format((float) $charge->amount, 0, ',', '.').')'
+                )->implode(', '),
                 'grand_total' => (float) $sale->grand_total,
                 'payment_method' => $sale->paymentMethod?->name,
                 'cashier' => $sale->soldBy?->name,
@@ -128,7 +137,7 @@ class ERPSalesController extends Controller
 
     public function posTransactionShow(PosSale $posSale): Response
     {
-        $posSale->load(['paymentMethod:id,code,name', 'soldBy:id,name', 'items.product:id,sku,name,uom']);
+        $posSale->load(['paymentMethod:id,code,name', 'soldBy:id,name', 'items.product:id,sku,name,uom', 'additionalCharges']);
 
         return Inertia::render('ERP/Sales/TransactionShow', [
             'detail' => [
@@ -141,9 +150,15 @@ class ERPSalesController extends Controller
                 'payment_method_name' => $posSale->paymentMethod?->name,
                 'gross_total' => (float) $posSale->gross_total,
                 'discount_total' => (float) $posSale->discount_total,
+                'additional_fee' => (float) $posSale->additional_fee,
                 'grand_total' => (float) $posSale->grand_total,
                 'cash_paid' => (float) $posSale->cash_paid,
                 'change_amount' => (float) $posSale->change_amount,
+                'additional_charges' => $posSale->additionalCharges->map(fn ($charge) => [
+                    'id' => $charge->id,
+                    'charge_name' => $charge->charge_name,
+                    'amount' => (float) $charge->amount,
+                ]),
                 'items' => $posSale->items->map(fn ($item) => [
                     'id' => $item->id,
                     'master_product_id' => $item->master_product_id,
@@ -227,17 +242,29 @@ class ERPSalesController extends Controller
                 'note' => trim(($posSale->note ? $posSale->note.' | ' : '').'Refund '.now()->format('Y-m-d H:i')),
             ]);
 
-            $cashAccount = Account::query()->where('code', '1001')->firstOrFail();
-            $revenueAccount = Account::query()->where('code', '4001')->firstOrFail();
+            $coa = app(CoaSettingService::class);
+            $cashAccount = $coa->resolveAccountByKey('pos_sale_cash_account', '1001');
+            $revenueAccount = $coa->resolveAccountByKey('pos_sale_revenue_account', '4001');
+            $additionalAccount = $coa->resolveAccountByKey('pos_sale_additional_income_account', '4001');
+
+            $netSales = max(((float) $posSale->gross_total) - ((float) $posSale->discount_total), 0);
+            $additionalFee = max((float) ($posSale->additional_fee ?? 0), 0);
+            $grandTotal = max((float) $posSale->grand_total, 0);
+
+            $lines = [
+                ['account_id' => $revenueAccount->id, 'debit' => $netSales, 'credit' => 0],
+            ];
+            if ($additionalFee > 0) {
+                $lines[] = ['account_id' => $additionalAccount->id, 'debit' => $additionalFee, 'credit' => 0];
+            }
+            $lines[] = ['account_id' => $cashAccount->id, 'debit' => 0, 'credit' => $grandTotal];
+
             $this->glPostingService->post(
                 sourceModule: 'pos_sale_refund',
                 sourceReference: $posSale->number,
                 description: 'Refund POS '.$posSale->number,
                 entryDate: now()->toDateString(),
-                lines: [
-                    ['account_id' => $revenueAccount->id, 'debit' => (float) $posSale->grand_total, 'credit' => 0],
-                    ['account_id' => $cashAccount->id, 'debit' => 0, 'credit' => (float) $posSale->grand_total],
-                ],
+                lines: $lines,
             );
         });
 
@@ -297,17 +324,28 @@ class ERPSalesController extends Controller
                 'note' => trim(($posSale->note ? $posSale->note.' | ' : '').'Reopen '.now()->format('Y-m-d H:i')),
             ]);
 
-            $cashAccount = Account::query()->where('code', '1001')->firstOrFail();
-            $revenueAccount = Account::query()->where('code', '4001')->firstOrFail();
+            $coa = app(CoaSettingService::class);
+            $cashAccount = $coa->resolveAccountByKey('pos_sale_cash_account', '1001');
+            $revenueAccount = $coa->resolveAccountByKey('pos_sale_revenue_account', '4001');
+            $additionalAccount = $coa->resolveAccountByKey('pos_sale_additional_income_account', '4001');
+
+            $netSales = max(((float) $posSale->gross_total) - ((float) $posSale->discount_total), 0);
+            $additionalFee = max((float) ($posSale->additional_fee ?? 0), 0);
+            $grandTotal = max((float) $posSale->grand_total, 0);
+
+            $lines = [
+                ['account_id' => $cashAccount->id, 'debit' => $grandTotal, 'credit' => 0],
+                ['account_id' => $revenueAccount->id, 'debit' => 0, 'credit' => $netSales],
+            ];
+            if ($additionalFee > 0) {
+                $lines[] = ['account_id' => $additionalAccount->id, 'debit' => 0, 'credit' => $additionalFee];
+            }
             $this->glPostingService->post(
                 sourceModule: 'pos_sale_reopen',
                 sourceReference: $posSale->number,
                 description: 'Reopen POS '.$posSale->number,
                 entryDate: now()->toDateString(),
-                lines: [
-                    ['account_id' => $cashAccount->id, 'debit' => (float) $posSale->grand_total, 'credit' => 0],
-                    ['account_id' => $revenueAccount->id, 'debit' => 0, 'credit' => (float) $posSale->grand_total],
-                ],
+                lines: $lines,
             );
         });
 
@@ -319,6 +357,9 @@ class ERPSalesController extends Controller
         $validated = $request->validate([
             'payment_method_id' => 'required|exists:payment_methods,id',
             'cash_paid' => 'nullable|numeric|min:0',
+            'additional_charges' => 'nullable|array',
+            'additional_charges.*.name' => 'required|string|max:120',
+            'additional_charges.*.amount' => 'required|numeric|min:0.01',
             'items' => 'required|array|min:1',
             'items.*.master_product_id' => 'required|integer|exists:master_products,id',
             'items.*.qty' => 'required|numeric|gt:0',
@@ -332,13 +373,22 @@ class ERPSalesController extends Controller
 
         $paymentMethod = PaymentMethod::query()->findOrFail((int) $validated['payment_method_id']);
         $items = $validated['items'];
+        $additionalCharges = collect($validated['additional_charges'] ?? [])
+            ->map(fn (array $charge) => [
+                'charge_name' => trim((string) $charge['name']),
+                'amount' => (float) $charge['amount'],
+            ])
+            ->filter(fn (array $charge) => $charge['charge_name'] !== '' && $charge['amount'] > 0)
+            ->values();
+        $additionalFee = (float) $additionalCharges->sum('amount');
 
         $grossTotal = collect($items)->sum(fn ($item) => (float) $item['unit_price'] * (float) $item['qty']);
         $discountTotal = collect($items)->sum(function ($item): float {
             $gross = (float) $item['unit_price'] * (float) $item['qty'];
             return $gross * (((float) ($item['discount_percent'] ?? 0)) / 100);
         });
-        $grandTotal = max($grossTotal - $discountTotal, 0);
+        $netSalesTotal = max($grossTotal - $discountTotal, 0);
+        $grandTotal = max($netSalesTotal + $additionalFee, 0);
         $cashPaid = (float) ($validated['cash_paid'] ?? 0);
 
         if ($paymentMethod->code === 'cash' && $cashPaid < $grandTotal) {
@@ -347,7 +397,7 @@ class ERPSalesController extends Controller
             ]);
         }
 
-        $checkoutResult = DB::transaction(function () use ($items, $grossTotal, $discountTotal, $grandTotal, $cashPaid, $paymentMethod): array {
+        $checkoutResult = DB::transaction(function () use ($items, $grossTotal, $discountTotal, $additionalCharges, $additionalFee, $grandTotal, $cashPaid, $paymentMethod): array {
             $transactionNumber = $this->documentNumberService->next('sales', 'pos_sale', [
                 'prefix' => 'POS',
                 'padding_length' => 6,
@@ -358,6 +408,7 @@ class ERPSalesController extends Controller
                 'payment_method_id' => $paymentMethod->id,
                 'gross_total' => $grossTotal,
                 'discount_total' => $discountTotal,
+                'additional_fee' => $additionalFee,
                 'grand_total' => $grandTotal,
                 'cash_paid' => $cashPaid,
                 'change_amount' => max($cashPaid - $grandTotal, 0),
@@ -432,21 +483,33 @@ class ERPSalesController extends Controller
             }
 
             $sale->items()->createMany($saleItemsPayload);
+            if ($additionalCharges->isNotEmpty()) {
+                $sale->additionalCharges()->createMany($additionalCharges->all());
+            }
 
-            $cashAccount = Account::query()->where('code', '1001')->firstOrFail();
-            $revenueAccount = Account::query()->where('code', '4001')->firstOrFail();
+            $coa = app(CoaSettingService::class);
+            $cashAccount = $coa->resolveAccountByKey('pos_sale_cash_account', '1001');
+            $revenueAccount = $coa->resolveAccountByKey('pos_sale_revenue_account', '4001');
+            $additionalAccount = $coa->resolveAccountByKey('pos_sale_additional_income_account', '4001');
+
+            $netSales = max($grossTotal - $discountTotal, 0);
+            $lines = [
+                ['account_id' => $cashAccount->id, 'debit' => $grandTotal, 'credit' => 0],
+                ['account_id' => $revenueAccount->id, 'debit' => 0, 'credit' => $netSales],
+            ];
+            if ($additionalFee > 0) {
+                $lines[] = ['account_id' => $additionalAccount->id, 'debit' => 0, 'credit' => $additionalFee];
+            }
             $this->glPostingService->post(
                 sourceModule: 'pos_sale',
                 sourceReference: $transactionNumber,
                 description: 'Penjualan POS '.$transactionNumber,
                 entryDate: now()->toDateString(),
-                lines: [
-                    ['account_id' => $cashAccount->id, 'debit' => $grandTotal, 'credit' => 0],
-                    ['account_id' => $revenueAccount->id, 'debit' => 0, 'credit' => $grandTotal],
-                ],
+                lines: $lines,
             );
 
             return [
+                'sale_id' => $sale->id,
                 'transaction_number' => $transactionNumber,
                 'sold_at' => $sale->sold_at?->format('Y-m-d H:i:s'),
                 'items_count' => count($saleItemsPayload),
@@ -457,6 +520,11 @@ class ERPSalesController extends Controller
             ];
         });
 
+        $directPrint = $this->tryDirectPrintPosReceipt(
+            saleId: (int) ($checkoutResult['sale_id'] ?? 0),
+            paymentMethodName: $paymentMethod->name,
+        );
+
         return response()->json([
             'message' => 'Transaksi POS berhasil diproses.',
             'transaction_number' => $checkoutResult['transaction_number'],
@@ -465,7 +533,139 @@ class ERPSalesController extends Controller
             'change' => max($cashPaid - $grandTotal, 0),
             'payment_method_name' => $paymentMethod->name,
             'transaction' => $checkoutResult,
+            'direct_print' => $directPrint,
         ]);
+    }
+
+    public function printPosReceipt(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'transaction_number' => 'required|string|max:30',
+        ]);
+
+        $sale = PosSale::query()
+            ->with('paymentMethod:id,name')
+            ->where('number', trim($validated['transaction_number']))
+            ->first();
+
+        if (! $sale) {
+            throw ValidationException::withMessages([
+                'transaction_number' => 'Transaksi POS tidak ditemukan.',
+            ]);
+        }
+
+        $directPrint = $this->tryDirectPrintPosReceipt(
+            saleId: (int) $sale->id,
+            paymentMethodName: (string) ($sale->paymentMethod?->name ?? '-'),
+        );
+
+        if (! ($directPrint['enabled'] ?? false)) {
+            throw ValidationException::withMessages([
+                'printer' => 'Printer thermal belum aktif atau host printer belum diatur di pengaturan.',
+            ]);
+        }
+
+        if (! ($directPrint['printed'] ?? false)) {
+            throw ValidationException::withMessages([
+                'printer' => (string) ($directPrint['message'] ?? 'Gagal mengirim struk ke printer thermal.'),
+            ]);
+        }
+
+        return response()->json([
+            'message' => 'Struk berhasil dikirim ke printer thermal.',
+            'transaction_number' => $sale->number,
+        ]);
+    }
+
+    /**
+     * @return array{enabled: bool, printed: bool, message?: string|null}
+     */
+    private function tryDirectPrintPosReceipt(int $saleId, string $paymentMethodName): array
+    {
+        if ($saleId <= 0) {
+            return ['enabled' => false, 'printed' => false];
+        }
+
+        $setting = ErpSetting::query()->first();
+        $enabled = (bool) ($setting?->thermal_printer_enabled ?? false);
+        $host = trim((string) ($setting?->thermal_printer_host ?? ''));
+        $port = (int) ($setting?->thermal_printer_port ?? 9100);
+        $paper = (string) ($setting?->thermal_paper_width ?? '80');
+
+        if (! $enabled || $host === '') {
+            return ['enabled' => $enabled, 'printed' => false];
+        }
+
+        $sale = PosSale::query()
+            ->with(['items', 'soldBy:id,name', 'additionalCharges'])
+            ->find($saleId);
+
+        if (! $sale) {
+            return ['enabled' => $enabled, 'printed' => false, 'message' => 'Transaksi tidak ditemukan untuk dicetak.'];
+        }
+
+        $printer = new LanEscPosPrinter;
+        $renderer = new ThermalPosReceiptRenderer;
+
+        $template = [
+            'header' => $setting?->thermal_pos_header_template,
+            'item_line' => $setting?->thermal_pos_item_line_template,
+            'footer' => $setting?->thermal_pos_footer_template,
+        ];
+
+        $paper = $printer->normalizePaperWidth($paper);
+        $cols = $printer->paperColumnWidth($paper);
+
+        $soldAt = $sale->sold_at ?? now();
+        $data = new ThermalPosReceiptData(
+            appName: (string) ($setting?->app_name ?: 'OCN ERP Suite'),
+            transactionNumber: (string) $sale->number,
+            date: $soldAt->format('Y-m-d'),
+            time: $soldAt->format('H:i'),
+            paymentMethod: $paymentMethodName,
+            cashierName: (string) ($sale->soldBy?->name ?: '-'),
+            grossTotal: number_format((float) $sale->gross_total, 0, ',', '.'),
+            discountTotal: number_format((float) $sale->discount_total, 0, ',', '.'),
+            grandTotal: number_format((float) $sale->grand_total, 0, ',', '.'),
+            cashPaid: number_format((float) $sale->cash_paid, 0, ',', '.'),
+            change: number_format((float) $sale->change_amount, 0, ',', '.'),
+            lines: $sale->items->map(fn ($row) => [
+                'sku' => (string) $row->sku,
+                'name' => (string) $row->product_name,
+                'qty' => (float) $row->qty,
+                'unit_price' => number_format((float) $row->unit_price, 0, ',', '.'),
+                'line_total' => number_format((float) $row->line_total, 0, ',', '.'),
+                'uom' => (string) ($row->uom ?? ''),
+                'discount_percent' => (float) ($row->discount_percent ?? 0),
+            ])->all(),
+            additionalFee: number_format((float) ($sale->additional_fee ?? 0), 0, ',', '.'),
+            additionalCharges: $sale->additionalCharges->map(fn ($charge) => [
+                'name' => (string) $charge->charge_name,
+                'amount' => number_format((float) $charge->amount, 0, ',', '.'),
+            ])->all(),
+        );
+
+        $layout = [
+            'header_align' => $setting?->thermal_pos_header_align ?? 'center',
+            'item_align' => $setting?->thermal_pos_item_align ?? 'left',
+            'footer_align' => $setting?->thermal_pos_footer_align ?? 'right',
+            'section_gap' => (int) ($setting?->thermal_pos_section_gap ?? 0),
+            'header_emphasis' => (bool) ($setting?->thermal_pos_header_emphasis ?? true),
+        ];
+
+        $marginMm = (float) ($setting?->thermal_pos_margin_left_mm ?? 0);
+        $marginChars = ThermalPosReceiptRenderer::marginCharsFromMm($marginMm, $paper, $cols);
+        $layout['content_cols'] = max(8, $cols - $marginChars);
+
+        $segments = $renderer->buildReceiptSegments($template, $data, $paper, $cols, $layout);
+
+        try {
+            $printer->sendStructuredReceipt($host, $port, $segments, $paper, $marginChars);
+
+            return ['enabled' => true, 'printed' => true];
+        } catch (\RuntimeException $e) {
+            return ['enabled' => true, 'printed' => false, 'message' => $e->getMessage()];
+        }
     }
 
     private function resolvePosWarehouseId(): ?int
@@ -574,7 +774,7 @@ class ERPSalesController extends Controller
         }
 
         $validated['project_id'] = $project->id;
-        $validated['category'] = 'pendapatan_jasa';
+        $validated['category'] = 'pendapatan_project';
         $validated['created_by'] = Auth::id();
         $validated['document_status'] = DocumentStatus::Posted->value;
         $validated['approved_at'] = now();
@@ -584,8 +784,9 @@ class ERPSalesController extends Controller
 
         $cashIn = CashIn::query()->create($validated);
 
-        $cashAccount = Account::query()->where('code', '1001')->firstOrFail();
-        $revenueAccount = Account::query()->where('code', '4001')->firstOrFail();
+        $coa = app(CoaSettingService::class);
+        $cashAccount = $coa->resolveAccountByKey('project_invoice_cash_account', '1001');
+        $revenueAccount = $coa->resolveAccountByKey('project_invoice_revenue_account', '4001');
 
         $entry = $this->glPostingService->post(
             sourceModule: 'project_invoice_payment',

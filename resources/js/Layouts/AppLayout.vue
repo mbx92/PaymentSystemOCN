@@ -10,6 +10,7 @@ import {
     NewspaperIcon,
     PhotoIcon,
     GlobeAltIcon,
+    ShareIcon,
 } from '@heroicons/vue/24/outline';
 import FlashMessage from '@/Components/FlashMessage.vue';
 
@@ -29,19 +30,20 @@ const chatInputRef = ref(null);
 const CHAT_STORAGE_KEY = 'erp_chat_history';
 const WELCOME_MSG = {
     role: 'assistant',
-    text: 'Halo! Saya siap bantu cek data ERP.\nKetik **bantuan** untuk melihat semua contoh pertanyaan.',
+    text: 'Halo! 👋 Saya asisten ERP Anda.\nSaya bisa bantu cek **stok**, **harga**, **penjualan**, **cashflow**, **invoice**, dan lainnya.\n\nKetik **bantuan** atau klik chip di bawah untuk mulai.',
     ts: Date.now(),
 };
 
 const quickReplies = [
     'bantuan',
-    'stok rendah',
-    'cashflow hari ini',
-    'invoice belum dibayar',
-    'list invoice yang dikirim',
-    'project aktif',
     'pos hari ini',
-    'penjualan bulan ini',
+    'pos kemarin',
+    'cashflow hari ini',
+    'stok rendah',
+    'produk terlaris',
+    'invoice belum dibayar',
+    'invoice jatuh tempo',
+    'project aktif',
     'biaya operasional',
 ];
 
@@ -77,7 +79,6 @@ const formatTime = (ts) => {
     return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 };
 
-// Minimal markdown: **bold**, leading "- " bullet, \n → linebreak.
 const renderMarkdown = (text) => {
     if (!text) return '';
     let safe = text
@@ -85,10 +86,10 @@ const renderMarkdown = (text) => {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 
-    // **bold**
     safe = safe.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    safe = safe.replace(/\*([^*]+?)\*/g, '<em>$1</em>');
+    safe = safe.replace(/`([^`]+?)`/g, '<code class="rounded bg-base-300/60 px-1 py-0.5 text-xs font-mono">$1</code>');
 
-    // Lines starting with "- " → bullet
     const lines = safe.split('\n');
     let inList = false;
     const out = [];
@@ -119,6 +120,7 @@ const sidebarModules = computed(() => {
                 { name: 'Inventory', href: route('erp.inventory'), icon: ArchiveBoxIcon },
                 { name: 'Projects', href: route('erp.projects'), icon: CodeBracketIcon },
                 { name: 'HR', href: route('erp.hr'), icon: UserCircleIcon },
+                { name: 'CRM', href: route('erp.crm'), icon: ShareIcon },
                 { name: 'Reporting', href: route('erp.reporting'), icon: ChartBarIcon },
             ],
         });
@@ -168,6 +170,7 @@ const topbarContext = computed(() => {
     if (pathname.includes('/kas-masuk') || pathname.includes('/kas-keluar')) return { label: 'Accounting Workspace', subtitle: 'Kelola transaksi kas dan posting jurnal terintegrasi.' };
     if (pathname.includes('/projects')) return { label: 'Projects Workspace', subtitle: 'Pantau proyek, termin pembayaran, dan profitabilitas.' };
     if (pathname.includes('/erp/hr/legal')) return { label: 'Legal Workspace', subtitle: 'File manager dokumen legal di server.' };
+    if (pathname.includes('/erp/crm')) return { label: 'CRM Workspace', subtitle: 'Kelola prospek, customer, dan aktivitas follow-up.' };
     if (pathname.startsWith('/personal')) return { label: 'Personal Workspace', subtitle: 'Pencatatan keuangan pribadi dan keluarga.' };
     if (pathname.startsWith('/erp/cms')) return { label: 'Website CMS', subtitle: 'Konten landing publik, media, dan publikasi halaman.' };
 

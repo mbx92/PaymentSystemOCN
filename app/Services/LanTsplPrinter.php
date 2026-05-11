@@ -73,7 +73,7 @@ class LanTsplPrinter
         return $this->buildLabelJob(
             $p,
             '1234567890',
-            'TSPL TEST — '.$p->name,
+            'TSPL TEST - '.$p->name,
             'Rp 0',
             1
         );
@@ -144,10 +144,16 @@ class LanTsplPrinter
 
     private function tsplText(string $utf8, int $maxLen): string
     {
-        $s = iconv('UTF-8', 'Windows-1252//TRANSLIT', $utf8) ?: $utf8;
-        $s = str_replace(["\r", "\n", '"'], [' ', ' ', "'"], $s);
+        $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $utf8);
+        $clean = $clean !== false ? $clean : $utf8;
 
-        return substr($s, 0, $maxLen);
+        $ascii = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $clean);
+        $ascii = $ascii !== false ? $ascii : preg_replace('/[^\x20-\x7E]/', ' ', $clean);
+        $ascii = str_replace(["\r", "\n", '"'], [' ', ' ', "'"], (string) $ascii);
+        $ascii = preg_replace('/[^\x20-\x7E]/', ' ', $ascii) ?? '';
+        $ascii = preg_replace('/\s+/', ' ', $ascii) ?? '';
+
+        return substr(trim($ascii), 0, $maxLen);
     }
 
     private function tsplBarcodeData(string $data): string

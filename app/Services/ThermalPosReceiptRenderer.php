@@ -26,6 +26,7 @@ final class ThermalPosReceiptRenderer
     {
         return "{{footer_row_subtotal}}\n"
             ."{{footer_row_discount}}\n"
+            ."{{footer_rows_additional_charges}}\n"
             ."{{footer_row_grand_total}}\n"
             ."{{footer_row_cash_paid}}\n"
             .'{{footer_row_change}}';
@@ -219,11 +220,14 @@ final class ThermalPosReceiptRenderer
             '{{cashier}}' => $data->cashierName,
             '{{gross_total}}' => $data->grossTotal,
             '{{discount_total}}' => $data->discountTotal,
+            '{{additional_fee}}' => $data->additionalFee,
             '{{grand_total}}' => $data->grandTotal,
             '{{cash_paid}}' => $data->cashPaid,
             '{{change}}' => $data->change,
             '{{footer_row_subtotal}}' => $this->formatFooterMoneyLine('Subtotal', $data->grossTotal, $cols, $rightW),
             '{{footer_row_discount}}' => $this->formatFooterMoneyLine('Diskon', $data->discountTotal, $cols, $rightW),
+            '{{footer_row_additional_fee}}' => $this->formatFooterMoneyLine('Biaya lain', $data->additionalFee, $cols, $rightW),
+            '{{footer_rows_additional_charges}}' => $this->formatAdditionalChargeRows($data, $cols, $rightW),
             '{{footer_row_grand_total}}' => $this->formatFooterMoneyLine('TOTAL', $data->grandTotal, $cols, $rightW),
             '{{footer_row_cash_paid}}' => $this->formatFooterMoneyLine('Dibayar', $data->cashPaid, $cols, $rightW),
             '{{footer_row_change}}' => $this->formatFooterMoneyLine('Kembali', $data->change, $cols, $rightW),
@@ -232,13 +236,33 @@ final class ThermalPosReceiptRenderer
         return strtr($text, $map);
     }
 
+    private function formatAdditionalChargeRows(ThermalPosReceiptData $data, int $cols, int $rightW): string
+    {
+        $rows = [];
+
+        foreach ($data->additionalCharges as $charge) {
+            $name = trim((string) ($charge['name'] ?? ''));
+            $amount = trim((string) ($charge['amount'] ?? '0'));
+            if ($name === '') {
+                $name = 'Biaya lain';
+            }
+            $rows[] = $this->formatFooterMoneyLine($name, $amount, $cols, $rightW);
+        }
+
+        if ($rows === [] && (float) str_replace(['.', ','], ['', '.'], $data->additionalFee) > 0) {
+            $rows[] = $this->formatFooterMoneyLine('Biaya lain', $data->additionalFee, $cols, $rightW);
+        }
+
+        return implode("\n", $rows);
+    }
+
     /**
      * Lebar kolom kanan (byte Latin-1) untuk blok "Rp …" agar semua baris footer sejajar.
      */
     private function footerAmountColumnByteWidth(ThermalPosReceiptData $data): int
     {
         $max = 0;
-        foreach ([$data->grossTotal, $data->discountTotal, $data->grandTotal, $data->cashPaid, $data->change] as $amt) {
+        foreach ([$data->grossTotal, $data->discountTotal, $data->additionalFee, $data->grandTotal, $data->cashPaid, $data->change] as $amt) {
             $part = 'Rp '.$amt;
             $latin = iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $part) ?: $part;
             $max = max($max, strlen($latin));

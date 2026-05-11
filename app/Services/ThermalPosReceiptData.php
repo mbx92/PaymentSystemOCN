@@ -6,11 +6,13 @@ namespace App\Services;
  * Data struk POS untuk mengisi placeholder template.
  *
  * @param  array<int, array{sku: string, name: string, qty: float|int|string, unit_price: float|string, line_total: float|string, uom?: string, satuan?: string, discount_percent?: float|int|string}>  $lines
+ * @param  array<int, array{name: string, amount: string}>  $additionalCharges
  */
 final class ThermalPosReceiptData
 {
     /**
      * @param  array<int, array<string, mixed>>  $lines
+     * @param  array<int, array{name: string, amount: string}>  $additionalCharges
      */
     public function __construct(
         public string $appName,
@@ -25,6 +27,8 @@ final class ThermalPosReceiptData
         public string $cashPaid,
         public string $change,
         public array $lines,
+        public string $additionalFee = '0',
+        public array $additionalCharges = [],
     ) {}
 
     public static function sample(): self
@@ -45,6 +49,11 @@ final class ThermalPosReceiptData
                 ['sku' => 'SKU-001', 'name' => 'Produk contoh A', 'qty' => 2, 'unit_price' => '25.000', 'line_total' => '50.000', 'uom' => 'pcs', 'discount_percent' => 0],
                 ['sku' => 'SKU-002', 'name' => 'Produk contoh B', 'qty' => 1, 'unit_price' => '75.000', 'line_total' => '70.000', 'uom' => 'box', 'discount_percent' => 6.67],
             ],
+            additionalFee: '2.000',
+            additionalCharges: [
+                ['name' => 'Parkir', 'amount' => '1.000'],
+                ['name' => 'Kemasan', 'amount' => '1.000'],
+            ],
         );
     }
 
@@ -63,6 +72,8 @@ final class ThermalPosReceiptData
             cashPaid: $this->cashPaid,
             change: $this->change,
             lines: $this->lines,
+            additionalFee: $this->additionalFee,
+            additionalCharges: $this->additionalCharges,
         );
     }
 }

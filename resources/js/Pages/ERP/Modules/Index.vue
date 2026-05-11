@@ -29,6 +29,7 @@ import {
   CreditCardIcon,
   PrinterIcon,
   ShareIcon,
+  Cog6ToothIcon,
 } from '@heroicons/vue/24/outline';
 
 defineProps({
@@ -63,6 +64,7 @@ const iconMap = {
   'credit-card': CreditCardIcon,
   printer: PrinterIcon,
   share: ShareIcon,
+  'cog-6-tooth': Cog6ToothIcon,
 };
 
 const iconFor = (menu) => iconMap[menu.icon] ?? Squares2X2Icon;

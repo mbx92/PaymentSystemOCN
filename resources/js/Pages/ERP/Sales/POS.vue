@@ -19,13 +19,22 @@ const cashPaidInput = ref('0');
 const defaultPaymentMethodId = props.payment_methods?.[0]?.id ?? null;
 const paymentMethodId = ref(defaultPaymentMethodId);
 const heldCart = ref([]);
+const heldAdditionalCharges = ref([]);
 const isOnHold = ref(false);
 const cashInputRef = ref(null);
 const processingPayment = ref(false);
 const checkoutError = ref('');
+const receiptPrintError = ref('');
+const receiptPrintSuccess = ref('');
 const lastReceipt = ref(null);
 const successToast = ref('');
 let toastTimer = null;
+const printingReceipt = ref(false);
+const additionalCharges = ref([]);
+const chargeForm = ref({
+  name: '',
+  amount: '0',
+});
 
 const openProductModal = () => {
   showProductModal.value = true;
@@ -133,9 +142,14 @@ const lineSubtotal = (line) => {
   return gross - discount;
 };
 
+const sanitizeChargeAmount = (value) => parse(formatInput(value));
+
+const additionalChargeTotal = (charges) => charges.reduce((sum, charge) => sum + Number(charge.amount || 0), 0);
+
 const grossTotal = computed(() => cart.value.reduce((sum, line) => sum + (line.price * line.qty), 0));
 const discountTotal = computed(() => cart.value.reduce((sum, line) => sum + ((line.price * line.qty) * (Number(line.discountPercent || 0) / 100)), 0));
-const grandTotal = computed(() => grossTotal.value - discountTotal.value);
+const additionalFeeValue = computed(() => additionalChargeTotal(additionalCharges.value));
+const grandTotal = computed(() => (grossTotal.value - discountTotal.value) + Number(additionalFeeValue.value || 0));
 const selectedPaymentMethod = computed(() => props.payment_methods?.find((method) => method.id === paymentMethodId.value) ?? null);
 const isCashPayment = computed(() => selectedPaymentMethod.value?.code === 'cash');
 const cashPaidValue = computed(() => parse(cashPaidInput.value));
@@ -150,6 +164,41 @@ const canProcessPayment = computed(() => {
 
 const onCashInput = (event) => {
   cashPaidInput.value = formatInput(event.target.value);
+};
+
+const onAdditionalChargeAmountInput = (event) => {
+  chargeForm.value.amount = formatInput(event.target.value);
+};
+
+const openAdditionalChargeModal = () => {
+  chargeForm.value = { name: '', amount: '0' };
+  document.getElementById('modal-additional-charges')?.showModal();
+};
+
+const addAdditionalCharge = () => {
+  const name = chargeForm.value.name.trim();
+  const amount = sanitizeChargeAmount(chargeForm.value.amount);
+
+  if (!name) {
+    alert('Nama biaya wajib diisi.');
+    return;
+  }
+  if (Number(amount || 0) <= 0) {
+    alert('Nominal biaya harus lebih dari 0.');
+    return;
+  }
+
+  additionalCharges.value.push({
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name,
+    amount: Number(amount),
+  });
+
+  chargeForm.value = { name: '', amount: '0' };
+};
+
+const removeAdditionalCharge = (chargeId) => {
+  additionalCharges.value = additionalCharges.value.filter((charge) => charge.id !== chargeId);
 };
 
 const getCookieValue = (name) => {
@@ -178,6 +227,10 @@ const processPayment = async () => {
       body: JSON.stringify({
         payment_method_id: paymentMethodId.value,
         cash_paid: isCashPayment.value ? cashPaidValue.value : grandTotal.value,
+        additional_charges: additionalCharges.value.map((charge) => ({
+          name: charge.name,
+          amount: Number(charge.amount),
+        })),
         items: cart.value.map((line) => ({
           master_product_id: line.masterProductId,
           sku: line.sku,
@@ -203,6 +256,8 @@ const processPayment = async () => {
       grandTotal: payload.grand_total,
       cashPaid: payload.cash_paid,
       change: payload.change,
+      additionalFee: additionalFeeValue.value,
+      additionalCharges: additionalCharges.value.map((charge) => ({ ...charge })),
       lines: cart.value.map((line) => ({ ...line })),
     };
 
@@ -211,8 +266,10 @@ const processPayment = async () => {
 
     cart.value = [];
     heldCart.value = [];
+    heldAdditionalCharges.value = [];
     isOnHold.value = false;
     cashPaidInput.value = '0';
+    additionalCharges.value = [];
 
     openReceiptPreview();
   } catch (error) {
@@ -230,7 +287,9 @@ const saveDraft = () => {
 const voidTransaction = () => {
   cart.value = [];
   cashPaidInput.value = '0';
+  additionalCharges.value = [];
   heldCart.value = [];
+  heldAdditionalCharges.value = [];
   isOnHold.value = false;
 };
 
@@ -238,24 +297,66 @@ const toggleHoldResume = () => {
   if (!isOnHold.value) {
     if (cart.value.length === 0) return;
     heldCart.value = JSON.parse(JSON.stringify(cart.value));
+    heldAdditionalCharges.value = JSON.parse(JSON.stringify(additionalCharges.value));
     cart.value = [];
     cashPaidInput.value = '0';
+    additionalCharges.value = [];
     isOnHold.value = true;
     return;
   }
 
   cart.value = JSON.parse(JSON.stringify(heldCart.value));
   heldCart.value = [];
+  additionalCharges.value = JSON.parse(JSON.stringify(heldAdditionalCharges.value));
+  heldAdditionalCharges.value = [];
   isOnHold.value = false;
 };
 
 const openReceiptPreview = () => {
+  receiptPrintError.value = '';
+  receiptPrintSuccess.value = '';
   document.getElementById('modal-pos-receipt').showModal();
 };
 const receiptLines = computed(() => (lastReceipt.value?.lines?.length ? lastReceipt.value.lines : cart.value));
+const canDirectPrintFromPreview = computed(() => !lastReceipt.value?.number);
 
-const printReceipt = () => {
-  window.print();
+const printReceipt = async () => {
+  if (!lastReceipt.value?.number || printingReceipt.value) {
+    receiptPrintError.value = 'Struk belum tersimpan. Proses transaksi dulu sebelum cetak ulang.';
+    return;
+  }
+
+  printingReceipt.value = true;
+  receiptPrintError.value = '';
+  receiptPrintSuccess.value = '';
+
+  try {
+    const response = await fetch(route('erp.sales.pos.print-receipt'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+        'X-XSRF-TOKEN': decodeURIComponent(getCookieValue('XSRF-TOKEN') || ''),
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        transaction_number: lastReceipt.value.number,
+      }),
+    });
+
+    const payload = await response.json();
+    if (!response.ok) {
+      const firstError = payload?.errors ? Object.values(payload.errors)[0]?.[0] : null;
+      throw new Error(firstError || payload?.message || 'Gagal mencetak struk ke printer thermal.');
+    }
+
+    receiptPrintSuccess.value = payload?.message || `Struk ${lastReceipt.value.number} berhasil dikirim ke printer.`;
+  } catch (error) {
+    receiptPrintError.value = error?.message || 'Gagal mencetak struk ke printer thermal.';
+  } finally {
+    printingReceipt.value = false;
+  }
 };
 
 const handleCashierShortcuts = (event) => {
@@ -388,6 +489,13 @@ onBeforeUnmount(() => {
             <div class="space-y-2 text-sm">
               <div class="flex justify-between"><span>Gross Total</span><span>{{ format(grossTotal) }}</span></div>
               <div class="flex justify-between"><span>Total Diskon</span><span class="text-warning">- {{ format(discountTotal) }}</span></div>
+              <div class="flex justify-between"><span>Biaya Tambahan</span><span>{{ format(additionalFeeValue) }}</span></div>
+              <div v-if="additionalCharges.length" class="rounded-lg bg-base-200/60 px-3 py-2 text-xs">
+                <div v-for="charge in additionalCharges" :key="charge.id" class="flex justify-between gap-2">
+                  <span class="truncate">{{ charge.name }}</span>
+                  <span>{{ format(charge.amount) }}</span>
+                </div>
+              </div>
               <div class="divider my-1"></div>
               <div class="flex justify-between text-base font-bold"><span>Grand Total</span><span class="text-primary">{{ format(grandTotal) }}</span></div>
             </div>
@@ -397,6 +505,14 @@ onBeforeUnmount(() => {
                 <select v-model="paymentMethodId" class="select select-bordered w-full">
                   <option v-for="method in payment_methods" :key="method.id" :value="method.id">{{ method.name }}</option>
                 </select>
+              </div>
+              <div>
+                <label class="label py-1"><span class="label-text text-xs uppercase tracking-wide">Biaya Tambahan</span></label>
+                <button class="btn btn-outline w-full justify-between" type="button" @click="openAdditionalChargeModal">
+                  <span>{{ additionalCharges.length ? `${additionalCharges.length} biaya ditambahkan` : 'Tambah biaya tambahan' }}</span>
+                  <span>{{ format(additionalFeeValue) }}</span>
+                </button>
+                <p class="mt-1 text-[11px] text-base-content/55">Input nama biaya dan nominal dari modal biaya tambahan.</p>
               </div>
               <div>
                 <label class="label py-1"><span class="label-text text-xs uppercase tracking-wide">Nominal Bayar</span></label>
@@ -446,6 +562,17 @@ onBeforeUnmount(() => {
           <div class="flex justify-between"><span>No. Transaksi</span><span>{{ lastReceipt?.number || '-' }}</span></div>
           <div class="flex justify-between"><span>Total Item</span><span>{{ receiptLines.length }}</span></div>
           <div class="flex justify-between"><span>Metode Bayar</span><span class="uppercase">{{ lastReceipt?.paymentMethodName || selectedPaymentMethod?.name || '-' }}</span></div>
+          <div class="flex justify-between"><span>Biaya Tambahan</span><span>{{ format(lastReceipt?.additionalFee ?? additionalFeeValue) }}</span></div>
+          <div v-if="(lastReceipt?.additionalCharges?.length || additionalCharges.length)" class="rounded-lg bg-base-200/60 px-3 py-2 text-xs">
+            <div
+              v-for="charge in (lastReceipt?.additionalCharges?.length ? lastReceipt.additionalCharges : additionalCharges)"
+              :key="charge.id"
+              class="flex justify-between gap-2"
+            >
+              <span class="truncate">{{ charge.name }}</span>
+              <span>{{ format(charge.amount) }}</span>
+            </div>
+          </div>
           <div class="flex justify-between"><span>Grand Total</span><span>{{ format(lastReceipt?.grandTotal ?? grandTotal) }}</span></div>
           <div class="flex justify-between"><span>Bayar</span><span>{{ format(lastReceipt?.cashPaid ?? cashPaidValue) }}</span></div>
           <div class="flex justify-between"><span>Kembalian</span><span>{{ format(lastReceipt?.change ?? changeAmount) }}</span></div>
@@ -455,9 +582,43 @@ onBeforeUnmount(() => {
             <span>{{ format(lineSubtotal(line)) }}</span>
           </div>
         </div>
+        <p v-if="receiptPrintSuccess" class="mt-3 text-sm text-success">{{ receiptPrintSuccess }}</p>
+        <p v-if="receiptPrintError" class="mt-3 text-sm text-error">{{ receiptPrintError }}</p>
         <div class="modal-action">
           <form method="dialog"><button class="btn btn-ghost">Tutup</button></form>
-          <button class="btn btn-primary" @click="printReceipt">Print</button>
+          <button v-if="canDirectPrintFromPreview" class="btn btn-primary" :disabled="printingReceipt" @click="printReceipt">{{ printingReceipt ? 'Mencetak...' : 'Print' }}</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="modal-additional-charges" class="modal">
+      <div class="modal-box max-w-lg">
+        <h3 class="font-bold text-lg">Biaya Tambahan</h3>
+        <div class="mt-4 space-y-3">
+          <div class="grid gap-3 md:grid-cols-[1fr_180px_auto]">
+            <input v-model="chargeForm.name" type="text" class="input input-bordered w-full" placeholder="Nama biaya, contoh: Parkir" />
+            <input :value="chargeForm.amount" type="text" class="input input-bordered w-full" placeholder="Nominal" @input="onAdditionalChargeAmountInput" />
+            <button class="btn btn-primary" type="button" @click="addAdditionalCharge">Tambah</button>
+          </div>
+          <div class="rounded-xl border border-base-300">
+            <div v-if="additionalCharges.length" class="divide-y divide-base-300">
+              <div v-for="charge in additionalCharges" :key="charge.id" class="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                <div>
+                  <p class="font-medium">{{ charge.name }}</p>
+                  <p class="text-xs text-base-content/60">{{ format(charge.amount) }}</p>
+                </div>
+                <button class="btn btn-ghost btn-xs text-error" type="button" @click="removeAdditionalCharge(charge.id)">Hapus</button>
+              </div>
+            </div>
+            <div v-else class="px-4 py-6 text-center text-sm text-base-content/50">Belum ada biaya tambahan.</div>
+          </div>
+          <div class="flex justify-between text-sm font-semibold">
+            <span>Total biaya tambahan</span>
+            <span>{{ format(additionalFeeValue) }}</span>
+          </div>
+        </div>
+        <div class="modal-action">
+          <form method="dialog"><button class="btn btn-ghost">Tutup</button></form>
         </div>
       </div>
     </dialog>
@@ -530,6 +691,13 @@ onBeforeUnmount(() => {
             <div class="space-y-2 text-sm">
               <div class="flex justify-between"><span>Gross Total</span><span>{{ format(grossTotal) }}</span></div>
               <div class="flex justify-between"><span>Total Diskon</span><span class="text-warning">- {{ format(discountTotal) }}</span></div>
+              <div class="flex justify-between"><span>Biaya Tambahan</span><span>{{ format(additionalFeeValue) }}</span></div>
+              <div v-if="additionalCharges.length" class="rounded-lg bg-base-200/60 px-3 py-2 text-xs">
+                <div v-for="charge in additionalCharges" :key="charge.id" class="flex justify-between gap-2">
+                  <span class="truncate">{{ charge.name }}</span>
+                  <span>{{ format(charge.amount) }}</span>
+                </div>
+              </div>
               <div class="divider my-1"></div>
               <div class="flex justify-between text-base font-bold"><span>Grand Total</span><span class="text-primary">{{ format(grandTotal) }}</span></div>
             </div>
@@ -539,6 +707,14 @@ onBeforeUnmount(() => {
                 <select v-model="paymentMethodId" class="select select-bordered w-full">
                   <option v-for="method in payment_methods" :key="method.id" :value="method.id">{{ method.name }}</option>
                 </select>
+              </div>
+              <div>
+                <label class="label py-1"><span class="label-text text-xs uppercase tracking-wide">Biaya Tambahan</span></label>
+                <button class="btn btn-outline w-full justify-between" type="button" @click="openAdditionalChargeModal">
+                  <span>{{ additionalCharges.length ? `${additionalCharges.length} biaya ditambahkan` : 'Tambah biaya tambahan' }}</span>
+                  <span>{{ format(additionalFeeValue) }}</span>
+                </button>
+                <p class="mt-1 text-[11px] text-base-content/55">Input nama biaya dan nominal dari modal biaya tambahan.</p>
               </div>
               <div>
                 <label class="label py-1"><span class="label-text text-xs uppercase tracking-wide">Nominal Bayar</span></label>
@@ -588,6 +764,17 @@ onBeforeUnmount(() => {
           <div class="flex justify-between"><span>No. Transaksi</span><span>{{ lastReceipt?.number || '-' }}</span></div>
           <div class="flex justify-between"><span>Total Item</span><span>{{ receiptLines.length }}</span></div>
           <div class="flex justify-between"><span>Metode Bayar</span><span class="uppercase">{{ lastReceipt?.paymentMethodName || selectedPaymentMethod?.name || '-' }}</span></div>
+          <div class="flex justify-between"><span>Biaya Tambahan</span><span>{{ format(lastReceipt?.additionalFee ?? additionalFeeValue) }}</span></div>
+          <div v-if="(lastReceipt?.additionalCharges?.length || additionalCharges.length)" class="rounded-lg bg-base-200/60 px-3 py-2 text-xs">
+            <div
+              v-for="charge in (lastReceipt?.additionalCharges?.length ? lastReceipt.additionalCharges : additionalCharges)"
+              :key="charge.id"
+              class="flex justify-between gap-2"
+            >
+              <span class="truncate">{{ charge.name }}</span>
+              <span>{{ format(charge.amount) }}</span>
+            </div>
+          </div>
           <div class="flex justify-between"><span>Grand Total</span><span>{{ format(lastReceipt?.grandTotal ?? grandTotal) }}</span></div>
           <div class="flex justify-between"><span>Bayar</span><span>{{ format(lastReceipt?.cashPaid ?? cashPaidValue) }}</span></div>
           <div class="flex justify-between"><span>Kembalian</span><span>{{ format(lastReceipt?.change ?? changeAmount) }}</span></div>
@@ -597,9 +784,43 @@ onBeforeUnmount(() => {
             <span>{{ format(lineSubtotal(line)) }}</span>
           </div>
         </div>
+        <p v-if="receiptPrintSuccess" class="mt-3 text-sm text-success">{{ receiptPrintSuccess }}</p>
+        <p v-if="receiptPrintError" class="mt-3 text-sm text-error">{{ receiptPrintError }}</p>
         <div class="modal-action">
           <form method="dialog"><button class="btn btn-ghost">Tutup</button></form>
-          <button class="btn btn-primary" @click="printReceipt">Print</button>
+          <button v-if="canDirectPrintFromPreview" class="btn btn-primary" :disabled="printingReceipt" @click="printReceipt">{{ printingReceipt ? 'Mencetak...' : 'Print' }}</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="modal-additional-charges" class="modal">
+      <div class="modal-box max-w-lg">
+        <h3 class="font-bold text-lg">Biaya Tambahan</h3>
+        <div class="mt-4 space-y-3">
+          <div class="grid gap-3 md:grid-cols-[1fr_180px_auto]">
+            <input v-model="chargeForm.name" type="text" class="input input-bordered w-full" placeholder="Nama biaya, contoh: Parkir" />
+            <input :value="chargeForm.amount" type="text" class="input input-bordered w-full" placeholder="Nominal" @input="onAdditionalChargeAmountInput" />
+            <button class="btn btn-primary" type="button" @click="addAdditionalCharge">Tambah</button>
+          </div>
+          <div class="rounded-xl border border-base-300">
+            <div v-if="additionalCharges.length" class="divide-y divide-base-300">
+              <div v-for="charge in additionalCharges" :key="charge.id" class="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                <div>
+                  <p class="font-medium">{{ charge.name }}</p>
+                  <p class="text-xs text-base-content/60">{{ format(charge.amount) }}</p>
+                </div>
+                <button class="btn btn-ghost btn-xs text-error" type="button" @click="removeAdditionalCharge(charge.id)">Hapus</button>
+              </div>
+            </div>
+            <div v-else class="px-4 py-6 text-center text-sm text-base-content/50">Belum ada biaya tambahan.</div>
+          </div>
+          <div class="flex justify-between text-sm font-semibold">
+            <span>Total biaya tambahan</span>
+            <span>{{ format(additionalFeeValue) }}</span>
+          </div>
+        </div>
+        <div class="modal-action">
+          <form method="dialog"><button class="btn btn-ghost">Tutup</button></form>
         </div>
       </div>
     </dialog>

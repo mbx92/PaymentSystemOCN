@@ -11,9 +11,10 @@ class ERPModuleController extends Controller
     {
         return $this->renderModule('Accounting', [
             ['title' => 'CoA / Chart Of Account', 'description' => 'Daftar akun chart of accounts untuk semua posting akuntansi.', 'route' => 'erp.accounting.coa', 'icon' => 'book-open'],
+            ['title' => 'Pengaturan COA', 'description' => 'Atur mapping akun untuk posting otomatis POS, invoice project, dan kategori cashflow.', 'route' => 'erp.accounting.coa-settings', 'icon' => 'cog-6-tooth'],
             ['title' => 'Cashflow', 'description' => 'Submenu kas masuk dan kas keluar dalam satu tempat.', 'route' => 'erp.accounting.cashflow', 'icon' => 'arrows-right-left'],
             ['title' => 'Operational', 'description' => 'Pencatatan biaya operasional umum (non-project) atau per project.', 'route' => 'erp.accounting.operational', 'icon' => 'arrow-up-circle'],
-            ['title' => 'Kategori Pengeluaran', 'description' => 'Mapping kategori kas keluar ke akun CoA untuk jurnal yang valid.', 'route' => 'erp.accounting.expense-categories', 'icon' => 'book-open'],
+            ['title' => 'Kategori Pengeluaran', 'description' => 'Mapping lama kategori kas keluar ke akun CoA.', 'route' => 'erp.accounting.expense-categories', 'icon' => 'book-open'],
             ['title' => 'Pembayaran', 'description' => 'Pusat proses pembayaran project dan tim.', 'route' => 'erp.accounting.payments', 'icon' => 'credit-card'],
             ['title' => 'Rekonsiliasi Kas', 'description' => 'Rekap mutasi kas/bank harian dan mingguan per sumber dana.', 'route' => 'erp.accounting.reconciliation', 'icon' => 'calendar-days'],
             ['title' => 'General Ledger', 'description' => 'Lihat jurnal umum yang sudah diposting.', 'route' => 'reports.general-ledger', 'icon' => 'book-open'],
@@ -76,6 +77,11 @@ class ERPModuleController extends Controller
             ['title' => 'Karyawan', 'description' => 'Data karyawan: nomor pegawai, kontak, jabatan, dan gaji pokok.', 'route' => 'erp.hr.employees', 'icon' => 'identification'],
             ['title' => 'Legal', 'description' => 'File manager dokumen legal: folder, upload, dan pratinjau PDF.', 'route' => 'erp.hr.legal', 'icon' => 'document-text'],
         ]);
+    }
+
+    public function crm(): Response
+    {
+        return Inertia::render('ERP/CRM/Index');
     }
 
     public function reporting(): Response

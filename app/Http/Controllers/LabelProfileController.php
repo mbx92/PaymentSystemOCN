@@ -3,6 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\LabelProfile;
+use App\Services\LanTsplPrinter;
+use App\Services\WindowsSmbRawPrinter;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -23,7 +26,8 @@ class LabelProfileController extends Controller
             'margin_left_mm' => 'required|numeric|min:0|max:50',
             'margin_top_mm' => 'required|numeric|min:0|max:50',
             'gap_mm' => 'required|numeric|min:0|max:30',
-            'protocol' => 'required|string|in:zpl,epl',
+            'rows' => 'required|integer|min:1|max:3',
+            'protocol' => 'required|string|in:zpl,epl,tspl',
         ]);
 
         LabelProfile::query()->create($validated);
@@ -41,12 +45,36 @@ class LabelProfileController extends Controller
             'margin_left_mm' => 'required|numeric|min:0|max:50',
             'margin_top_mm' => 'required|numeric|min:0|max:50',
             'gap_mm' => 'required|numeric|min:0|max:30',
-            'protocol' => 'required|string|in:zpl,epl',
+            'rows' => 'required|integer|min:1|max:3',
+            'protocol' => 'required|string|in:zpl,epl,tspl',
         ]);
 
         $labelProfile->update($validated);
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Profil label berhasil diperbarui.']);
+    }
+
+    public function simulation(LabelProfile $labelProfile, WindowsSmbRawPrinter $smb, LanTsplPrinter $tspl): JsonResponse
+    {
+        return response()->json([
+            'profile' => [
+                'id' => $labelProfile->id,
+                'name' => $labelProfile->name,
+                'width_mm' => (float) $labelProfile->width_mm,
+                'height_mm' => (float) $labelProfile->height_mm,
+                'dpi' => (int) $labelProfile->dpi,
+                'margin_left_mm' => (float) $labelProfile->margin_left_mm,
+                'margin_top_mm' => (float) $labelProfile->margin_top_mm,
+                'gap_mm' => (float) $labelProfile->gap_mm,
+                'rows' => (int) $labelProfile->rows,
+                'protocol' => $labelProfile->protocol,
+            ],
+            'simulation' => [
+                'native_protocol' => strtoupper((string) $labelProfile->protocol),
+                'native_payload' => $smb->samplePayloadForProfile($labelProfile),
+                'tspl_payload' => $tspl->buildSampleJob($labelProfile),
+            ],
+        ]);
     }
 
     public function destroy(LabelProfile $labelProfile): RedirectResponse

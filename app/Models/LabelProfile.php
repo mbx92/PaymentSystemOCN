@@ -15,6 +15,7 @@ class LabelProfile extends Model
         'margin_left_mm',
         'margin_top_mm',
         'gap_mm',
+        'rows',
         'protocol',
     ];
 
@@ -27,6 +28,7 @@ class LabelProfile extends Model
             'margin_left_mm' => 'decimal:2',
             'margin_top_mm' => 'decimal:2',
             'gap_mm' => 'decimal:2',
+            'rows' => 'integer',
         ];
     }
 

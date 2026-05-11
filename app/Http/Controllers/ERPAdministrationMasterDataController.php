@@ -403,7 +403,7 @@ class ERPAdministrationMasterDataController extends Controller
             'labelSmb' => [
                 'label_smb_enabled' => (bool) ($setting?->label_smb_enabled ?? false),
                 'label_smb_unc' => $setting?->label_smb_unc ?? '',
-                'label_smb_protocol' => in_array($proto, ['zpl', 'epl'], true) ? $proto : 'zpl',
+                'label_smb_protocol' => in_array($proto, ['zpl', 'epl', 'tspl'], true) ? $proto : 'zpl',
                 'label_smb_profile_id' => $setting?->label_smb_profile_id,
             ],
             'labelLan' => [

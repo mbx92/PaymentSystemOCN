@@ -45,12 +45,15 @@ const categoryLabelMap = computed(() => {
   return labels;
 });
 
+const defaultInCategory = computed(() => props.categoryOptions?.in?.[0]?.value ?? '');
+const defaultOutCategory = computed(() => props.categoryOptions?.out?.[0]?.value ?? '');
+
 const form = useForm({
   type: 'in',
   project_id: '',
   cash_account_id: '',
   payment_method_id: '',
-  category: 'pendapatan_jasa',
+  category: defaultInCategory.value,
   amount: 0,
   date: new Date().toISOString().slice(0, 10),
   recipient_name: '',
@@ -63,10 +66,10 @@ const dynamicCategoryOptions = computed(() => (
 
 watch(() => form.type, (type) => {
   if (type === 'in') {
-    form.category = 'pendapatan_jasa';
+    form.category = defaultInCategory.value;
     form.recipient_name = '';
   } else {
-    form.category = 'biaya_tim';
+    form.category = defaultOutCategory.value;
     form.payment_method_id = '';
   }
 });
@@ -77,7 +80,7 @@ const openAddModal = () => {
   form.project_id = '';
   form.cash_account_id = props.cashAccounts?.[0]?.id ?? '';
   form.payment_method_id = '';
-  form.category = 'pendapatan_jasa';
+  form.category = defaultInCategory.value;
   form.amount = 0;
   form.date = new Date().toISOString().slice(0, 10);
   form.recipient_name = '';
@@ -229,6 +232,7 @@ const confirmDestroyEntry = () => {
               <tr>
                 <th>Tanggal</th>
                 <th>Jenis</th>
+                <th>Sumber</th>
                 <th>Project</th>
                 <th>Kategori</th>
                 <th>Metode / Penerima</th>
@@ -250,6 +254,10 @@ const confirmDestroyEntry = () => {
                 <td>
                   <span class="badge badge-sm" :class="typeBadgeClass(entry.type)">{{ typeLabel(entry.type) }}</span>
                 </td>
+                <td>
+                  <div class="font-medium">{{ entry.source_name || '-' }}</div>
+                  <div class="text-xs text-base-content/60">{{ entry.reference_no || '-' }}</div>
+                </td>
                 <td class="font-medium">{{ entry.project_name }}</td>
                 <td><span class="badge badge-ghost badge-sm">{{ categoryLabelMap[entry.category] ?? entry.category }}</span></td>
                 <td>{{ entry.type === 'in' ? (entry.payment_method_name || '-') : (entry.recipient_name || '-') }}</td>
@@ -260,7 +268,7 @@ const confirmDestroyEntry = () => {
                 <td class="text-sm text-base-content/70">{{ entry.creator_name }}</td>
               </tr>
               <tr v-if="!entries.length">
-                <td colspan="10" class="py-10 text-center text-base-content/50">Belum ada transaksi sesuai filter.</td>
+                <td colspan="11" class="py-10 text-center text-base-content/50">Belum ada transaksi sesuai filter.</td>
               </tr>
             </tbody>
           </table>
@@ -340,6 +348,8 @@ const confirmDestroyEntry = () => {
         <div v-if="selectedEntry" class="mt-4 grid grid-cols-2 gap-3 text-sm">
           <div class="text-base-content/60">Tanggal</div><div>{{ selectedEntry.date }}</div>
           <div class="text-base-content/60">Jenis</div><div>{{ typeLabel(selectedEntry.type) }}</div>
+          <div class="text-base-content/60">Sumber</div><div>{{ selectedEntry.source_name || '-' }}</div>
+          <div class="text-base-content/60">Referensi</div><div class="font-mono text-xs">{{ selectedEntry.reference_no || '-' }}</div>
           <div class="text-base-content/60">Project</div><div>{{ selectedEntry.project_name }}</div>
           <div class="text-base-content/60">Kategori</div><div>{{ categoryLabelMap[selectedEntry.category] ?? selectedEntry.category }}</div>
           <div class="text-base-content/60">Sumber Dana</div><div>{{ selectedEntry.cash_account_name || '-' }}</div>

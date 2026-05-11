@@ -85,6 +85,7 @@ class WindowsSmbRawPrinter
     public function samplePayloadForProfile(LabelProfile $profile): string
     {
         return match ($profile->protocol) {
+            'tspl' => app(LanTsplPrinter::class)->buildSampleJob($profile),
             'epl' => $this->sampleEplForProfile($profile),
             default => $this->sampleZplForProfile($profile),
         };
@@ -155,6 +156,7 @@ class WindowsSmbRawPrinter
         $copies = max(1, min(999, $copies));
 
         return match ($profile->protocol) {
+            'tspl' => app(LanTsplPrinter::class)->buildLabelJob($profile, $barcodeData, $productName, $priceLine, $copies),
             'epl' => $this->productBarcodeEpl($profile, $barcodeData, $productName, $copies, $priceLine),
             default => $this->productBarcodeZpl($profile, $barcodeData, $productName, $copies, $priceLine),
         };

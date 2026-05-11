@@ -96,6 +96,8 @@ const openTransaction = (trxId) => {
                   <th>Waktu</th>
                   <th>Item</th>
                   <th>Total Qty</th>
+                  <th>Biaya Tambahan</th>
+                  <th>Detail Biaya</th>
                   <th>Grand Total</th>
                   <th>Metode</th>
                   <th>Kasir</th>
@@ -113,13 +115,15 @@ const openTransaction = (trxId) => {
                   <td>{{ trx.sold_at || '-' }}</td>
                   <td>{{ trx.items_count }}</td>
                   <td>{{ trx.total_qty }}</td>
+                  <td class="font-semibold">{{ format(trx.additional_fee) }}</td>
+                  <td class="max-w-xs truncate text-xs text-base-content/70">{{ trx.additional_charge_labels || '-' }}</td>
                   <td class="font-semibold text-primary">{{ format(trx.grand_total) }}</td>
                   <td>{{ trx.payment_method || '-' }}</td>
                   <td>{{ trx.cashier || '-' }}</td>
                   <td @click.stop><StatusBadge :status="trx.status" /></td>
                 </tr>
                 <tr v-if="!transactions?.length">
-                  <td colspan="8" class="py-10 text-center text-base-content/50">Belum ada transaksi POS.</td>
+                  <td colspan="10" class="py-10 text-center text-base-content/50">Belum ada transaksi POS.</td>
                 </tr>
               </tbody>
             </table>
@@ -129,4 +133,3 @@ const openTransaction = (trxId) => {
     </div>
   </AppLayout>
 </template>
-

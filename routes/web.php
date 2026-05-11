@@ -14,6 +14,7 @@ use App\Http\Controllers\ERPModuleController;
 use App\Http\Controllers\ERPPurchasingController;
 use App\Http\Controllers\ERPReportingController;
 use App\Http\Controllers\ERPSalesController;
+use App\Http\Controllers\ERPAccountingCoaSettingsController;
 use App\Http\Controllers\ErpSystemLogController;
 use App\Http\Controllers\ExpenseCategoryController;
 use App\Http\Controllers\HREmployeeController;
@@ -34,6 +35,15 @@ use App\Http\Controllers\ReportController;
 use App\Http\Controllers\TeamDistributionController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
+
+Route::get('/storage/{path}', function (string $path) {
+    $disk = Storage::disk('public');
+    if (! $disk->exists($path)) {
+        abort(404);
+    }
+    return response()->file($disk->path($path));
+})->where('path', '.*')->name('storage.serve');
 
 Route::get('/', [PublicHomeController::class, 'index'])->name('dashboard');
 
@@ -61,6 +71,10 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/accounting/expense-categories', [ExpenseCategoryController::class, 'index'])->name('erp.accounting.expense-categories');
         Route::post('erp/accounting/expense-categories', [ExpenseCategoryController::class, 'upsert'])->name('erp.accounting.expense-categories.upsert');
         Route::post('erp/accounting/expense-categories/store', [ExpenseCategoryController::class, 'storeCategory'])->name('erp.accounting.expense-categories.store');
+        Route::get('erp/accounting/coa-settings', [ERPAccountingCoaSettingsController::class, 'index'])->name('erp.accounting.coa-settings');
+        Route::post('erp/accounting/coa-settings', [ERPAccountingCoaSettingsController::class, 'upsert'])->name('erp.accounting.coa-settings.upsert');
+        Route::post('erp/accounting/coa-settings/category-mappings', [ERPAccountingCoaSettingsController::class, 'upsertCategoryMapping'])->name('erp.accounting.coa-settings.category-mappings.upsert');
+        Route::post('erp/accounting/coa-settings/categories', [ERPAccountingCoaSettingsController::class, 'storeCategory'])->name('erp.accounting.coa-settings.categories.store');
         Route::get('erp/accounting/payments', [ERPModuleController::class, 'payments'])->name('erp.accounting.payments');
         Route::get('erp/accounting/reconciliation', [ReconciliationController::class, 'index'])->name('erp.accounting.reconciliation');
         Route::get('erp/sales', [ERPModuleController::class, 'sales'])->name('erp.sales');
@@ -68,6 +82,7 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/inventory', [ERPModuleController::class, 'inventory'])->name('erp.inventory');
         Route::get('erp/projects', [ERPModuleController::class, 'projects'])->name('erp.projects');
         Route::get('erp/hr', [ERPModuleController::class, 'hr'])->name('erp.hr');
+        Route::get('erp/crm', [ERPModuleController::class, 'crm'])->name('erp.crm');
         Route::get('erp/hr/employees', [HREmployeeController::class, 'index'])->name('erp.hr.employees');
         Route::post('erp/hr/employees', [HREmployeeController::class, 'store'])->name('erp.hr.employees.store');
         Route::patch('erp/hr/employees/{employee}', [HREmployeeController::class, 'update'])->name('erp.hr.employees.update');
@@ -119,6 +134,7 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/purchasing/reorder-planning/{masterProduct}', [ERPPurchasingController::class, 'reorderShow'])->name('erp.purchasing.reorder-planning.show');
         Route::get('erp/sales/pos', [ERPSalesController::class, 'pos'])->name('erp.sales.pos');
         Route::post('erp/sales/pos/checkout', [ERPSalesController::class, 'checkoutPos'])->name('erp.sales.pos.checkout');
+        Route::post('erp/sales/pos/print-receipt', [ERPSalesController::class, 'printPosReceipt'])->name('erp.sales.pos.print-receipt');
         Route::get('erp/sales/transactions', [ERPSalesController::class, 'posTransactions'])->name('erp.sales.pos.transactions');
         Route::get('erp/sales/transactions/{posSale}', [ERPSalesController::class, 'posTransactionShow'])->name('erp.sales.pos.transactions.show');
         Route::patch('erp/sales/transactions/{posSale}/payment-method', [ERPSalesController::class, 'updatePosTransactionPaymentMethod'])->name('erp.sales.pos.transactions.payment-method.update');
@@ -258,6 +274,7 @@ Route::middleware('auth')->group(function () {
         Route::post('erp/admin/label-printer-lan/test', [ERPAdministrationMasterDataController::class, 'testLabelPrinterLan'])->name('erp.admin.label-printer-lan.test');
         Route::get('erp/admin/label-profiles', [LabelProfileController::class, 'index'])->name('erp.admin.label-profiles');
         Route::post('erp/admin/label-profiles', [LabelProfileController::class, 'store'])->name('erp.admin.label-profiles.store');
+        Route::get('erp/admin/label-profiles/{labelProfile}/simulation', [LabelProfileController::class, 'simulation'])->name('erp.admin.label-profiles.simulation');
         Route::patch('erp/admin/label-profiles/{labelProfile}', [LabelProfileController::class, 'update'])->name('erp.admin.label-profiles.update');
         Route::delete('erp/admin/label-profiles/{labelProfile}', [LabelProfileController::class, 'destroy'])->name('erp.admin.label-profiles.destroy');
 
