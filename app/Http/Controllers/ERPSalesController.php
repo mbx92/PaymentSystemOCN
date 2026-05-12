@@ -244,8 +244,8 @@ class ERPSalesController extends Controller
 
             $coa = app(CoaSettingService::class);
             $cashAccount = $coa->resolveAccountByKey('pos_sale_cash_account', '1001');
-            $revenueAccount = $coa->resolveAccountByKey('pos_sale_revenue_account', '4001');
-            $additionalAccount = $coa->resolveAccountByKey('pos_sale_additional_income_account', '4001');
+            $revenueAccount = $coa->resolveAccountByKey('pos_sale_revenue_account', '4002');
+            $additionalAccount = $coa->resolveAccountByKey('pos_sale_additional_income_account', '4004');
 
             $netSales = max(((float) $posSale->gross_total) - ((float) $posSale->discount_total), 0);
             $additionalFee = max((float) ($posSale->additional_fee ?? 0), 0);
@@ -326,8 +326,8 @@ class ERPSalesController extends Controller
 
             $coa = app(CoaSettingService::class);
             $cashAccount = $coa->resolveAccountByKey('pos_sale_cash_account', '1001');
-            $revenueAccount = $coa->resolveAccountByKey('pos_sale_revenue_account', '4001');
-            $additionalAccount = $coa->resolveAccountByKey('pos_sale_additional_income_account', '4001');
+            $revenueAccount = $coa->resolveAccountByKey('pos_sale_revenue_account', '4002');
+            $additionalAccount = $coa->resolveAccountByKey('pos_sale_additional_income_account', '4004');
 
             $netSales = max(((float) $posSale->gross_total) - ((float) $posSale->discount_total), 0);
             $additionalFee = max((float) ($posSale->additional_fee ?? 0), 0);
@@ -489,8 +489,8 @@ class ERPSalesController extends Controller
 
             $coa = app(CoaSettingService::class);
             $cashAccount = $coa->resolveAccountByKey('pos_sale_cash_account', '1001');
-            $revenueAccount = $coa->resolveAccountByKey('pos_sale_revenue_account', '4001');
-            $additionalAccount = $coa->resolveAccountByKey('pos_sale_additional_income_account', '4001');
+            $revenueAccount = $coa->resolveAccountByKey('pos_sale_revenue_account', '4002');
+            $additionalAccount = $coa->resolveAccountByKey('pos_sale_additional_income_account', '4004');
 
             $netSales = max($grossTotal - $discountTotal, 0);
             $lines = [
@@ -786,7 +786,7 @@ class ERPSalesController extends Controller
 
         $coa = app(CoaSettingService::class);
         $cashAccount = $coa->resolveAccountByKey('project_invoice_cash_account', '1001');
-        $revenueAccount = $coa->resolveAccountByKey('project_invoice_revenue_account', '4001');
+        $revenueAccount = $coa->resolveAccountByKey('project_invoice_revenue_account', '4003');
 
         $entry = $this->glPostingService->post(
             sourceModule: 'project_invoice_payment',

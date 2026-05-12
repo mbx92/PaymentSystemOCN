@@ -58,6 +58,15 @@ const submitCategory = () => {
   });
 };
 
+const defaultsForm = useForm({});
+const openDefaultsModal = () => document.getElementById('modal-apply-defaults')?.showModal();
+const applyDefaults = () => {
+  defaultsForm.post(route('erp.accounting.coa-settings.apply-defaults'), {
+    preserveScroll: true,
+    onSuccess: () => document.getElementById('modal-apply-defaults')?.close(),
+  });
+};
+
 const domainTitle = (domain) => (domain === 'cash_in' ? 'Kas Masuk' : 'Kas Keluar');
 </script>
 
@@ -69,7 +78,12 @@ const domainTitle = (domain) => (domain === 'cash_in' ? 'Kas Masuk' : 'Kas Kelua
         <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Accounting Workspace</p>
         <div class="mt-2 flex items-center justify-between gap-3">
           <h1 class="text-3xl font-bold tracking-tight">Pengaturan COA</h1>
-          <Link class="btn btn-ghost btn-sm" :href="route('erp.accounting')">Back</Link>
+          <div class="flex items-center gap-2">
+            <button class="btn btn-outline btn-sm" @click="openDefaultsModal">
+              Terapkan Standar Akuntansi
+            </button>
+            <Link class="btn btn-ghost btn-sm" :href="route('erp.accounting')">Back</Link>
+          </div>
         </div>
         <p class="mt-2 text-sm text-base-content/70">
           Satu halaman untuk mengatur posting otomatis sistem dan mapping kategori cashflow. Setiap baris menjelaskan transaksi masuk ke akun mana dan mengambil nilai dari field apa.
@@ -179,6 +193,34 @@ const domainTitle = (domain) => (domain === 'cash_in' ? 'Kas Masuk' : 'Kas Kelua
         </div>
       </div>
     </div>
+
+    <dialog id="modal-apply-defaults" class="modal">
+      <div class="modal-box max-w-lg">
+        <h3 class="font-bold text-lg">Terapkan Standar Akuntansi</h3>
+        <div class="mt-4 space-y-3 text-sm">
+          <p class="text-base-content/80">
+            Tindakan ini akan mengatur <strong>semua</strong> pengaturan COA ke konfigurasi standar akuntansi yang benar:
+          </p>
+          <ul class="list-disc pl-5 space-y-1 text-base-content/70">
+            <li>POS Penjualan → <span class="font-mono text-xs">4002</span> Pendapatan Penjualan POS</li>
+            <li>POS Biaya Tambahan → <span class="font-mono text-xs">4004</span> Pendapatan Lain-lain</li>
+            <li>Invoice Project → <span class="font-mono text-xs">4003</span> Pendapatan Project</li>
+            <li>Semua akun Kas/Bank → <span class="font-mono text-xs">1001</span> Kas</li>
+            <li>Semua mapping kategori cashflow ke akun yang sesuai</li>
+          </ul>
+          <div class="rounded-lg bg-warning/10 border border-warning/30 p-3">
+            <p class="text-warning text-xs font-medium">Pengaturan yang sudah Anda ubah secara manual akan di-overwrite.</p>
+          </div>
+        </div>
+        <div class="modal-action">
+          <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
+          <button class="btn btn-primary" :disabled="defaultsForm.processing" @click="applyDefaults">
+            <span v-if="defaultsForm.processing" class="loading loading-spinner loading-sm"></span>
+            Terapkan Semua
+          </button>
+        </div>
+      </div>
+    </dialog>
 
     <dialog id="modal-add-cash-category" class="modal">
       <div class="modal-box max-w-xl">

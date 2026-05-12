@@ -52,15 +52,53 @@ class ERPReportingController extends Controller
         ]);
     }
 
-    public function generalLedger(): Response
+    public function generalLedger(Request $request): Response
     {
-        $entries = JournalEntry::query()
-            ->with('lines.account')
-            ->latest('entry_date')
-            ->paginate(25);
+        $query = JournalEntry::query()->with('lines.account');
+
+        if ($request->filled('date_from')) {
+            $query->where('entry_date', '>=', $request->string('date_from')->toString());
+        }
+
+        if ($request->filled('date_to')) {
+            $query->where('entry_date', '<=', $request->string('date_to')->toString());
+        }
+
+        if ($request->filled('q')) {
+            $term = $request->string('q')->toString();
+            $query->where(function ($inner) use ($term): void {
+                $inner->where('entry_no', 'like', '%'.$term.'%')
+                    ->orWhere('description', 'like', '%'.$term.'%');
+            });
+        }
+
+        $entries = $query->latest('entry_date')->latest('id')->paginate(25)->withQueryString();
+
+        $totalsQuery = JournalLine::query();
+        if ($request->filled('date_from') || $request->filled('date_to')) {
+            $totalsQuery->whereHas('journalEntry', function ($q) use ($request): void {
+                if ($request->filled('date_from')) {
+                    $q->where('entry_date', '>=', $request->string('date_from')->toString());
+                }
+                if ($request->filled('date_to')) {
+                    $q->where('entry_date', '<=', $request->string('date_to')->toString());
+                }
+            });
+        }
+
+        $totals = $totalsQuery->select([
+            DB::raw('SUM(debit) as total_debit'),
+            DB::raw('SUM(credit) as total_credit'),
+        ])->first();
 
         return Inertia::render('ERP/Reports/GeneralLedger', [
             'entries' => $entries,
+            'totals' => [
+                'total_debit' => (float) ($totals->total_debit ?? 0),
+                'total_credit' => (float) ($totals->total_credit ?? 0),
+                'entry_count' => $entries->total(),
+            ],
+            'filters' => $request->only(['date_from', 'date_to', 'q']),
         ]);
     }
 
@@ -68,18 +106,27 @@ class ERPReportingController extends Controller
     {
         $balances = JournalLine::query()
             ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
-            ->groupBy('accounts.id', 'accounts.code', 'accounts.name')
+            ->groupBy('accounts.id', 'accounts.code', 'accounts.name', 'accounts.type')
             ->select([
                 'accounts.code',
                 'accounts.name',
+                'accounts.type',
                 DB::raw('SUM(journal_lines.debit) as debit_total'),
                 DB::raw('SUM(journal_lines.credit) as credit_total'),
             ])
             ->orderBy('accounts.code')
             ->get();
 
+        $totalDebit = $balances->sum('debit_total');
+        $totalCredit = $balances->sum('credit_total');
+
         return Inertia::render('ERP/Reports/TrialBalance', [
             'balances' => $balances,
+            'totals' => [
+                'debit' => (float) $totalDebit,
+                'credit' => (float) $totalCredit,
+                'balanced' => abs($totalDebit - $totalCredit) < 0.01,
+            ],
         ]);
     }
 
