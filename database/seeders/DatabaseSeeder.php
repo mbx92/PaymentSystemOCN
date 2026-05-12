@@ -345,5 +345,10 @@ class DatabaseSeeder extends Seeder
         $anggota->assignRole('anggota');
 
         $this->call(FillThermalPosReceiptTemplatesSeeder::class);
+
+        $this->call(CoaSeeder::class);
+        $this->call(ProductCategorySeeder::class);
+        $this->call(UomSeeder::class);
+        $this->call(LabelProfileSeeder::class);
     }
 }

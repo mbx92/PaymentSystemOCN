@@ -23,6 +23,7 @@ use App\Services\WindowsSmbRawPrinter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -689,13 +690,48 @@ class ERPAdministrationMasterDataController extends Controller
     public function dataImport(Request $request): Response
     {
         $tab = $request->string('tab')->toString();
-        if (! in_array($tab, ['products', 'projects'], true)) {
+        if (! in_array($tab, ['products', 'projects', 'seeders'], true)) {
             $tab = 'products';
         }
 
+        $seeders = [
+            ['key' => 'coa', 'label' => 'Chart of Accounts (COA)', 'description' => 'Akun-akun COA standar PSAK, kategori kas, dan mapping COA.', 'class' => 'CoaSeeder'],
+            ['key' => 'product_categories', 'label' => 'Kategori Produk', 'description' => '17 kategori produk bisnis OCN Tech.', 'class' => 'ProductCategorySeeder'],
+            ['key' => 'uom', 'label' => 'Satuan (UoM)', 'description' => '18 unit pengukuran dan 7 konversi.', 'class' => 'UomSeeder'],
+            ['key' => 'label_profiles', 'label' => 'Profil Label', 'description' => '9 profil label thermal (ZPL & TSPL) untuk ukuran retail.', 'class' => 'LabelProfileSeeder'],
+            ['key' => 'parser_rules', 'label' => 'Parser Rules Chatbot', 'description' => '35 rule parser keyword untuk chatbot ERP.', 'class' => 'ErpChatParserRuleSeeder'],
+            ['key' => 'pos_receipt', 'label' => 'Template Struk POS', 'description' => 'Template struk thermal POS default.', 'class' => 'FillThermalPosReceiptTemplatesSeeder'],
+        ];
+
         return Inertia::render('ERP/Admin/DataImport', [
             'activeTab' => $tab,
+            'seeders' => $seeders,
         ]);
+    }
+
+    public function runSeeder(Request $request): JsonResponse
+    {
+        $request->validate([
+            'seeder' => 'required|string|in:CoaSeeder,ProductCategorySeeder,UomSeeder,LabelProfileSeeder,ErpChatParserRuleSeeder,FillThermalPosReceiptTemplatesSeeder',
+        ]);
+
+        $class = 'Database\\Seeders\\' . $request->input('seeder');
+
+        try {
+            Artisan::call('db:seed', ['--class' => $class, '--force' => true]);
+            $output = trim(Artisan::output());
+
+            return response()->json([
+                'success' => true,
+                'message' => "Seeder {$request->input('seeder')} berhasil dijalankan.",
+                'output' => $output,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => "Gagal menjalankan seeder: {$e->getMessage()}",
+            ], 500);
+        }
     }
 
     public function masterProductImport(): RedirectResponse

@@ -111,7 +111,7 @@ class ERPModuleController extends Controller
             ['title' => 'Monitoring Log', 'description' => 'Pantau aktivitas ERP, transaksi, dan error aplikasi secara terpusat.', 'route' => 'erp.admin.system-logs.index', 'icon' => 'circle-stack'],
             ['title' => 'Monitoring server', 'description' => 'Latensi kueri DB, ukuran basis data, TCP ke host DB, dan latensi HTTP keluar dari server.', 'route' => 'erp.admin.server-monitoring', 'icon' => 'chart-bar'],
             ['title' => 'Printer & label', 'description' => 'Thermal LAN (struk POS), label Windows (SMB), label LAN (TSPL), dan profil label (ZPL/EPL) dalam satu halaman.', 'route' => 'erp.admin.printer-and-label', 'icon' => 'printer'],
-            ['title' => 'Impor data (Excel)', 'description' => 'Unduh template dan impor master produk atau project dari .xlsx / .xls / .csv.', 'route' => 'erp.admin.data-import', 'icon' => 'arrow-up-tray'],
+            ['title' => 'Impor & Seeder Data', 'description' => 'Impor data dari Excel dan jalankan seeder database untuk COA, kategori, UoM, label, dan chatbot.', 'route' => 'erp.admin.data-import', 'icon' => 'arrow-up-tray'],
         ]);
     }
 

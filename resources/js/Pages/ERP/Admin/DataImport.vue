@@ -1,20 +1,27 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
-import { computed, ref, watch } from 'vue';
+import { computed, ref, reactive, watch } from 'vue';
+import {
+  ArrowPathIcon,
+  CheckCircleIcon,
+  ExclamationCircleIcon,
+  ServerStackIcon,
+} from '@heroicons/vue/24/outline';
 
 const props = defineProps({
   activeTab: String,
+  seeders: { type: Array, default: () => [] },
 });
 
 const page = usePage();
 
-const tab = ref(['products', 'projects'].includes(props.activeTab) ? props.activeTab : 'products');
+const tab = ref(['products', 'projects', 'seeders'].includes(props.activeTab) ? props.activeTab : 'products');
 
 watch(
   () => props.activeTab,
   (v) => {
-    if (v && ['products', 'projects'].includes(v)) {
+    if (v && ['products', 'projects', 'seeders'].includes(v)) {
       tab.value = v;
     }
   },
@@ -78,19 +85,62 @@ function submitProjects() {
 
 const productTemplateUrl = route('erp.admin.data-import.products.template');
 const projectTemplateUrl = route('erp.admin.data-import.projects.template');
+
+const seederState = reactive({});
+props.seeders.forEach((s) => {
+  seederState[s.key] = { loading: false, success: null, message: '' };
+});
+
+async function runSeeder(seeder) {
+  const state = seederState[seeder.key];
+  state.loading = true;
+  state.success = null;
+  state.message = '';
+
+  try {
+    const res = await fetch(route('erp.admin.data-import.run-seeder'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ seeder: seeder.class }),
+    });
+
+    const data = await res.json();
+    state.success = data.success;
+    state.message = data.message || (data.success ? 'Berhasil' : 'Gagal');
+  } catch (err) {
+    state.success = false;
+    state.message = 'Network error: ' + (err.message || 'Gagal menghubungi server');
+  } finally {
+    state.loading = false;
+  }
+}
+
+const runAllLoading = ref(false);
+
+async function runAllSeeders() {
+  runAllLoading.value = true;
+  for (const seeder of props.seeders) {
+    await runSeeder(seeder);
+  }
+  runAllLoading.value = false;
+}
 </script>
 
 <template>
-  <Head title="Administration - Impor data" />
+  <Head title="Administration - Impor & Seeder Data" />
   <AppLayout>
     <div class="space-y-5">
       <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Administration Workspace</p>
         <div class="mt-2 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 class="text-3xl font-bold tracking-tight">Impor data (Excel)</h1>
+            <h1 class="text-3xl font-bold tracking-tight">Impor & Seeder Data</h1>
             <p class="mt-2 text-sm text-base-content/70">
-              Unduh template, sesuaikan kolom, lalu unggah. Master produk: baris dengan SKU sama akan <strong>diperbarui</strong>. Project: gunakan <code class="rounded bg-base-200 px-1 text-xs">import_key</code> unik dari sistem lama untuk mengisi ulang baris yang sama.
+              Impor data dari file Excel atau jalankan database seeder untuk mengisi data master awal.
             </p>
           </div>
           <Link class="btn btn-ghost btn-sm" :href="route('erp.administration')">Back</Link>
@@ -115,6 +165,16 @@ const projectTemplateUrl = route('erp.admin.data-import.projects.template');
           @click="selectTab('projects')"
         >
           Data project
+        </button>
+        <button
+          type="button"
+          role="tab"
+          class="tab gap-1.5"
+          :class="tab === 'seeders' ? 'tab-active' : ''"
+          @click="selectTab('seeders')"
+        >
+          <ServerStackIcon class="h-4 w-4" />
+          Database Seeder
         </button>
       </div>
 
@@ -240,9 +300,89 @@ const projectTemplateUrl = route('erp.admin.data-import.projects.template');
         </div>
       </div>
 
+      <!-- Tab: seeders -->
+      <div v-show="tab === 'seeders'" class="space-y-4">
+        <div class="ocn-panel">
+          <div class="ocn-panel__head">
+            <h2 class="ocn-panel__title">Database Seeder</h2>
+            <p class="ocn-panel__desc">
+              Jalankan seeder untuk mengisi data master awal. Seeder menggunakan <code class="rounded bg-base-200 px-1 text-xs">firstOrCreate</code> / <code class="rounded bg-base-200 px-1 text-xs">updateOrCreate</code> sehingga <strong>tidak akan menimpa</strong> data yang sudah Anda ubah.
+            </p>
+          </div>
+          <div class="card-body space-y-3">
+            <div class="flex justify-end">
+              <button
+                class="btn btn-primary btn-sm gap-1.5"
+                :disabled="runAllLoading"
+                @click="runAllSeeders"
+              >
+                <ArrowPathIcon class="h-4 w-4" :class="runAllLoading ? 'animate-spin' : ''" />
+                {{ runAllLoading ? 'Menjalankan semua…' : 'Jalankan Semua Seeder' }}
+              </button>
+            </div>
+
+            <div class="divide-y divide-base-200 rounded-xl border border-base-200">
+              <div
+                v-for="seeder in seeders"
+                :key="seeder.key"
+                class="flex flex-wrap items-center gap-3 px-4 py-3"
+              >
+                <div class="min-w-0 flex-1">
+                  <p class="font-semibold text-sm">{{ seeder.label }}</p>
+                  <p class="text-xs text-base-content/60">{{ seeder.description }}</p>
+                </div>
+
+                <div class="flex items-center gap-2">
+                  <transition name="fade" mode="out-in">
+                    <span
+                      v-if="seederState[seeder.key]?.success === true"
+                      class="flex items-center gap-1 text-xs text-success font-medium"
+                    >
+                      <CheckCircleIcon class="h-4 w-4" />
+                      Berhasil
+                    </span>
+                    <span
+                      v-else-if="seederState[seeder.key]?.success === false"
+                      class="flex items-center gap-1 text-xs text-error font-medium max-w-xs truncate"
+                      :title="seederState[seeder.key]?.message"
+                    >
+                      <ExclamationCircleIcon class="h-4 w-4 shrink-0" />
+                      {{ seederState[seeder.key]?.message }}
+                    </span>
+                  </transition>
+
+                  <button
+                    class="btn btn-outline btn-sm gap-1.5"
+                    :disabled="seederState[seeder.key]?.loading"
+                    @click="runSeeder(seeder)"
+                  >
+                    <ArrowPathIcon
+                      class="h-4 w-4"
+                      :class="seederState[seeder.key]?.loading ? 'animate-spin' : ''"
+                    />
+                    {{ seederState[seeder.key]?.loading ? 'Running…' : 'Jalankan' }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div v-if="flash?.message" class="alert text-sm" :class="flash.type === 'error' ? 'alert-error' : flash.type === 'warning' ? 'alert-warning' : 'alert-success'">
         {{ flash.message }}
       </div>
     </div>
   </AppLayout>
 </template>
+
+<style scoped>
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+</style>

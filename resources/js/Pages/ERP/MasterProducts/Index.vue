@@ -166,7 +166,7 @@ const goToDetail = (id) => {
                   :href="route('erp.admin.data-import', { tab: 'products' })"
                   class="btn btn-outline btn-sm whitespace-nowrap"
                 >
-                  Impor Excel
+                  Impor Data
                 </Link>
                 <button class="btn btn-primary btn-sm whitespace-nowrap" onclick="document.getElementById('modal-add-product').showModal()">
                   + Add Product
