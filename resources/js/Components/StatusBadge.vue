@@ -1,5 +1,8 @@
 <script setup>
-defineProps({ status: String });
+const props = defineProps({
+    status: String,
+    size: { type: String, default: 'badge-sm' },
+});
 
 const map = {
     negosiasi: 'badge-warning',
@@ -24,7 +27,7 @@ const map = {
 </script>
 
 <template>
-    <span :class="['badge badge-sm font-medium capitalize', map[status] ?? 'badge-ghost']">
+    <span :class="['badge font-medium capitalize', props.size, map[status] ?? 'badge-ghost']">
         {{ status }}
     </span>
 </template>

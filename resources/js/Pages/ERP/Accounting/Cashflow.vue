@@ -36,7 +36,14 @@ watch(filters, (val) => {
 }, { deep: true });
 
 const typeBadgeClass = (type) => (type === 'in' ? 'badge-success' : 'badge-error');
-const typeLabel = (type) => (type === 'in' ? 'Kas Masuk' : 'Kas Keluar');
+const typeLabel = (type) => (type === 'in' ? 'In' : 'Out');
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return '-';
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  const d = new Date(dateStr);
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+};
 
 const categoryLabelMap = computed(() => {
   const labels = {};
@@ -227,48 +234,63 @@ const confirmDestroyEntry = () => {
           <span class="text-xs text-base-content/60">{{ entries.length }} transaksi</span>
         </div>
         <div class="overflow-x-auto">
-          <table class="table table-zebra">
-            <thead>
+          <table class="table">
+            <thead class="sticky top-0 z-10">
               <tr>
+                <th class="w-10 text-center">#</th>
                 <th>Tanggal</th>
                 <th>Jenis</th>
                 <th>Sumber</th>
                 <th>Project</th>
                 <th>Kategori</th>
-                <th>Metode / Penerima</th>
-                <th>Jumlah</th>
+                <th class="text-right">Jumlah</th>
                 <th>Status</th>
-                <th>Jurnal</th>
                 <th>Keterangan</th>
-                <th>Oleh</th>
               </tr>
             </thead>
             <tbody>
               <tr
-                v-for="entry in entries"
+                v-for="(entry, index) in entries"
                 :key="`${entry.type}-${entry.id}`"
-                class="cursor-pointer hover:bg-base-200/60"
+                :class="['cursor-pointer transition-colors hover:bg-primary/5',
+                  entry.type === 'in' ? 'border-l-4 border-l-success' : 'border-l-4 border-l-error']"
                 @click="openDetailModal(entry)"
               >
-                <td>{{ entry.date }}</td>
+                <td class="text-center text-xs text-base-content/40 font-mono">{{ index + 1 }}</td>
+                <td class="whitespace-nowrap">
+                  <span class="font-medium">{{ formatDate(entry.date) }}</span>
+                </td>
                 <td>
-                  <span class="badge badge-sm" :class="typeBadgeClass(entry.type)">{{ typeLabel(entry.type) }}</span>
+                  <span class="badge" :class="typeBadgeClass(entry.type)">{{ typeLabel(entry.type) }}</span>
                 </td>
                 <td>
                   <div class="font-medium">{{ entry.source_name || '-' }}</div>
-                  <div class="text-xs text-base-content/60">{{ entry.reference_no || '-' }}</div>
+                  <div v-if="entry.type === 'in' ? entry.payment_method_name : entry.recipient_name"
+                       class="text-xs text-base-content/40 mt-0.5">
+                    {{ entry.type === 'in' ? entry.payment_method_name : entry.recipient_name }}
+                  </div>
                 </td>
                 <td class="font-medium">{{ entry.project_name }}</td>
-                <td><span class="badge badge-ghost badge-sm">{{ categoryLabelMap[entry.category] ?? entry.category }}</span></td>
-                <td>{{ entry.type === 'in' ? (entry.payment_method_name || '-') : (entry.recipient_name || '-') }}</td>
-                <td :class="['font-semibold', entry.type === 'in' ? 'text-success' : 'text-error']">{{ format(entry.amount) }}</td>
-                <td><StatusBadge :status="entry.document_status" /></td>
-                <td class="font-mono text-xs">{{ entry.journal_entry_id ?? '-' }}</td>
-                <td class="max-w-xs truncate text-sm text-base-content/70">{{ entry.note || '-' }}</td>
-                <td class="text-sm text-base-content/70">{{ entry.creator_name }}</td>
+                <td><span class="badge badge-ghost">{{ categoryLabelMap[entry.category] ?? entry.category }}</span></td>
+                <td class="text-right tabular-nums whitespace-nowrap">
+                  <span :class="['font-semibold', entry.type === 'in' ? 'text-success' : 'text-error']">
+                    {{ entry.type === 'in' ? '+' : '-' }}{{ format(entry.amount) }}
+                  </span>
+                </td>
+                <td><StatusBadge :status="entry.document_status" size="" /></td>
+                <td class="max-w-xs">
+                  <div class="truncate text-sm">{{ entry.note || '-' }}</div>
+                  <div class="text-xs text-base-content/40 mt-0.5">{{ entry.creator_name }}</div>
+                </td>
               </tr>
               <tr v-if="!entries.length">
-                <td colspan="11" class="py-10 text-center text-base-content/50">Belum ada transaksi sesuai filter.</td>
+                <td colspan="9" class="py-16 text-center">
+                  <svg class="mx-auto h-12 w-12 text-base-content/20" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z" />
+                  </svg>
+                  <p class="mt-3 text-sm font-medium text-base-content/50">Belum ada transaksi</p>
+                  <p class="mt-1 text-xs text-base-content/40">Transaksi cashflow akan muncul di sini setelah Anda menambahkan data.</p>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -355,7 +377,7 @@ const confirmDestroyEntry = () => {
           <div class="text-base-content/60">Sumber Dana</div><div>{{ selectedEntry.cash_account_name || '-' }}</div>
           <div class="text-base-content/60">Metode/Penerima</div><div>{{ selectedEntry.type === 'in' ? (selectedEntry.payment_method_name || '-') : (selectedEntry.recipient_name || '-') }}</div>
           <div class="text-base-content/60">Jumlah</div><div :class="selectedEntry.type === 'in' ? 'text-success font-semibold' : 'text-error font-semibold'">{{ format(selectedEntry.amount) }}</div>
-          <div class="text-base-content/60">Status</div><div><StatusBadge :status="selectedEntry.document_status" /></div>
+          <div class="text-base-content/60">Status</div><div><StatusBadge :status="selectedEntry.document_status" size="" /></div>
           <div class="text-base-content/60">Jurnal</div><div class="font-mono text-xs">{{ selectedEntry.journal_entry_id || '-' }}</div>
           <div class="text-base-content/60">Keterangan</div><div>{{ selectedEntry.note || '-' }}</div>
           <div class="text-base-content/60">Dicatat Oleh</div><div>{{ selectedEntry.creator_name }}</div>

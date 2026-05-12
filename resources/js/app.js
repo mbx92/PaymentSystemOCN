@@ -1,13 +1,27 @@
 import '../css/app.css';
 import './bootstrap';
 
-import { createInertiaApp } from '@inertiajs/vue3';
+import { createInertiaApp, router } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { createApp, h } from 'vue';
 import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 import { createPinia } from 'pinia';
 
 const appName = import.meta.env.VITE_APP_NAME || 'ERP OCN System';
+
+router.on('navigate', (event) => {
+    const logoUrl = event.detail.page.props.erpSetting?.app_logo_url;
+    if (logoUrl) {
+        let link = document.querySelector("link[rel='icon']");
+        if (!link) {
+            link = document.createElement('link');
+            link.rel = 'icon';
+            document.head.appendChild(link);
+        }
+        link.type = '';
+        link.href = logoUrl;
+    }
+});
 
 createInertiaApp({
     title: (title) => (title ? `${title} - ${appName}` : appName),

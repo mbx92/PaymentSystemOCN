@@ -80,6 +80,7 @@ Route::middleware('auth')->group(function () {
         Route::post('erp/accounting/coa-settings', [ERPAccountingCoaSettingsController::class, 'upsert'])->name('erp.accounting.coa-settings.upsert');
         Route::post('erp/accounting/coa-settings/category-mappings', [ERPAccountingCoaSettingsController::class, 'upsertCategoryMapping'])->name('erp.accounting.coa-settings.category-mappings.upsert');
         Route::post('erp/accounting/coa-settings/categories', [ERPAccountingCoaSettingsController::class, 'storeCategory'])->name('erp.accounting.coa-settings.categories.store');
+        Route::post('erp/accounting/coa-settings/apply-defaults', [ERPAccountingCoaSettingsController::class, 'applyDefaults'])->name('erp.accounting.coa-settings.apply-defaults');
         Route::get('erp/accounting/payments', [ERPModuleController::class, 'payments'])->name('erp.accounting.payments');
         Route::get('erp/accounting/reconciliation', [ReconciliationController::class, 'index'])->name('erp.accounting.reconciliation');
         Route::get('erp/sales', [ERPModuleController::class, 'sales'])->name('erp.sales');
