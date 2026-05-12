@@ -9,8 +9,8 @@ use App\Models\Project;
 use App\Models\ProjectMaterial;
 use App\Models\ProjectPayment;
 use App\Models\ProjectTask;
-use App\Models\TeamRole;
 use App\Models\TeamDistribution;
+use App\Models\TeamRole;
 use App\Models\User;
 use App\Support\LegalVaultPath;
 use Illuminate\Http\Request;
@@ -33,19 +33,19 @@ class ProjectController extends Controller
 
         $projects = $query->latest()->paginate(15)->withQueryString()
             ->through(fn ($p) => [
-                'id'          => $p->id,
-                'name'        => $p->name,
+                'id' => $p->id,
+                'name' => $p->name,
                 'client_name' => $p->client_name,
-                'project_type'=> $p->project_type,
-                'status'      => $p->status,
+                'project_type' => $p->project_type,
+                'status' => $p->status,
                 'total_value' => (float) $p->total_value,
                 'paid_amount' => (float) ($p->paid_amount ?? 0),
-                'started_at'  => $p->started_at?->format('Y-m-d'),
+                'started_at' => $p->started_at?->format('Y-m-d'),
             ]);
 
         return Inertia::render('Projects/Index', [
             'projects' => $projects,
-            'filters'  => $request->only(['search', 'status', 'project_type']),
+            'filters' => $request->only(['search', 'status', 'project_type']),
         ]);
     }
 
@@ -57,19 +57,19 @@ class ProjectController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name'           => 'required|string|max:255',
-            'client_name'    => 'required|string|max:255',
+            'name' => 'required|string|max:255',
+            'client_name' => 'required|string|max:255',
             'client_contact' => 'nullable|string|max:255',
-            'project_type'   => 'nullable|in:cctv_installation,system_website_development',
-            'total_value'    => 'required|numeric|min:0.01',
-            'status'         => 'required|in:negosiasi,berjalan,selesai,dibatalkan',
-            'started_at'     => 'nullable|date',
-            'finished_at'    => 'nullable|date|after_or_equal:started_at',
-            'description'    => 'nullable|string',
+            'project_type' => 'nullable|in:cctv_installation,system_website_development',
+            'total_value' => 'required|numeric|min:0.01',
+            'status' => 'required|in:negosiasi,berjalan,selesai,dibatalkan',
+            'started_at' => 'nullable|date',
+            'finished_at' => 'nullable|date|after_or_equal:started_at',
+            'description' => 'nullable|string',
             'payment_scheme' => 'nullable|in:terms,final',
-            'payments'       => 'required|array|min:1|max:20',
+            'payments' => 'required|array|min:1|max:20',
             'payments.*.percentage' => 'required|numeric|min:0.01|max:100',
-            'payments.*.note'       => 'nullable|string|max:500',
+            'payments.*.note' => 'nullable|string|max:500',
         ]);
 
         if (($validated['payment_scheme'] ?? 'terms') === 'final') {
@@ -108,51 +108,51 @@ class ProjectController extends Controller
 
         return Inertia::render('Projects/Show', [
             'project' => [
-                'id'            => $project->id,
-                'name'          => $project->name,
-                'client_name'   => $project->client_name,
-                'client_contact'=> $project->client_contact,
-                'project_type'  => $project->project_type,
-                'total_value'   => (float) $project->total_value,
-                'status'        => $project->status,
-                'started_at'    => $project->started_at?->format('Y-m-d'),
-                'finished_at'   => $project->finished_at?->format('Y-m-d'),
-                'description'   => $project->description,
-                'project_type'  => $project->project_type,
-                'payments'      => $project->payments->map(fn ($p) => [
-                    'id'          => $p->id,
+                'id' => $project->id,
+                'name' => $project->name,
+                'client_name' => $project->client_name,
+                'client_contact' => $project->client_contact,
+                'project_type' => $project->project_type,
+                'total_value' => (float) $project->total_value,
+                'status' => $project->status,
+                'started_at' => $project->started_at?->format('Y-m-d'),
+                'finished_at' => $project->finished_at?->format('Y-m-d'),
+                'description' => $project->description,
+                'project_type' => $project->project_type,
+                'payments' => $project->payments->map(fn ($p) => [
+                    'id' => $p->id,
                     'term_number' => $p->term_number,
-                    'percentage'  => (float) $p->percentage,
-                    'amount'      => (float) $p->amount,
-                    'paid_at'     => $p->paid_at?->format('Y-m-d'),
-                    'note'        => $p->note,
+                    'percentage' => (float) $p->percentage,
+                    'amount' => (float) $p->amount,
+                    'paid_at' => $p->paid_at?->format('Y-m-d'),
+                    'note' => $p->note,
                 ]),
-                'cash_ins'  => $project->cashIns->map(fn ($c) => [
-                    'id'           => $c->id,
-                    'category'     => $c->category,
-                    'amount'       => (float) $c->amount,
-                    'date'         => $c->date->format('Y-m-d'),
-                    'note'         => $c->note,
+                'cash_ins' => $project->cashIns->map(fn ($c) => [
+                    'id' => $c->id,
+                    'category' => $c->category,
+                    'amount' => (float) $c->amount,
+                    'date' => $c->date->format('Y-m-d'),
+                    'note' => $c->note,
                     'creator_name' => $c->creator->name,
                 ]),
                 'cash_outs' => $project->cashOuts->map(fn ($c) => [
-                    'id'             => $c->id,
-                    'category'       => $c->category,
-                    'amount'         => (float) $c->amount,
-                    'date'           => $c->date->format('Y-m-d'),
-                    'note'           => $c->note,
+                    'id' => $c->id,
+                    'category' => $c->category,
+                    'amount' => (float) $c->amount,
+                    'date' => $c->date->format('Y-m-d'),
+                    'note' => $c->note,
                     'recipient_name' => $c->recipient_name,
-                    'creator_name'   => $c->creator->name,
+                    'creator_name' => $c->creator->name,
                 ]),
                 'team_distributions' => $project->teamDistributions->map(fn ($d) => [
-                    'id'              => $d->id,
-                    'user_id'         => $d->user_id,
-                    'user_name'       => $d->user->name,
+                    'id' => $d->id,
+                    'user_id' => $d->user_id,
+                    'user_name' => $d->user->name,
                     'role_in_project' => $d->role_in_project,
-                    'percentage'      => (float) $d->percentage,
-                    'base_pay'        => (float) $d->base_pay,
-                    'bonus'           => (float) $d->bonus,
-                    'total_pay'       => (float) $d->total_pay,
+                    'percentage' => (float) $d->percentage,
+                    'base_pay' => (float) $d->base_pay,
+                    'bonus' => (float) $d->bonus,
+                    'total_pay' => (float) $d->total_pay,
                 ]),
                 'tasks' => $project->tasks->map(fn ($task) => [
                     'id' => $task->id,
@@ -164,19 +164,19 @@ class ProjectController extends Controller
                     'due_date' => $task->due_date?->format('Y-m-d'),
                 ]),
                 'referrals' => $project->referrals->map(fn ($r) => [
-                    'id'                => $r->id,
-                    'referrer_name'     => $r->referrer_name,
+                    'id' => $r->id,
+                    'referrer_name' => $r->referrer_name,
                     'commission_amount' => (float) $r->commission_amount,
-                    'paid_at'           => $r->paid_at?->format('Y-m-d'),
-                    'note'              => $r->note,
+                    'paid_at' => $r->paid_at?->format('Y-m-d'),
+                    'note' => $r->note,
                 ]),
                 'summary' => [
-                    'total_cash_in'            => $project->total_cash_in,
-                    'total_cash_out'           => $project->total_cash_out,
-                    'profit'                   => $project->profit,
-                    'total_referral_commission'=> $project->total_referral_commission,
-                    'total_operational'        => $project->total_operational,
-                    'net_team_value'           => $project->net_team_value,
+                    'total_cash_in' => $project->total_cash_in,
+                    'total_cash_out' => $project->total_cash_out,
+                    'profit' => $project->profit,
+                    'total_referral_commission' => $project->total_referral_commission,
+                    'total_operational' => $project->total_operational,
+                    'net_team_value' => $project->net_team_value,
                 ],
                 'materials' => $project->materials->map(fn ($m) => [
                     'id' => $m->id,
@@ -208,6 +208,14 @@ class ProjectController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'sku', 'name', 'uom']),
             'warehouses' => Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']),
+            'warehouse_stocks' => MasterProductWarehouseStock::query()
+                ->get(['master_product_id', 'warehouse_id', 'qty', 'reserved_qty'])
+                ->groupBy('warehouse_id')
+                ->map(fn ($rows) => $rows->keyBy('master_product_id')->map(fn ($r) => [
+                    'qty' => (float) $r->qty,
+                    'reserved' => (float) $r->reserved_qty,
+                    'available' => max((float) $r->qty - (float) $r->reserved_qty, 0),
+                ])),
             'team_members' => User::query()->orderBy('name')->get(['id', 'name', 'email']),
             'team_roles' => $teamRoles->map(fn (TeamRole $role) => [
                 'id' => $role->id,
@@ -332,26 +340,26 @@ class ProjectController extends Controller
 
         return Inertia::render('Projects/Edit', [
             'project' => [
-                'id'             => $project->id,
-                'name'           => $project->name,
-                'client_name'    => $project->client_name,
+                'id' => $project->id,
+                'name' => $project->name,
+                'client_name' => $project->client_name,
                 'client_contact' => $project->client_contact,
-                'project_type'   => $project->project_type,
-                'total_value'    => (float) $project->total_value,
-                'status'         => $project->status,
-                'started_at'     => $project->started_at?->format('Y-m-d') ?? '',
-                'finished_at'    => $project->finished_at?->format('Y-m-d') ?? '',
-                'description'    => $project->description ?? '',
+                'project_type' => $project->project_type,
+                'total_value' => (float) $project->total_value,
+                'status' => $project->status,
+                'started_at' => $project->started_at?->format('Y-m-d') ?? '',
+                'finished_at' => $project->finished_at?->format('Y-m-d') ?? '',
+                'description' => $project->description ?? '',
                 'legal_vault_path' => $project->legal_vault_path ?? '',
                 'suggested_legal_vault_path' => $this->defaultLegalVaultRelativePath($project),
             ],
             'payments' => $project->payments->map(fn ($p) => [
-                'id'          => $p->id,
+                'id' => $p->id,
                 'term_number' => $p->term_number,
-                'percentage'  => (float) $p->percentage,
-                'amount'      => (float) $p->amount,
-                'note'        => $p->note ?? '',
-                'paid_at'     => $p->paid_at?->format('Y-m-d'),
+                'percentage' => (float) $p->percentage,
+                'amount' => (float) $p->amount,
+                'note' => $p->note ?? '',
+                'paid_at' => $p->paid_at?->format('Y-m-d'),
             ]),
             'can_edit_payments' => $canEditPayments,
         ]);
@@ -368,15 +376,15 @@ class ProjectController extends Controller
         }
 
         $rules = [
-            'name'           => 'required|string|max:255',
-            'client_name'    => 'required|string|max:255',
+            'name' => 'required|string|max:255',
+            'client_name' => 'required|string|max:255',
             'client_contact' => 'nullable|string|max:255',
-            'project_type'   => 'nullable|in:cctv_installation,system_website_development',
-            'total_value'    => 'required|numeric|min:0.01',
-            'status'         => 'required|in:negosiasi,berjalan,selesai,dibatalkan',
-            'started_at'     => 'nullable|date',
-            'finished_at'    => 'nullable|date|after_or_equal:started_at',
-            'description'    => 'nullable|string',
+            'project_type' => 'nullable|in:cctv_installation,system_website_development',
+            'total_value' => 'required|numeric|min:0.01',
+            'status' => 'required|in:negosiasi,berjalan,selesai,dibatalkan',
+            'started_at' => 'nullable|date',
+            'finished_at' => 'nullable|date|after_or_equal:started_at',
+            'description' => 'nullable|string',
             'legal_vault_path' => 'nullable|string|max:2000',
         ];
 
@@ -572,8 +580,8 @@ class ProjectController extends Controller
     protected function createPaymentRows(Project $project, array $payments): void
     {
         $totalValue = (float) $project->total_value;
-        $n          = count($payments);
-        $assigned   = 0.0;
+        $n = count($payments);
+        $assigned = 0.0;
 
         foreach ($payments as $i => $term) {
             $pct = (float) $term['percentage'];
@@ -585,11 +593,11 @@ class ProjectController extends Controller
             }
 
             ProjectPayment::create([
-                'project_id'  => $project->id,
+                'project_id' => $project->id,
                 'term_number' => $i + 1,
-                'percentage'  => $pct,
-                'amount'      => $amount,
-                'note'        => $term['note'] ?? null,
+                'percentage' => $pct,
+                'amount' => $amount,
+                'note' => $term['note'] ?? null,
             ]);
         }
     }

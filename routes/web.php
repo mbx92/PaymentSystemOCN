@@ -140,6 +140,8 @@ Route::middleware('auth')->group(function () {
         Route::put('erp/inventory/stock-management/{masterProduct}', [ERPInventoryController::class, 'updateStock'])->name('erp.inventory.stock-management.update');
         Route::get('erp/inventory/stock-opname', [ERPInventoryController::class, 'stockOpname'])->name('erp.inventory.stock-opname');
         Route::post('erp/inventory/stock-opname', [ERPInventoryController::class, 'storeStockOpname'])->name('erp.inventory.stock-opname.store');
+        Route::get('erp/inventory/stock-transfer', [ERPInventoryController::class, 'stockTransfer'])->name('erp.inventory.stock-transfer');
+        Route::post('erp/inventory/stock-transfer', [ERPInventoryController::class, 'storeStockTransfer'])->name('erp.inventory.stock-transfer.store');
         Route::get('erp/inventory/stock-report', [ERPInventoryController::class, 'stockReport'])->name('erp.inventory.stock-report');
         Route::get('erp/inventory/stock-movements', [ERPInventoryController::class, 'stockMovements'])->name('erp.inventory.stock-movements');
         Route::get('erp/purchasing/suppliers', [ERPPurchasingController::class, 'suppliers'])->name('erp.purchasing.suppliers');

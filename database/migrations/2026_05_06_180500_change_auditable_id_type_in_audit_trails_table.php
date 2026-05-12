@@ -24,11 +24,14 @@ return new class extends Migration
         $driver = DB::getDriverName();
 
         if ($driver === 'pgsql') {
+            DB::statement('DELETE FROM audit_trails WHERE auditable_id ~ \'[^0-9]\'');
             DB::statement('ALTER TABLE audit_trails ALTER COLUMN auditable_id TYPE BIGINT USING NULLIF(auditable_id, \'\')::bigint');
+
             return;
         }
 
         if ($driver === 'mysql') {
+            DB::statement('DELETE FROM audit_trails WHERE auditable_id REGEXP \'[^0-9]\'');
             DB::statement('ALTER TABLE audit_trails MODIFY auditable_id BIGINT UNSIGNED NOT NULL');
         }
     }

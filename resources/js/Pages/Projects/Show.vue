@@ -11,6 +11,7 @@ const props = defineProps({
     project: Object,
     material_products: Array,
     warehouses: Array,
+    warehouse_stocks: Object,
     team_members: Array,
     team_roles: Array,
 });
@@ -42,10 +43,43 @@ const materialForm = useForm({
     notes: '',
 });
 
+const materialWarehouseFilter = ref('');
+
+const filteredMaterialProducts = computed(() => {
+    if (!materialWarehouseFilter.value) return [];
+    const whStocks = props.warehouse_stocks?.[materialWarehouseFilter.value] ?? {};
+    return props.material_products
+        .map((p) => {
+            const stock = whStocks[p.id];
+            return { ...p, available: stock ? stock.available : 0 };
+        })
+        .filter((p) => p.available > 0);
+});
+
+const selectMaterialProduct = (product) => {
+    materialForm.master_product_id = product.id;
+    materialForm.warehouse_id = materialWarehouseFilter.value;
+    materialForm.planned_qty = 1;
+};
+
+const selectedMaterialProduct = computed(() =>
+    props.material_products.find((p) => p.id === materialForm.master_product_id),
+);
+
+const selectedProductAvailable = computed(() => {
+    if (!materialForm.master_product_id || !materialForm.warehouse_id) return 0;
+    const whStocks = props.warehouse_stocks?.[materialForm.warehouse_id] ?? {};
+    const stock = whStocks[materialForm.master_product_id];
+    return stock ? stock.available : 0;
+});
+
 const submitMaterial = () => {
     materialForm.post(route('projects.materials.store', props.project.id), {
         preserveScroll: true,
-        onSuccess: () => materialForm.reset('master_product_id', 'warehouse_id', 'planned_qty', 'notes'),
+        onSuccess: () => {
+            materialForm.reset('master_product_id', 'warehouse_id', 'planned_qty', 'notes');
+            document.getElementById('modal-add-material')?.close();
+        },
     });
 };
 
@@ -251,6 +285,12 @@ const cashOutForm = useForm({ project_id: props.project.id, category: 'biaya_tim
 const submitCashIn = () => cashInForm.post(route('cash-in.store'), { onSuccess: () => { cashInForm.reset('amount', 'note'); document.getElementById('modal-cash-in').close(); } });
 const submitCashOut = () => cashOutForm.post(route('cash-out.store'), { onSuccess: () => { cashOutForm.reset('amount', 'note', 'recipient_name'); document.getElementById('modal-cash-out').close(); } });
 
+const allCashEntries = computed(() => {
+    const ins = (props.project?.cash_ins ?? []).map((c) => ({ ...c, type: 'in' }));
+    const outs = (props.project?.cash_outs ?? []).map((c) => ({ ...c, type: 'out' }));
+    return [...ins, ...outs].sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''));
+});
+
 const canMoveToBerjalan = computed(() => props.project?.status === 'negosiasi');
 const canMoveToSelesai = computed(() => props.project?.status === 'berjalan');
 
@@ -443,39 +483,8 @@ const deleteProject = () => {
             </div>
 
             <div v-if="activeTab === 'materials'" class="space-y-4">
-                <div class="ocn-panel">
-                    <div class="ocn-panel__head">
-                        <h2 class="ocn-panel__title">Tambah material project</h2>
-                    </div>
-                    <div class="card-body">
-                        <div class="grid grid-cols-1 gap-3 md:grid-cols-5">
-                            <div class="md:col-span-2">
-                                <label class="label"><span class="label-text">Produk</span></label>
-                                <select v-model="materialForm.master_product_id" class="select select-bordered w-full">
-                                    <option value="">Pilih produk</option>
-                                    <option v-for="p in material_products" :key="p.id" :value="p.id">{{ p.sku }} - {{ p.name }} ({{ p.uom }})</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="label"><span class="label-text">Warehouse</span></label>
-                                <select v-model="materialForm.warehouse_id" class="select select-bordered w-full">
-                                    <option value="">Pilih warehouse</option>
-                                    <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }} - {{ w.name }}</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="label"><span class="label-text">Qty Reserve</span></label>
-                                <input v-model.number="materialForm.planned_qty" type="number" min="1" step="1" class="input input-bordered w-full" />
-                            </div>
-                            <div>
-                                <label class="label"><span class="label-text">Catatan</span></label>
-                                <input v-model="materialForm.notes" type="text" class="input input-bordered w-full" />
-                            </div>
-                        </div>
-                        <div class="mt-3">
-                            <button class="btn btn-primary btn-sm" :disabled="materialForm.processing" @click="submitMaterial">Tambah & Reserve</button>
-                        </div>
-                    </div>
+                <div class="flex">
+                    <button class="btn btn-primary btn-sm" onclick="document.getElementById('modal-add-material').showModal()">+ Tambah Material</button>
                 </div>
 
                 <div class="ocn-panel">
@@ -512,41 +521,45 @@ const deleteProject = () => {
 
                 <div class="ocn-panel">
                     <div class="ocn-panel__head">
-                        <h2 class="ocn-panel__title text-success">Kas masuk</h2>
+                        <h2 class="ocn-panel__title">Riwayat kas</h2>
                     </div>
                     <div class="overflow-x-auto">
                         <table class="table table-sm">
-                            <thead><tr><th>Tanggal</th><th>Kategori</th><th>Jumlah</th><th>Keterangan</th><th>Oleh</th></tr></thead>
-                            <tbody>
-                                <tr v-for="c in project.cash_ins" :key="c.id">
-                                    <td>{{ c.date }}</td>
-                                    <td><span class="badge badge-sm badge-ghost">{{ c.category }}</span></td>
-                                    <td class="font-medium text-success">{{ format(c.amount) }}</td>
-                                    <td class="text-sm text-base-content/70">{{ c.note ?? '-' }}</td>
-                                    <td class="text-sm text-base-content/60">{{ c.creator_name }}</td>
+                            <thead>
+                                <tr>
+                                    <th>Tanggal</th>
+                                    <th>Jenis</th>
+                                    <th>Kategori</th>
+                                    <th class="text-right">Jumlah</th>
+                                    <th>Penerima / Oleh</th>
+                                    <th>Keterangan</th>
                                 </tr>
-                                <tr v-if="!project.cash_ins.length"><td colspan="5" class="text-center py-6 text-base-content/50">Belum ada kas masuk</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div class="ocn-panel">
-                    <div class="ocn-panel__head">
-                        <h2 class="ocn-panel__title text-error">Kas keluar</h2>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="table table-sm">
-                            <thead><tr><th>Tanggal</th><th>Kategori</th><th>Jumlah</th><th>Penerima</th><th>Keterangan</th></tr></thead>
+                            </thead>
                             <tbody>
-                                <tr v-for="c in project.cash_outs" :key="c.id">
+                                <tr
+                                    v-for="c in allCashEntries"
+                                    :key="`${c.type}-${c.id}`"
+                                    :class="c.type === 'in' ? 'border-l-4 border-l-success' : 'border-l-4 border-l-error'"
+                                >
                                     <td>{{ c.date }}</td>
+                                    <td>
+                                        <span
+                                            class="badge badge-sm font-semibold"
+                                            :class="c.type === 'in' ? 'badge-success text-success-content' : 'badge-error text-error-content'"
+                                        >
+                                            {{ c.type === 'in' ? 'Kas Masuk' : 'Kas Keluar' }}
+                                        </span>
+                                    </td>
                                     <td><span class="badge badge-sm badge-ghost">{{ c.category }}</span></td>
-                                    <td class="font-medium text-error">{{ format(c.amount) }}</td>
-                                    <td>{{ c.recipient_name ?? '-' }}</td>
+                                    <td class="text-right font-semibold tabular-nums" :class="c.type === 'in' ? 'text-success' : 'text-error'">
+                                        {{ c.type === 'in' ? '+' : '-' }}{{ format(c.amount) }}
+                                    </td>
+                                    <td class="text-sm text-base-content/70">{{ c.recipient_name ?? c.creator_name ?? '-' }}</td>
                                     <td class="text-sm text-base-content/70">{{ c.note ?? '-' }}</td>
                                 </tr>
-                                <tr v-if="!project.cash_outs.length"><td colspan="5" class="text-center py-6 text-base-content/50">Belum ada kas keluar</td></tr>
+                                <tr v-if="allCashEntries.length === 0">
+                                    <td colspan="6" class="text-center py-6 text-base-content/50">Belum ada transaksi kas</td>
+                                </tr>
                             </tbody>
                         </table>
                     </div>
@@ -969,6 +982,76 @@ const deleteProject = () => {
             :message="`Apakah Anda yakin ingin menghapus project '${project.name}'? Data akan dihapus sementara (soft delete).`"
             @confirm="deleteProject"
         />
+        <!-- Modal: Add Material -->
+        <dialog id="modal-add-material" class="modal">
+            <div class="modal-box max-w-4xl">
+                <h3 class="font-bold text-lg">Tambah Material Project</h3>
+
+                <div class="mt-4">
+                    <label class="label"><span class="label-text font-semibold">Pilih Warehouse</span></label>
+                    <select v-model="materialWarehouseFilter" class="select select-bordered w-full" @change="materialForm.master_product_id = ''">
+                        <option value="">-- Pilih warehouse dulu --</option>
+                        <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }} — {{ w.name }}</option>
+                    </select>
+                </div>
+
+                <div v-if="materialWarehouseFilter" class="mt-4">
+                    <p class="text-sm text-base-content/60 mb-2">Klik produk untuk memilih:</p>
+                    <div class="overflow-x-auto max-h-[40vh] overflow-y-auto border rounded-lg">
+                        <table class="table table-sm table-zebra">
+                            <thead class="sticky top-0 bg-base-200 z-10">
+                                <tr><th>SKU</th><th>Produk</th><th>UoM</th><th class="text-right">Tersedia</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr
+                                    v-for="p in filteredMaterialProducts"
+                                    :key="p.id"
+                                    class="cursor-pointer hover"
+                                    :class="materialForm.master_product_id === p.id ? 'bg-primary/10 border-l-4 border-l-primary' : ''"
+                                    @click="selectMaterialProduct(p)"
+                                >
+                                    <td class="font-mono text-xs">{{ p.sku }}</td>
+                                    <td class="font-semibold">{{ p.name }}</td>
+                                    <td class="uppercase">{{ p.uom }}</td>
+                                    <td class="text-right tabular-nums font-medium text-success">{{ p.available }}</td>
+                                </tr>
+                                <tr v-if="filteredMaterialProducts.length === 0">
+                                    <td colspan="4" class="text-center py-6 text-base-content/50">Tidak ada produk dengan stok tersedia di warehouse ini.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div v-if="materialForm.master_product_id" class="mt-4 rounded-lg border border-primary/20 bg-primary/5 p-4">
+                    <p class="text-sm font-semibold mb-3">Produk dipilih: <span class="text-primary">{{ selectedMaterialProduct?.sku }} — {{ selectedMaterialProduct?.name }}</span></p>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="label"><span class="label-text">Qty Reserve <span class="text-error">*</span></span></label>
+                            <input v-model.number="materialForm.planned_qty" type="number" min="1" :max="selectedProductAvailable" step="1" class="input input-bordered w-full" />
+                            <p class="mt-1 text-xs text-base-content/60">Maks: {{ selectedProductAvailable }}</p>
+                        </div>
+                        <div>
+                            <label class="label"><span class="label-text">Catatan</span></label>
+                            <input v-model="materialForm.notes" type="text" class="input input-bordered w-full" placeholder="Opsional" />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-action">
+                    <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
+                    <button
+                        class="btn"
+                        :class="materialForm.master_product_id && materialForm.planned_qty > 0 ? 'btn-primary' : 'btn-secondary btn-disabled'"
+                        :disabled="!materialForm.master_product_id || materialForm.planned_qty <= 0 || materialForm.processing"
+                        @click="submitMaterial"
+                    >
+                        Tambah & Reserve
+                    </button>
+                </div>
+            </div>
+        </dialog>
+
         <ConfirmModal
             id="modal-delete-material"
             title="Hapus Material Project"

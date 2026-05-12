@@ -377,15 +377,15 @@ const sendChatMessage = async (overrideText = null) => {
                 <slot />
             </main>
 
-            <div class="fixed bottom-6 right-6 z-[9999] flex flex-col items-end gap-3">
+            <div class="fixed bottom-3 right-3 z-[9999] flex flex-col items-end gap-2 sm:bottom-6 sm:right-6 sm:gap-3">
                 <div
                     v-if="chatPanelOpen"
-                    class="w-[42rem] max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-2xl"
+                    class="w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-2xl sm:w-[42rem] sm:max-w-[calc(100vw-3rem)]"
                 >
                     <!-- Chat header -->
-                    <div class="flex items-center justify-between border-b border-base-300 px-4 py-3">
+                    <div class="flex items-center justify-between border-b border-base-300 px-3 py-2.5 sm:px-4 sm:py-3">
                         <div>
-                            <p class="text-xs font-bold uppercase tracking-[0.14em] text-primary/70">Assistant</p>
+                            <p class="hidden text-xs font-bold uppercase tracking-[0.14em] text-primary/70 sm:block">Assistant</p>
                             <p class="text-sm font-semibold">Assistant</p>
                         </div>
                         <div class="flex items-center gap-1">
@@ -398,16 +398,16 @@ const sendChatMessage = async (overrideText = null) => {
                         </div>
                     </div>
 
-                    <div class="flex h-[34rem] flex-col">
+                    <div class="flex h-[calc(100dvh-7rem)] flex-col sm:h-[34rem]">
                         <!-- Message list -->
-                        <div ref="chatBodyRef" class="flex-1 space-y-3 overflow-y-auto p-4">
+                        <div ref="chatBodyRef" class="flex-1 space-y-3 overflow-y-auto p-3 sm:p-4">
                             <div
                                 v-for="(msg, idx) in chatMessages"
                                 :key="idx"
                                 :class="msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'"
                             >
                                 <div
-                                    class="max-w-[85%] rounded-xl px-3 py-2.5 text-sm"
+                                    class="max-w-[90%] rounded-xl px-3 py-2.5 text-sm sm:max-w-[85%]"
                                     :class="msg.role === 'user'
                                         ? 'bg-primary text-primary-content'
                                         : 'bg-base-200 text-base-content/90'"
@@ -433,18 +433,18 @@ const sendChatMessage = async (overrideText = null) => {
                         </div>
 
                         <!-- Quick reply chips -->
-                        <div class="flex flex-wrap gap-1.5 border-t border-base-300 px-3 py-2">
+                        <div class="flex gap-1.5 overflow-x-auto border-t border-base-300 px-3 py-2 sm:flex-wrap">
                             <button
                                 v-for="chip in quickReplies"
                                 :key="chip"
-                                class="badge badge-outline badge-sm cursor-pointer hover:badge-primary transition-colors"
+                                class="badge badge-outline badge-sm shrink-0 cursor-pointer hover:badge-primary transition-colors"
                                 :disabled="chatLoading"
                                 @click="sendChatMessage(chip)"
                             >{{ chip }}</button>
                         </div>
 
                         <!-- Input bar -->
-                        <div class="border-t border-base-300 p-3">
+                        <div class="border-t border-base-300 p-2 sm:p-3">
                             <div class="flex items-center gap-2">
                                 <input
                                     ref="chatInputRef"
@@ -462,9 +462,9 @@ const sendChatMessage = async (overrideText = null) => {
                     </div>
                 </div>
 
-                <button class="btn btn-primary rounded-full px-4 shadow-xl" @click="toggleChatPanel">
+                <button class="btn btn-primary btn-circle shadow-xl sm:btn-wide sm:rounded-full sm:px-4" @click="toggleChatPanel">
                     <ChatBubbleLeftRightIcon class="h-5 w-5" />
-                    <span>{{ chatPanelOpen ? 'Tutup Chat' : 'Assistant' }}</span>
+                    <span class="hidden sm:inline">{{ chatPanelOpen ? 'Tutup Chat' : 'Assistant' }}</span>
                 </button>
             </div>
         </div>

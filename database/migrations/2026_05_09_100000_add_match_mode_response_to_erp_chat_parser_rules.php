@@ -23,10 +23,8 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('erp_chat_parser_rules', function (Blueprint $table): void {
-            $table->dropColumn(['match_mode']);
-
-            if (Schema::hasColumn('erp_chat_parser_rules', 'response_text')) {
-                $table->dropColumn('response_text');
+            if (Schema::hasColumn('erp_chat_parser_rules', 'match_mode')) {
+                $table->dropColumn('match_mode');
             }
         });
     }

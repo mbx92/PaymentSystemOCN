@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ErpSetting;
 use App\Models\LabelProfile;
+use App\ERP\Inventory\Models\Warehouse;
 use App\Models\MasterProduct;
 use App\Models\MasterProductUomMapping;
 use App\Models\ProductCategory;
@@ -24,6 +25,7 @@ class ERPMasterProductController extends Controller
         $products = MasterProduct::query()
             ->when($request->filled('sales_channel'), fn ($q) => $q->where('sales_channel', $request->string('sales_channel')->toString()))
             ->when($request->filled('product_type'), fn ($q) => $q->where('product_type', $request->string('product_type')->toString()))
+            ->when($request->filled('warehouse_id'), fn ($q) => $q->whereHas('warehouseStocks', fn ($sub) => $sub->where('warehouse_id', $request->integer('warehouse_id'))))
             ->when($request->filled('q'), function ($q) use ($request) {
                 $term = $request->string('q')->toString();
                 $q->where(function ($inner) use ($term) {
@@ -36,9 +38,10 @@ class ERPMasterProductController extends Controller
 
         return Inertia::render('ERP/MasterProducts/Index', [
             'products' => $products,
-            'filters' => $request->only(['q', 'sales_channel', 'product_type']),
+            'filters' => $request->only(['q', 'sales_channel', 'product_type', 'warehouse_id']),
             'categories' => ProductCategory::query()->where('status', 'active')->orderBy('name')->get(['name']),
             'uoms' => Uom::query()->where('status', 'active')->orderBy('code')->get(['code', 'name']),
+            'warehouses' => Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'code']),
         ]);
     }
 

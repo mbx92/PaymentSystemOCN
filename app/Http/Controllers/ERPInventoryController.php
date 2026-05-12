@@ -5,8 +5,8 @@ namespace App\Http\Controllers;
 use App\ERP\Inventory\Models\Warehouse;
 use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
-use App\Models\ProjectMaterial;
 use App\Models\ProductStockMovement;
+use App\Models\ProjectMaterial;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -258,6 +258,117 @@ class ERPInventoryController extends Controller
         ]);
     }
 
+    public function stockTransfer(): Response
+    {
+        $warehouses = Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']);
+
+        $products = MasterProduct::query()
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get(['id', 'sku', 'name', 'uom']);
+
+        $warehouseStocks = MasterProductWarehouseStock::query()
+            ->get(['master_product_id', 'warehouse_id', 'qty', 'reserved_qty'])
+            ->groupBy('master_product_id')
+            ->map(fn ($rows) => $rows->keyBy('warehouse_id')->map(fn ($r) => [
+                'qty' => (float) $r->qty,
+                'reserved' => (float) $r->reserved_qty,
+                'available' => (float) $r->qty - (float) $r->reserved_qty,
+            ]));
+
+        return Inertia::render('ERP/Inventory/StockTransfer', [
+            'warehouses' => $warehouses,
+            'products' => $products,
+            'warehouseStocks' => $warehouseStocks,
+        ]);
+    }
+
+    public function storeStockTransfer(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'source_warehouse_id' => 'required|exists:warehouses,id',
+            'destination_warehouse_id' => 'required|exists:warehouses,id|different:source_warehouse_id',
+            'note' => 'nullable|string|max:500',
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|exists:master_products,id',
+            'items.*.qty' => 'required|numeric|gt:0',
+        ]);
+
+        $sourceWarehouse = Warehouse::query()->findOrFail($validated['source_warehouse_id']);
+        $destWarehouse = Warehouse::query()->findOrFail($validated['destination_warehouse_id']);
+        $note = trim((string) ($validated['note'] ?? ''));
+        $transferNote = "Transfer {$sourceWarehouse->code} → {$destWarehouse->code}".($note !== '' ? ": {$note}" : '');
+
+        $errors = [];
+        foreach ($validated['items'] as $i => $item) {
+            $product = MasterProduct::query()->find($item['product_id']);
+            if (! $product) {
+                continue;
+            }
+            $sourceStock = MasterProductWarehouseStock::query()
+                ->where('master_product_id', $product->id)
+                ->where('warehouse_id', $sourceWarehouse->id)
+                ->first();
+            $available = $sourceStock ? (float) $sourceStock->qty - (float) $sourceStock->reserved_qty : 0;
+            if ((float) $item['qty'] > $available) {
+                $errors["items.{$i}.qty"] = "{$product->sku}: stok tersedia hanya {$available}.";
+            }
+        }
+
+        if (count($errors) > 0) {
+            return back()->withErrors($errors)->withInput();
+        }
+
+        $transferred = 0;
+
+        DB::transaction(function () use ($validated, $sourceWarehouse, $destWarehouse, $transferNote, &$transferred): void {
+            $today = now()->toDateString();
+
+            foreach ($validated['items'] as $item) {
+                $product = MasterProduct::query()->find($item['product_id']);
+                if (! $product) {
+                    continue;
+                }
+                $qty = (float) $item['qty'];
+
+                MasterProductWarehouseStock::query()
+                    ->where('master_product_id', $product->id)
+                    ->where('warehouse_id', $sourceWarehouse->id)
+                    ->decrement('qty', $qty);
+
+                MasterProductWarehouseStock::query()->firstOrCreate(
+                    ['master_product_id' => $product->id, 'warehouse_id' => $destWarehouse->id],
+                    ['qty' => 0, 'reserved_qty' => 0]
+                )->increment('qty', $qty);
+
+                ProductStockMovement::query()->create([
+                    'master_product_id' => $product->id,
+                    'warehouse_id' => $sourceWarehouse->id,
+                    'movement_date' => $today,
+                    'movement_type' => 'transfer_out',
+                    'qty' => $qty,
+                    'note' => $transferNote,
+                ]);
+
+                ProductStockMovement::query()->create([
+                    'master_product_id' => $product->id,
+                    'warehouse_id' => $destWarehouse->id,
+                    'movement_date' => $today,
+                    'movement_type' => 'transfer_in',
+                    'qty' => $qty,
+                    'note' => $transferNote,
+                ]);
+
+                $transferred++;
+            }
+        });
+
+        return back()->with('flash', [
+            'type' => 'success',
+            'message' => "Berhasil transfer {$transferred} produk dari {$sourceWarehouse->name} ke {$destWarehouse->name}.",
+        ]);
+    }
+
     public function stockMovements(Request $request): Response
     {
         $warehouses = Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']);
@@ -320,6 +431,8 @@ class ERPInventoryController extends Controller
                 'opname_out',
                 'manual_in',
                 'manual_out',
+                'transfer_in',
+                'transfer_out',
             ],
         ]);
     }

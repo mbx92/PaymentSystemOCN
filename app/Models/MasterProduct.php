@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\ERP\Inventory\Models\Warehouse;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class MasterProduct extends Model
@@ -38,6 +40,17 @@ class MasterProduct extends Model
     public function uomMappings(): HasMany
     {
         return $this->hasMany(MasterProductUomMapping::class)->orderBy('uom_code');
+    }
+
+    public function warehouseStocks(): HasMany
+    {
+        return $this->hasMany(MasterProductWarehouseStock::class);
+    }
+
+    public function warehouses(): BelongsToMany
+    {
+        return $this->belongsToMany(Warehouse::class, 'master_product_warehouse_stocks')
+            ->withPivot('qty', 'reserved_qty');
     }
 
     /**

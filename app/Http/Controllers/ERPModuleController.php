@@ -54,6 +54,7 @@ class ERPModuleController extends Controller
             ['title' => 'Warehouse', 'description' => 'Kelola gudang aktif untuk operasional stok, POS, dan purchasing.', 'route' => 'erp.inventory.warehouses', 'icon' => 'archive-box'],
             ['title' => 'UoM & Konversi', 'description' => 'Kelola satuan unit dan konversi antar satuan.', 'route' => 'erp.inventory.uoms', 'icon' => 'arrows-right-left'],
             ['title' => 'Manajemen Stok', 'description' => 'Atur stok minimum, total terjual, dan kontrol stok.', 'route' => 'erp.inventory.stock-management', 'icon' => 'archive-box'],
+            ['title' => 'Mutasi Stok', 'description' => 'Transfer stok produk antar gudang/warehouse.', 'route' => 'erp.inventory.stock-transfer', 'icon' => 'arrows-right-left'],
             ['title' => 'Stock Movement', 'description' => 'Lihat histori pergerakan stok per produk dan warehouse.', 'route' => 'erp.inventory.stock-movements', 'icon' => 'arrows-up-down'],
             ['title' => 'Stok Opname', 'description' => 'Penyesuaian stok fisik berkala untuk akurasi inventory.', 'route' => 'erp.inventory.stock-opname', 'icon' => 'clipboard-check'],
             ['title' => 'Report Stok', 'description' => 'Grafik stok, alert stok rendah, dan top selling produk.', 'route' => 'erp.inventory.stock-report', 'icon' => 'presentation-chart-line'],

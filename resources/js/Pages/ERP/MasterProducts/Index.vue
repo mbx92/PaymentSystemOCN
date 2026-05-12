@@ -11,6 +11,7 @@ const props = defineProps({
   filters: Object,
   categories: Array,
   uoms: Array,
+  warehouses: Array,
 });
 const { parse, formatInput } = useCurrency();
 const page = usePage();
@@ -20,6 +21,7 @@ const filters = reactive({
   q: props.filters?.q ?? '',
   sales_channel: props.filters?.sales_channel ?? '',
   product_type: props.filters?.product_type ?? '',
+  warehouse_id: props.filters?.warehouse_id ?? '',
 });
 
 const form = useForm({
@@ -159,6 +161,10 @@ const goToDetail = (id) => {
               <option value="">Semua Tipe</option>
               <option value="finished_goods">Barang Jual</option>
               <option value="project_material">Material Project</option>
+              </select>
+              <select v-model="filters.warehouse_id" class="select select-bordered select-sm w-48">
+              <option value="">Semua Warehouse</option>
+              <option v-for="wh in warehouses" :key="wh.id" :value="wh.id">{{ wh.code }} — {{ wh.name }}</option>
               </select>
               <div class="ml-auto flex flex-wrap items-center gap-2">
                 <Link
