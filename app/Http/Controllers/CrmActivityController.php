@@ -37,14 +37,8 @@ class CrmActivityController extends Controller
             $query->where('status', $status);
         }
 
-        $activities = $query->orderByDesc('activity_date')->get();
-
-        $leads = CrmLead::query()->whereNotIn('status', ['lost'])->orderBy('name')->get(['id', 'name']);
-        $customers = CrmCustomer::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'company']);
-        $pipelines = CrmPipeline::query()->whereNotIn('stage', ['closed_won', 'closed_lost'])->orderByDesc('updated_at')->get(['id', 'code', 'title']);
-
-        return Inertia::render('ERP/CRM/Activities', [
-            'activities' => $activities->map(fn (CrmActivity $a) => [
+        $activities = $query->orderByDesc('activity_date')->paginate($this->resolvedPerPage($request))->withQueryString()
+            ->through(fn (CrmActivity $a) => [
                 'id' => $a->id,
                 'type' => $a->type,
                 'subject' => $a->subject,
@@ -62,11 +56,18 @@ class CrmActivityController extends Controller
                 'user_id' => $a->user_id,
                 'user_name' => $a->user?->name,
                 'created_at' => $a->created_at?->format('Y-m-d H:i'),
-            ]),
+            ]);
+
+        $leads = CrmLead::query()->whereNotIn('status', ['lost'])->orderBy('name')->get(['id', 'name']);
+        $customers = CrmCustomer::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'company']);
+        $pipelines = CrmPipeline::query()->whereNotIn('stage', ['closed_won', 'closed_lost'])->orderByDesc('updated_at')->get(['id', 'code', 'title']);
+
+        return Inertia::render('ERP/CRM/Activities', [
+            'activities' => $activities,
             'leads' => $leads,
             'customers' => $customers,
             'pipelines' => $pipelines,
-            'filters' => $request->only(['q', 'type', 'status']),
+            'filters' => $this->filtersWithPerPage($request, ['q', 'type', 'status']),
         ]);
     }
 

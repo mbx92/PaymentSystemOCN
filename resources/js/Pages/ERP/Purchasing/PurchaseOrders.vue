@@ -2,13 +2,14 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
 import ProductPickerModal from '@/Components/ProductPickerModal.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, reactive, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 import { showGlobalAlert } from '@/utils/globalAlert';
 
 const props = defineProps({
-  purchaseOrders: Array,
+  purchaseOrders: Object,
   supplierFilter: String,
   filters: Object,
   suppliers: Array,
@@ -29,6 +30,7 @@ const filters = reactive({
   supplier: props.filters?.supplier ?? '',
   status: props.filters?.status ?? '',
   q: props.filters?.q ?? '',
+  per_page: props.filters?.per_page ?? props.purchaseOrders?.per_page ?? 25,
 });
 
 let timer;
@@ -211,16 +213,20 @@ const submitAdd = () => {
           <table class="table table-zebra">
             <thead><tr><th>Nomor PO</th><th>Supplier</th><th>ETA</th><th>Nilai</th><th>Status</th></tr></thead>
             <tbody>
-              <tr v-for="po in purchaseOrders" :key="po.number" :class="rowClass()" tabindex="0" role="button" @click="openRow(po.number)" @keydown.enter.prevent="openRow(po.number)">
+              <tr v-for="po in (purchaseOrders?.data || [])" :key="po.number" :class="rowClass()" tabindex="0" role="button" @click="openRow(po.number)" @keydown.enter.prevent="openRow(po.number)">
                 <td class="font-mono text-xs font-semibold">{{ po.number }}</td>
                 <td>{{ po.supplier }}</td>
                 <td>{{ po.eta }}</td>
                 <td>{{ formatIdr(po.amount) }}</td>
                 <td @click.stop><StatusBadge :status="po.status" /></td>
               </tr>
+              <tr v-if="!(purchaseOrders?.data || []).length">
+                <td colspan="5" class="py-8 text-center text-base-content/50">Tidak ada purchase order.</td>
+              </tr>
             </tbody>
           </table>
         </div>
+        <DataTablePagination :paginator="purchaseOrders" @update:per-page="(n) => { filters.per_page = n; }" />
       </div>
 
       <dialog id="modal-add-po" class="modal">

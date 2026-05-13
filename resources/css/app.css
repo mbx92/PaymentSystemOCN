@@ -213,3 +213,34 @@ body {
     border-color: transparent;
     box-shadow: 0 10px 24px rgba(37, 99, 235, 0.22);
 }
+
+/*
+ * Tombol native disabled: tampil sebagai secondary (slate),
+ * bukan tetap primary/success/error/outline berwarna.
+ * Tidak memakai .btn-disabled (Daisy) — itu untuk <span> pagination, dll.
+ */
+.btn:disabled:not(.btn-ghost):not(.btn-link),
+.btn[disabled]:not(.btn-ghost):not(.btn-link) {
+    background-color: var(--color-secondary) !important;
+    background-image: none !important;
+    color: var(--color-secondary-content) !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    opacity: 0.78;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.btn-ghost:disabled,
+.btn-ghost[disabled],
+.btn-link:disabled,
+.btn-link[disabled] {
+    background-color: transparent !important;
+    background-image: none !important;
+    color: color-mix(in srgb, var(--color-base-content) 42%, transparent) !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    opacity: 0.55;
+    cursor: not-allowed;
+    pointer-events: none;
+}

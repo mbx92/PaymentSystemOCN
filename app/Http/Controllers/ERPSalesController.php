@@ -2,14 +2,14 @@
 
 namespace App\Http\Controllers;
 
-use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\JournalEntry;
-use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Accounting\Services\CoaSettingService;
+use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Inventory\Models\Warehouse;
 use App\ERP\Shared\Enums\DocumentStatus;
 use App\ERP\Shared\Services\DocumentNumberService;
 use App\Models\CashIn;
+use App\Models\ErpSetting;
 use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
 use App\Models\PaymentMethod;
@@ -17,7 +17,6 @@ use App\Models\PosSale;
 use App\Models\ProductStockMovement;
 use App\Models\Project;
 use App\Models\User;
-use App\Models\ErpSetting;
 use App\Services\LanEscPosPrinter;
 use App\Services\ThermalPosReceiptData;
 use App\Services\ThermalPosReceiptRenderer;
@@ -25,9 +24,9 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -95,24 +94,24 @@ class ERPSalesController extends Controller
         ]);
     }
 
-    public function posTransactions(): Response
+    public function posTransactions(Request $request): Response
     {
         $query = PosSale::query()
             ->with(['paymentMethod:id,name', 'soldBy:id,name', 'items:id,pos_sale_id,qty,base_qty_used', 'additionalCharges:id,pos_sale_id,charge_name,amount'])
             ->latest('sold_at')
-            ->when(request()->filled('q'), function ($q): void {
-                $term = request()->string('q')->toString();
+            ->when($request->filled('q'), function ($q) use ($request): void {
+                $term = $request->string('q')->toString();
                 $q->where('number', 'like', '%'.$term.'%')
                     ->orWhereHas('soldBy', fn ($u) => $u->where('name', 'like', '%'.$term.'%'));
             })
-            ->when(request()->filled('status'), fn ($q) => $q->where('status', request()->string('status')->toString()))
-            ->when(request()->filled('date_from'), fn ($q) => $q->whereDate('sold_at', '>=', request()->date('date_from')))
-            ->when(request()->filled('date_to'), fn ($q) => $q->whereDate('sold_at', '<=', request()->date('date_to')));
+            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->string('status')->toString()))
+            ->when($request->filled('date_from'), fn ($q) => $q->whereDate('sold_at', '>=', $request->date('date_from')))
+            ->when($request->filled('date_to'), fn ($q) => $q->whereDate('sold_at', '<=', $request->date('date_to')));
 
         $transactions = $query
-            ->limit(200)
-            ->get()
-            ->map(fn (PosSale $sale) => [
+            ->paginate($this->resolvedPerPage($request))
+            ->withQueryString()
+            ->through(fn (PosSale $sale) => [
                 'id' => $sale->id,
                 'number' => $sale->number,
                 'sold_at' => $sale->sold_at?->format('Y-m-d H:i:s'),
@@ -131,7 +130,7 @@ class ERPSalesController extends Controller
 
         return Inertia::render('ERP/Sales/Transactions', [
             'transactions' => $transactions,
-            'filters' => request()->only(['q', 'status', 'date_from', 'date_to']),
+            'filters' => $this->filtersWithPerPage($request, ['q', 'status', 'date_from', 'date_to']),
         ]);
     }
 
@@ -385,6 +384,7 @@ class ERPSalesController extends Controller
         $grossTotal = collect($items)->sum(fn ($item) => (float) $item['unit_price'] * (float) $item['qty']);
         $discountTotal = collect($items)->sum(function ($item): float {
             $gross = (float) $item['unit_price'] * (float) $item['qty'];
+
             return $gross * (((float) ($item['discount_percent'] ?? 0)) / 100);
         });
         $netSalesTotal = max($grossTotal - $discountTotal, 0);
@@ -693,20 +693,23 @@ class ERPSalesController extends Controller
         }
     }
 
-    public function projectInvoices(): Response
+    public function projectInvoices(Request $request): Response
     {
         $invoices = Project::query()
             ->withSum('cashIns as paid_amount', 'amount')
             ->where('status', 'selesai')
             ->latest('finished_at')
-            ->get()
-            ->map(function (Project $project) {
+            ->paginate($this->resolvedPerPage($request))
+            ->withQueryString()
+            ->through(function (Project $project) {
                 $project->invoice_number = $this->ensureProjectInvoiceNumber($project);
+
                 return $this->mapProjectInvoice($project);
             });
 
         return Inertia::render('ERP/Sales/ProjectInvoices', [
             'invoices' => $invoices,
+            'filters' => $this->filtersWithPerPage($request, []),
         ]);
     }
 

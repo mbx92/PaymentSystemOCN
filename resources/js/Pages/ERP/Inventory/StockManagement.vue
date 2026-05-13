@@ -1,15 +1,20 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, useForm, router } from '@inertiajs/vue3';
 import { computed, reactive, ref } from 'vue';
 
 const props = defineProps({
-  products: Array,
+  products: Object,
   warehouses: Array,
   filters: Object,
   reserved_alert: Object,
   reserved_breakdown_by_product: Object,
+});
+
+const filters = reactive({
+  per_page: props.filters?.per_page ?? props.products?.per_page ?? 25,
 });
 
 const selectedWarehouseId = computed(() => props.filters?.warehouse_id ?? '');
@@ -88,7 +93,7 @@ const openReservedModal = (product) => {
               <select
                 class="select select-sm select-bordered w-full"
                 :value="selectedWarehouseId"
-                @change="router.get(route('erp.inventory.stock-management'), { warehouse_id: $event.target.value }, { preserveState: true, replace: true })"
+                @change="router.get(route('erp.inventory.stock-management'), { warehouse_id: $event.target.value, per_page: filters.per_page }, { preserveState: true, replace: true })"
               >
                 <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }} - {{ w.name }}</option>
               </select>
@@ -116,7 +121,7 @@ const openReservedModal = (product) => {
             </thead>
             <tbody>
               <tr
-                v-for="product in products"
+                v-for="product in (products?.data || [])"
                 :key="product.id"
                 :class="(product.reserved_qty ?? 0) > 0 ? 'cursor-pointer hover' : ''"
                 @click="openReservedModal(product)"
@@ -135,6 +140,7 @@ const openReservedModal = (product) => {
             </tbody>
           </table>
         </div>
+        <DataTablePagination :paginator="products" @update:per-page="(n) => { filters.per_page = n; router.get(route('erp.inventory.stock-management'), { warehouse_id: selectedWarehouseId, per_page: n }, { preserveState: true, replace: true }); }" />
       </div>
 
       <dialog id="modal-reserved-projects" class="modal">

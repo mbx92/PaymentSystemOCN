@@ -2,15 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\ERP\Inventory\Models\Warehouse;
 use App\Models\ErpSetting;
 use App\Models\LabelProfile;
-use App\ERP\Inventory\Models\Warehouse;
 use App\Models\MasterProduct;
 use App\Models\MasterProductUomMapping;
 use App\Models\ProductCategory;
 use App\Models\Uom;
 use App\Services\LanTsplPrinter;
 use App\Services\WindowsSmbRawPrinter;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -22,6 +23,8 @@ class ERPMasterProductController extends Controller
 {
     public function index(Request $request): Response
     {
+        $perPage = $this->resolvedPerPage($request);
+
         $products = MasterProduct::query()
             ->when($request->filled('sales_channel'), fn ($q) => $q->where('sales_channel', $request->string('sales_channel')->toString()))
             ->when($request->filled('product_type'), fn ($q) => $q->where('product_type', $request->string('product_type')->toString()))
@@ -34,11 +37,12 @@ class ERPMasterProductController extends Controller
                 });
             })
             ->latest()
-            ->get();
+            ->paginate($perPage)
+            ->withQueryString();
 
         return Inertia::render('ERP/MasterProducts/Index', [
             'products' => $products,
-            'filters' => $request->only(['q', 'sales_channel', 'product_type', 'warehouse_id']),
+            'filters' => $this->filtersWithPerPage($request, ['q', 'sales_channel', 'product_type', 'warehouse_id']),
             'categories' => ProductCategory::query()->where('status', 'active')->orderBy('name')->get(['name']),
             'uoms' => Uom::query()->where('status', 'active')->orderBy('code')->get(['code', 'name']),
             'warehouses' => Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'code']),
@@ -77,7 +81,7 @@ class ERPMasterProductController extends Controller
         return back()->with('flash', ['type' => 'success', 'message' => 'Produk berhasil ditambahkan.']);
     }
 
-    public function previewCodes(Request $request): \Illuminate\Http\JsonResponse
+    public function previewCodes(Request $request): JsonResponse
     {
         $category = $request->string('category')->toString();
 

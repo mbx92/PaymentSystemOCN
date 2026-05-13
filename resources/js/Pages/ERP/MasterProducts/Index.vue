@@ -7,11 +7,26 @@ import { useCurrency } from '@/composables/useCurrency';
 import { BoltIcon } from '@heroicons/vue/20/solid';
 
 const props = defineProps({
-  products: Array,
+  products: Object,
   filters: Object,
   categories: Array,
   uoms: Array,
   warehouses: Array,
+});
+
+const perPageOptions = [25, 50, 75, 100, 125, 150, 175, 200, 225, 250];
+
+const productRows = computed(() => (Array.isArray(props.products?.data) ? props.products.data : []));
+
+const paginationSummary = computed(() => {
+  const p = props.products;
+  if (!p?.total) {
+    return 'Tidak ada produk';
+  }
+  if (p.from != null && p.to != null) {
+    return `Menampilkan ${p.from}–${p.to} dari ${p.total}`;
+  }
+  return `Total ${p.total} produk`;
 });
 const { parse, formatInput } = useCurrency();
 const page = usePage();
@@ -22,6 +37,7 @@ const filters = reactive({
   sales_channel: props.filters?.sales_channel ?? '',
   product_type: props.filters?.product_type ?? '',
   warehouse_id: props.filters?.warehouse_id ?? '',
+  per_page: props.filters?.per_page ?? props.products?.per_page ?? 25,
 });
 
 const form = useForm({
@@ -184,8 +200,17 @@ const goToDetail = (id) => {
       </div>
 
       <div class="ocn-panel">
-        <div class="ocn-panel__head">
+        <div class="ocn-panel__head flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 class="ocn-panel__title">Daftar master produk</h2>
+          <div class="flex flex-wrap items-center gap-2">
+            <label class="flex items-center gap-2 text-sm text-base-content/70">
+              <span class="whitespace-nowrap">Per halaman</span>
+              <select v-model.number="filters.per_page" class="select select-bordered select-sm w-min min-w-[7.5rem]">
+                <option v-for="n in perPageOptions" :key="n" :value="n">{{ n }}</option>
+              </select>
+            </label>
+            <p class="text-sm text-base-content/60">{{ paginationSummary }}</p>
+          </div>
         </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra">
@@ -203,7 +228,7 @@ const goToDetail = (id) => {
             </thead>
             <tbody>
               <tr
-                v-for="product in products"
+                v-for="product in productRows"
                 :key="product.id"
                 class="cursor-pointer hover"
                 @click="goToDetail(product.id)"
@@ -221,11 +246,29 @@ const goToDetail = (id) => {
                 </td>
                 <td><StatusBadge :status="product.status" /></td>
               </tr>
-              <tr v-if="products.length === 0">
+              <tr v-if="productRows.length === 0">
                 <td colspan="8" class="py-10 text-center text-base-content/50">Tidak ada produk sesuai filter.</td>
               </tr>
             </tbody>
           </table>
+        </div>
+        <div v-if="(products?.last_page ?? 1) > 1" class="flex flex-wrap justify-center gap-2 p-4">
+          <template v-for="link in products.links" :key="link.label">
+            <Link
+              v-if="link.url"
+              :href="link.url"
+              preserve-scroll
+              class="btn btn-sm min-h-9 min-w-9 px-2"
+              :class="link.active ? 'btn-primary' : 'btn-ghost'"
+            >
+              <span v-html="link.label" />
+            </Link>
+            <span
+              v-else
+              class="btn btn-sm btn-disabled pointer-events-none min-h-9 min-w-9 px-2"
+              v-html="link.label"
+            />
+          </template>
         </div>
       </div>
     </div>

@@ -29,17 +29,8 @@ class CrmPipelineController extends Controller
             $query->where('stage', $stage);
         }
 
-        $pipelines = $query->orderByDesc('updated_at')->get();
-
-        $customers = CrmCustomer::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'company']);
-        $leads = CrmLead::query()->whereNotIn('status', ['won', 'lost'])->orderBy('name')->get(['id', 'name', 'company']);
-        $users = User::query()
-            ->whereHas('roles', fn ($r) => $r->whereIn('name', ['admin', 'manajer']))
-            ->orderBy('name')
-            ->get(['id', 'name']);
-
-        return Inertia::render('ERP/CRM/Pipelines', [
-            'pipelines' => $pipelines->map(fn (CrmPipeline $p) => [
+        $pipelines = $query->orderByDesc('updated_at')->paginate($this->resolvedPerPage($request))->withQueryString()
+            ->through(fn (CrmPipeline $p) => [
                 'id' => $p->id,
                 'code' => $p->code,
                 'title' => $p->title,
@@ -55,11 +46,21 @@ class CrmPipelineController extends Controller
                 'pic_name' => $p->pic?->name,
                 'notes' => $p->notes,
                 'updated_at' => $p->updated_at?->format('Y-m-d H:i'),
-            ]),
+            ]);
+
+        $customers = CrmCustomer::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'company']);
+        $leads = CrmLead::query()->whereNotIn('status', ['won', 'lost'])->orderBy('name')->get(['id', 'name', 'company']);
+        $users = User::query()
+            ->whereHas('roles', fn ($r) => $r->whereIn('name', ['admin', 'manajer']))
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        return Inertia::render('ERP/CRM/Pipelines', [
+            'pipelines' => $pipelines,
             'customers' => $customers,
             'leads' => $leads,
             'users' => $users,
-            'filters' => $request->only(['q', 'stage']),
+            'filters' => $this->filtersWithPerPage($request, ['q', 'stage']),
         ]);
     }
 

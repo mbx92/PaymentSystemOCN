@@ -1,11 +1,13 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 
 const props = defineProps({
-  employees: Array,
+  employees: Object,
+  filters: Object,
 });
 
 const { format } = useCurrency();
@@ -109,7 +111,7 @@ const remove = (row) => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in (employees || [])" :key="row.id">
+              <tr v-for="row in (employees?.data || [])" :key="row.id">
                 <td class="font-mono text-xs">{{ row.employee_no }}</td>
                 <td class="font-medium">{{ row.name }}</td>
                 <td>{{ row.position || '—' }}</td>
@@ -129,12 +131,16 @@ const remove = (row) => {
                   <button type="button" class="btn btn-ghost btn-xs text-error" @click="remove(row)">Hapus</button>
                 </td>
               </tr>
-              <tr v-if="!(employees || []).length">
+              <tr v-if="!(employees?.data || []).length">
                 <td colspan="7" class="py-8 text-center text-base-content/50">Belum ada data karyawan.</td>
               </tr>
             </tbody>
           </table>
         </div>
+        <DataTablePagination
+          :paginator="employees"
+          @update:per-page="(n) => router.get(route('erp.hr.employees'), { per_page: n }, { preserveState: true, replace: true })"
+        />
       </div>
     </div>
 

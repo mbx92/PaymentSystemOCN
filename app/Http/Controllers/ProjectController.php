@@ -31,7 +31,7 @@ class ProjectController extends Controller
             ->when($request->status, fn ($q) => $q->where('status', $request->status))
             ->when($request->project_type, fn ($q) => $q->where('project_type', $request->project_type));
 
-        $projects = $query->latest()->paginate(15)->withQueryString()
+        $projects = $query->latest()->paginate($this->resolvedPerPage($request))->withQueryString()
             ->through(fn ($p) => [
                 'id' => $p->id,
                 'name' => $p->name,
@@ -45,7 +45,7 @@ class ProjectController extends Controller
 
         return Inertia::render('Projects/Index', [
             'projects' => $projects,
-            'filters' => $request->only(['search', 'status', 'project_type']),
+            'filters' => $this->filtersWithPerPage($request, ['search', 'status', 'project_type']),
         ]);
     }
 

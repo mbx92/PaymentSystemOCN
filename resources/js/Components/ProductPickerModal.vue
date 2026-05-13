@@ -138,7 +138,7 @@ const hasStockColumn = computed(() => normalizedProducts.value.some((item) => it
         <button type="button" class="btn btn-ghost" @click="emit('close')">Batal</button>
         <button
           type="button"
-          class="btn border-0 bg-primary text-primary-content disabled:!bg-slate-300 disabled:!text-slate-500"
+          class="btn btn-primary border-0"
           :disabled="!selectedId"
           @click="confirmSelection"
         >

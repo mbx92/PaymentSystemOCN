@@ -3,6 +3,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
 import ConfirmModal from '@/Components/ConfirmModal.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { useForm, router } from '@inertiajs/vue3';
 import { ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
@@ -127,12 +128,7 @@ const doDelete = () => { router.delete(route('cash-in.destroy', deletingId.value
                         </tbody>
                     </table>
                 </div>
-                <div v-if="cashIns.last_page > 1" class="flex justify-center p-4 gap-2">
-                    <a v-for="link in cashIns.links" :key="link.label" :href="link.url ?? '#'"
-                        v-html="link.label"
-                        :class="['btn btn-sm', link.active ? 'btn-primary' : 'btn-ghost', !link.url ? 'btn-disabled' : '']"
-                    />
-                </div>
+                <DataTablePagination :paginator="cashIns" @update:per-page="(n) => { filters.per_page = n; }" />
             </div>
         </div>
 

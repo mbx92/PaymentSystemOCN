@@ -1,10 +1,12 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 
 const props = defineProps({
-  paymentMethods: Array,
+  paymentMethods: Object,
+  filters: Object,
 });
 
 const form = useForm({
@@ -36,8 +38,9 @@ const openAddModal = () => {
 const filterKeyword = ref('');
 const filterStatus = ref('');
 const filteredPaymentMethods = computed(() => {
+  const list = props.paymentMethods?.data ?? [];
   const term = filterKeyword.value.trim().toLowerCase();
-  return (props.paymentMethods ?? []).filter((method) => {
+  return list.filter((method) => {
     const matchStatus = !filterStatus.value || method.status === filterStatus.value;
     const matchKeyword = !term
       || method.code?.toLowerCase().includes(term)
@@ -81,6 +84,13 @@ const toggleStatus = (method) => {
     status: method.status === 'active' ? 'inactive' : 'active',
   }, {
     preserveScroll: true,
+  });
+};
+
+const onPerPage = (n) => {
+  router.get(route('erp.admin.payment-methods'), { per_page: n }, {
+    preserveState: true,
+    replace: true,
   });
 };
 </script>
@@ -158,6 +168,7 @@ const toggleStatus = (method) => {
             </tbody>
           </table>
         </div>
+        <DataTablePagination :paginator="paymentMethods" @update:per-page="onPerPage" />
       </div>
     </div>
 

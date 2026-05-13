@@ -6,8 +6,10 @@ use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Accounting\Models\JournalLine;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Pagination\Paginator;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -72,7 +74,7 @@ class ERPReportingController extends Controller
             });
         }
 
-        $entries = $query->latest('entry_date')->latest('id')->paginate(25)->withQueryString();
+        $entries = $query->latest('entry_date')->latest('id')->paginate($this->resolvedPerPage($request))->withQueryString();
 
         $totalsQuery = JournalLine::query();
         if ($request->filled('date_from') || $request->filled('date_to')) {
@@ -98,11 +100,11 @@ class ERPReportingController extends Controller
                 'total_credit' => (float) ($totals->total_credit ?? 0),
                 'entry_count' => $entries->total(),
             ],
-            'filters' => $request->only(['date_from', 'date_to', 'q']),
+            'filters' => $this->filtersWithPerPage($request, ['date_from', 'date_to', 'q']),
         ]);
     }
 
-    public function trialBalance(): Response
+    public function trialBalance(Request $request): Response
     {
         $balances = JournalLine::query()
             ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
@@ -120,13 +122,25 @@ class ERPReportingController extends Controller
         $totalDebit = $balances->sum('debit_total');
         $totalCredit = $balances->sum('credit_total');
 
+        $perPage = $this->resolvedPerPage($request);
+        $currentPage = Paginator::resolveCurrentPage();
+        $paginatedBalances = new LengthAwarePaginator(
+            $balances->forPage($currentPage, $perPage)->values(),
+            $balances->count(),
+            $perPage,
+            $currentPage,
+            ['path' => Paginator::resolveCurrentPath()],
+        );
+        $paginatedBalances->withQueryString();
+
         return Inertia::render('ERP/Reports/TrialBalance', [
-            'balances' => $balances,
+            'balances' => $paginatedBalances,
             'totals' => [
                 'debit' => (float) $totalDebit,
                 'credit' => (float) $totalCredit,
                 'balanced' => abs($totalDebit - $totalCredit) < 0.01,
             ],
+            'filters' => $this->filtersWithPerPage($request, []),
         ]);
     }
 

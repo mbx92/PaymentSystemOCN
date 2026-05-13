@@ -84,17 +84,19 @@ class ERPAdministrationMasterDataController extends Controller
         return back()->with('flash', ['type' => 'success', 'message' => 'ERP Setting berhasil diperbarui.']);
     }
 
-    public function landingSites(): Response
+    public function landingSites(Request $request): Response
     {
         return Inertia::render('ERP/Admin/LandingSites', [
             'landingSites' => LandingSite::query()
                 ->with(['warehouse:id,code,name', 'page:id,landing_site_id,is_published'])
                 ->orderBy('is_active', 'desc')
                 ->orderBy('name')
-                ->get(),
+                ->paginate($this->resolvedPerPage($request))
+                ->withQueryString(),
             'warehouses' => Warehouse::query()
                 ->orderBy('name')
                 ->get(['id', 'code', 'name']),
+            'filters' => $this->filtersWithPerPage($request, []),
         ]);
     }
 
@@ -212,11 +214,8 @@ class ERPAdministrationMasterDataController extends Controller
         }
 
         return Inertia::render('ERP/Admin/ParserRules', [
-            'rules' => $query->get(),
-            'filters' => [
-                'search' => $search,
-                'status' => $status,
-            ],
+            'rules' => $query->paginate($this->resolvedPerPage($request))->withQueryString(),
+            'filters' => $this->filtersWithPerPage($request, ['search', 'status']),
         ]);
     }
 
@@ -279,10 +278,48 @@ class ERPAdministrationMasterDataController extends Controller
         return back()->with('flash', ['type' => 'success', 'message' => 'Parser rule berhasil dihapus.']);
     }
 
-    public function documentSequences(): Response
+    public function documentSequences(Request $request): Response
     {
+        $query = DocumentSequence::query()->orderBy('module')->orderBy('document_type');
+
+        if ($request->filled('q')) {
+            $term = '%'.$request->string('q')->toString().'%';
+            $query->where(function ($inner) use ($term): void {
+                $inner->where('module', 'like', $term)
+                    ->orWhere('document_type', 'like', $term)
+                    ->orWhere('prefix', 'like', $term);
+            });
+        }
+
+        if ($request->filled('module')) {
+            $query->where('module', $request->string('module')->toString());
+        }
+
+        if ($request->filled('document_type')) {
+            $query->where('document_type', $request->string('document_type')->toString());
+        }
+
+        $moduleOptions = DocumentSequence::query()
+            ->distinct()
+            ->orderBy('module')
+            ->pluck('module')
+            ->filter()
+            ->values()
+            ->all();
+
+        $typeOptions = DocumentSequence::query()
+            ->distinct()
+            ->orderBy('document_type')
+            ->pluck('document_type')
+            ->filter()
+            ->values()
+            ->all();
+
         return Inertia::render('ERP/Admin/DocumentSequences', [
-            'sequences' => DocumentSequence::query()->orderBy('module')->orderBy('document_type')->get(),
+            'sequences' => $query->paginate($this->resolvedPerPage($request))->withQueryString(),
+            'moduleOptions' => $moduleOptions,
+            'typeOptions' => $typeOptions,
+            'filters' => $this->filtersWithPerPage($request, ['q', 'module', 'document_type']),
         ]);
     }
 
@@ -325,10 +362,14 @@ class ERPAdministrationMasterDataController extends Controller
         return back()->with('flash', ['type' => 'success', 'message' => 'Sequence nomor dokumen berhasil diperbarui.']);
     }
 
-    public function paymentMethods(): Response
+    public function paymentMethods(Request $request): Response
     {
         return Inertia::render('ERP/Admin/PaymentMethods', [
-            'paymentMethods' => PaymentMethod::query()->orderBy('name')->get(),
+            'paymentMethods' => PaymentMethod::query()
+                ->orderBy('name')
+                ->paginate($this->resolvedPerPage($request))
+                ->withQueryString(),
+            'filters' => $this->filtersWithPerPage($request, []),
         ]);
     }
 
@@ -694,28 +735,21 @@ class ERPAdministrationMasterDataController extends Controller
             $tab = 'products';
         }
 
-        $seeders = [
-            ['key' => 'coa', 'label' => 'Chart of Accounts (COA)', 'description' => 'Akun-akun COA standar PSAK, kategori kas, dan mapping COA.', 'class' => 'CoaSeeder'],
-            ['key' => 'product_categories', 'label' => 'Kategori Produk', 'description' => '17 kategori produk bisnis OCN Tech.', 'class' => 'ProductCategorySeeder'],
-            ['key' => 'uom', 'label' => 'Satuan (UoM)', 'description' => '18 unit pengukuran dan 7 konversi.', 'class' => 'UomSeeder'],
-            ['key' => 'label_profiles', 'label' => 'Profil Label', 'description' => '9 profil label thermal (ZPL & TSPL) untuk ukuran retail.', 'class' => 'LabelProfileSeeder'],
-            ['key' => 'parser_rules', 'label' => 'Parser Rules Chatbot', 'description' => '35 rule parser keyword untuk chatbot ERP.', 'class' => 'ErpChatParserRuleSeeder'],
-            ['key' => 'pos_receipt', 'label' => 'Template Struk POS', 'description' => 'Template struk thermal POS default.', 'class' => 'FillThermalPosReceiptTemplatesSeeder'],
-        ];
-
         return Inertia::render('ERP/Admin/DataImport', [
             'activeTab' => $tab,
-            'seeders' => $seeders,
+            'seeders' => $this->dataImportSeederRows(),
         ]);
     }
 
     public function runSeeder(Request $request): JsonResponse
     {
+        $allowedClasses = array_column($this->dataImportSeederRows(), 'class');
+
         $request->validate([
-            'seeder' => 'required|string|in:CoaSeeder,ProductCategorySeeder,UomSeeder,LabelProfileSeeder,ErpChatParserRuleSeeder,FillThermalPosReceiptTemplatesSeeder',
+            'seeder' => ['required', 'string', Rule::in($allowedClasses)],
         ]);
 
-        $class = 'Database\\Seeders\\' . $request->input('seeder');
+        $class = 'Database\\Seeders\\'.$request->input('seeder');
 
         try {
             Artisan::call('db:seed', ['--class' => $class, '--force' => true]);
@@ -971,6 +1005,23 @@ class ERPAdministrationMasterDataController extends Controller
         ]);
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Pengaturan maintenance mode berhasil disimpan.']);
+    }
+
+    /**
+     * Satu sumber kebenaran untuk tab Data Import → Seeders (UI + validasi POST).
+     *
+     * @return list<array{key: string, label: string, description: string, class: string}>
+     */
+    private function dataImportSeederRows(): array
+    {
+        return [
+            ['key' => 'coa', 'label' => 'Chart of Accounts (COA)', 'description' => 'Akun-akun COA standar PSAK, kategori kas, dan mapping COA.', 'class' => 'CoaSeeder'],
+            ['key' => 'product_categories', 'label' => 'Kategori Produk', 'description' => '17 kategori produk bisnis OCN Tech.', 'class' => 'ProductCategorySeeder'],
+            ['key' => 'uom', 'label' => 'Satuan (UoM)', 'description' => '18 unit pengukuran dan 7 konversi.', 'class' => 'UomSeeder'],
+            ['key' => 'label_profiles', 'label' => 'Profil Label', 'description' => '9 profil label thermal (ZPL & TSPL) untuk ukuran retail.', 'class' => 'LabelProfileSeeder'],
+            ['key' => 'parser_rules', 'label' => 'Parser Rules Chatbot', 'description' => '35 rule parser keyword untuk chatbot ERP.', 'class' => 'ErpChatParserRuleSeeder'],
+            ['key' => 'pos_receipt', 'label' => 'Template Struk POS', 'description' => 'Template struk thermal POS default.', 'class' => 'FillThermalPosReceiptTemplatesSeeder'],
+        ];
     }
 
     public function serverMonitoring(ServerMetricsService $metrics): Response

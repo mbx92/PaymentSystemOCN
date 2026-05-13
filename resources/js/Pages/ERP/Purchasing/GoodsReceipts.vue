@@ -1,11 +1,12 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, reactive, watch } from 'vue';
 
 const props = defineProps({
-  receipts: Array,
+  receipts: Object,
   poFilter: String,
   filters: Object,
   purchaseOrders: Array,
@@ -22,6 +23,7 @@ const filters = reactive({
   po: props.filters?.po ?? '',
   status: props.filters?.status ?? '',
   q: props.filters?.q ?? '',
+  per_page: props.filters?.per_page ?? props.receipts?.per_page ?? 25,
 });
 
 let timer;
@@ -148,7 +150,7 @@ const openAddModal = () => {
             </thead>
             <tbody>
               <tr
-                v-for="r in receipts"
+                v-for="r in (receipts?.data || [])"
                 :key="r.number"
                 :class="rowClass()"
                 tabindex="0"
@@ -162,9 +164,13 @@ const openAddModal = () => {
                 <td>{{ r.items }}</td>
                 <td @click.stop><StatusBadge :status="r.status" /></td>
               </tr>
+              <tr v-if="!(receipts?.data || []).length">
+                <td colspan="5" class="py-8 text-center text-base-content/50">Tidak ada goods receipt.</td>
+              </tr>
             </tbody>
           </table>
         </div>
+        <DataTablePagination :paginator="receipts" @update:per-page="(n) => { filters.per_page = n; }" />
       </div>
 
       <dialog id="modal-add-grn" class="modal">

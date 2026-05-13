@@ -1,10 +1,14 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { ref, watch, nextTick } from 'vue';
 
 const props = defineProps({
-  sequences: Array,
+  sequences: Object,
+  moduleOptions: { type: Array, default: () => [] },
+  typeOptions: { type: Array, default: () => [] },
+  filters: Object,
 });
 
 const form = useForm({
@@ -55,25 +59,53 @@ const submitEdit = () => {
   });
 };
 
-const search = ref('');
-const filterModule = ref('');
-const filterType = ref('');
+const q = ref(props.filters?.q ?? '');
+const module = ref(props.filters?.module ?? '');
+const documentType = ref(props.filters?.document_type ?? '');
+const perPage = ref(Number(props.filters?.per_page ?? props.sequences?.per_page ?? 25));
 
-const moduleOptions = computed(() => [...new Set((props.sequences ?? []).map((seq) => seq.module).filter(Boolean))].sort());
-const typeOptions = computed(() => [...new Set((props.sequences ?? []).map((seq) => seq.document_type).filter(Boolean))].sort());
+let ignoreFilterEmit = false;
 
-const filteredSequences = computed(() => {
-  const term = search.value.trim().toLowerCase();
-  return (props.sequences ?? []).filter((seq) => {
-    const matchModule = !filterModule.value || seq.module === filterModule.value;
-    const matchType = !filterType.value || seq.document_type === filterType.value;
-    const matchTerm = !term
-      || seq.module?.toLowerCase().includes(term)
-      || seq.document_type?.toLowerCase().includes(term)
-      || seq.prefix?.toLowerCase().includes(term);
-    return matchModule && matchType && matchTerm;
-  });
+watch(
+  () => props.filters,
+  async (next) => {
+    if (!next) return;
+    ignoreFilterEmit = true;
+    q.value = next.q ?? '';
+    module.value = next.module ?? '';
+    documentType.value = next.document_type ?? '';
+    if (next.per_page != null) {
+      perPage.value = Number(next.per_page);
+    }
+    await nextTick();
+    ignoreFilterEmit = false;
+  },
+  { deep: true },
+);
+
+let timer;
+watch([q, module, documentType], () => {
+  if (ignoreFilterEmit) return;
+  clearTimeout(timer);
+  timer = setTimeout(() => {
+    router.get(route('erp.admin.document-sequences'), {
+      q: q.value,
+      module: module.value,
+      document_type: documentType.value,
+      per_page: perPage.value,
+    }, { preserveState: true, replace: true });
+  }, 400);
 });
+
+const onPerPage = (n) => {
+  perPage.value = n;
+  router.get(route('erp.admin.document-sequences'), {
+    q: q.value,
+    module: module.value,
+    document_type: documentType.value,
+    per_page: n,
+  }, { preserveState: true, replace: true });
+};
 </script>
 
 <template>
@@ -100,20 +132,20 @@ const filteredSequences = computed(() => {
           <div class="flex flex-wrap items-end gap-3">
             <div class="min-w-[220px] grow">
               <label class="label"><span class="label-text">Search</span></label>
-              <input v-model="search" type="text" class="input input-bordered w-full" placeholder="Cari module / document type / prefix" />
+              <input v-model="q" type="text" class="input input-bordered w-full" placeholder="Cari module / document type / prefix" />
             </div>
             <div class="w-full sm:w-56">
               <label class="label"><span class="label-text">Module</span></label>
-              <select v-model="filterModule" class="select select-bordered w-full">
+              <select v-model="module" class="select select-bordered w-full">
                 <option value="">Semua Module</option>
-                <option v-for="module in moduleOptions" :key="module" :value="module">{{ module }}</option>
+                <option v-for="m in moduleOptions" :key="m" :value="m">{{ m }}</option>
               </select>
             </div>
             <div class="w-full sm:w-64">
               <label class="label"><span class="label-text">Document Type</span></label>
-              <select v-model="filterType" class="select select-bordered w-full">
+              <select v-model="documentType" class="select select-bordered w-full">
                 <option value="">Semua Type</option>
-                <option v-for="type in typeOptions" :key="type" :value="type">{{ type }}</option>
+                <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
               </select>
             </div>
             <button class="btn btn-primary btn-sm" @click="openAddModal">+ Tambah Sequence</button>
@@ -130,7 +162,7 @@ const filteredSequences = computed(() => {
           <table class="table table-zebra">
             <thead><tr><th>Module</th><th>Document Type</th><th>Prefix</th><th>Padding</th><th>Next Number</th><th></th></tr></thead>
             <tbody>
-              <tr v-for="seq in filteredSequences" :key="seq.id">
+              <tr v-for="seq in sequences.data" :key="seq.id">
                 <td class="font-mono text-xs">{{ seq.module }}</td>
                 <td class="font-mono text-xs">{{ seq.document_type }}</td>
                 <td class="font-semibold">{{ seq.prefix }}</td>
@@ -138,12 +170,13 @@ const filteredSequences = computed(() => {
                 <td class="font-mono">{{ seq.prefix }}-{{ String((seq.running_number || 0) + 1).padStart(seq.padding_length || 6, '0') }}</td>
                 <td class="text-right"><button class="btn btn-ghost btn-xs" @click="openEdit(seq)">Edit</button></td>
               </tr>
-              <tr v-if="!filteredSequences.length">
+              <tr v-if="!sequences.data?.length">
                 <td colspan="6" class="py-8 text-center text-base-content/50">Belum ada sequence nomor dokumen.</td>
               </tr>
             </tbody>
           </table>
         </div>
+        <DataTablePagination :paginator="sequences" @update:per-page="onPerPage" />
       </div>
     </div>
 

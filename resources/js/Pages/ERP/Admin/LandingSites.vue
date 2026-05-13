@@ -1,11 +1,13 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 
 const props = defineProps({
-  landingSites: Array,
+  landingSites: Object,
   warehouses: Array,
+  filters: Object,
   cmsModule: { type: Boolean, default: false },
 });
 
@@ -13,8 +15,9 @@ const filterKeyword = ref('');
 const filterStatus = ref('');
 
 const filteredLandingSites = computed(() => {
+  const list = props.landingSites?.data ?? [];
   const term = filterKeyword.value.trim().toLowerCase();
-  return (props.landingSites ?? []).filter((site) => {
+  return list.filter((site) => {
     const matchStatus = !filterStatus.value || (filterStatus.value === 'active' ? !!site.is_active : !site.is_active);
     const matchKeyword = !term
       || site.name?.toLowerCase().includes(term)
@@ -108,6 +111,13 @@ const toggleStatus = (site) => {
     is_active: !site.is_active,
   }, {
     preserveScroll: true,
+  });
+};
+
+const onPerPage = (n) => {
+  router.get(route('erp.admin.landing-sites'), { per_page: n }, {
+    preserveState: true,
+    replace: true,
   });
 };
 </script>
@@ -206,6 +216,7 @@ const toggleStatus = (site) => {
             </tbody>
           </table>
         </div>
+        <DataTablePagination :paginator="landingSites" @update:per-page="onPerPage" />
       </div>
     </div>
 

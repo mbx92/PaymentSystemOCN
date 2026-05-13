@@ -21,6 +21,17 @@ router.on('navigate', (event) => {
         link.type = '';
         link.href = logoUrl;
     }
+
+    const token = event.detail.page.props.csrf_token;
+    if (token) {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        if (meta) {
+            meta.setAttribute('content', token);
+        }
+        if (window.axios?.defaults?.headers?.common) {
+            window.axios.defaults.headers.common['X-CSRF-TOKEN'] = token;
+        }
+    }
 });
 
 createInertiaApp({

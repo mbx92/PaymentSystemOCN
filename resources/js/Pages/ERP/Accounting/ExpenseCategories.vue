@@ -1,10 +1,12 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 
 const props = defineProps({
-  categories: Array,
+  categories: Object,
   accounts: Array,
+  filters: Object,
 });
 
 const categoryForm = useForm({
@@ -75,7 +77,7 @@ const openCategoryModal = () => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in categories" :key="row.category">
+              <tr v-for="row in (categories?.data || [])" :key="row.category">
                 <td class="font-medium">{{ row.label }}</td>
                 <td>
                   <select
@@ -93,12 +95,16 @@ const openCategoryModal = () => {
                   <span v-if="saving.processing && saving.category === row.category" class="text-xs text-base-content/60">Menyimpan…</span>
                 </td>
               </tr>
-              <tr v-if="!categories.length">
+              <tr v-if="!(categories?.data || []).length">
                 <td colspan="3" class="py-10 text-center text-base-content/50">Tidak ada kategori.</td>
               </tr>
             </tbody>
           </table>
         </div>
+        <DataTablePagination
+          :paginator="categories"
+          @update:per-page="(n) => router.get(route('erp.accounting.expense-categories'), { per_page: n }, { preserveState: true, replace: true })"
+        />
       </div>
     </div>
 

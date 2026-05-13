@@ -5,8 +5,8 @@ namespace App\Http\Controllers;
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Shared\Enums\DocumentStatus;
-use App\Models\CategoryCoaMapping;
 use App\Models\CashOut;
+use App\Models\CategoryCoaMapping;
 use App\Models\Project;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -30,7 +30,7 @@ class CashOutController extends Controller
 
         $total = (float) (clone $query)->sum('amount');
 
-        $cashOuts = $query->latest('date')->paginate(15)->withQueryString()
+        $cashOuts = $query->latest('date')->paginate($this->resolvedPerPage($request))->withQueryString()
             ->through(fn ($c) => [
                 'id' => $c->id,
                 'project_id' => $c->project_id,
@@ -57,7 +57,7 @@ class CashOutController extends Controller
                 ->where('type', 'asset')
                 ->orderBy('code')
                 ->get(['id', 'code', 'name']),
-            'filters' => $request->only(['project_id', 'category', 'date_from', 'date_to']),
+            'filters' => $this->filtersWithPerPage($request, ['project_id', 'category', 'date_from', 'date_to']),
         ]);
     }
 

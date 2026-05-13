@@ -17,9 +17,9 @@ use App\Models\MasterProductWarehouseStock;
 use App\Models\ProductStockMovement;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -45,18 +45,21 @@ class ERPPurchasingController extends Controller
             $query->where('is_active', $request->string('status')->toString() === 'active');
         }
 
+        $suppliers = $query
+            ->paginate($this->resolvedPerPage($request))
+            ->withQueryString()
+            ->through(fn (Vendor $vendor) => [
+                'code' => $vendor->code,
+                'name' => $vendor->name,
+                'phone' => $vendor->phone,
+                'lead_time_days' => (int) ($vendor->lead_time_days ?? 7),
+                'status' => $vendor->is_active ? 'active' : 'void',
+            ]);
+
         return Inertia::render('ERP/Purchasing/Suppliers', [
-            'suppliers' => $query
-                ->get()
-                ->map(fn (Vendor $vendor) => [
-                    'code' => $vendor->code,
-                    'name' => $vendor->name,
-                    'phone' => $vendor->phone,
-                    'lead_time_days' => (int) ($vendor->lead_time_days ?? 7),
-                    'status' => $vendor->is_active ? 'active' : 'void',
-                ]),
+            'suppliers' => $suppliers,
             'highlight' => $request->query('highlight'),
-            'filters' => $request->only(['q', 'status']),
+            'filters' => $this->filtersWithPerPage($request, ['q', 'status']),
         ]);
     }
 
@@ -125,17 +128,22 @@ class ERPPurchasingController extends Controller
             });
         }
 
-        return Inertia::render('ERP/Purchasing/PurchaseOrders', [
-            'purchaseOrders' => $query->get()->map(fn (PurchaseOrder $po) => [
+        $purchaseOrders = $query
+            ->paginate($this->resolvedPerPage($request))
+            ->withQueryString()
+            ->through(fn (PurchaseOrder $po) => [
                 'number' => $po->number,
                 'supplier' => $po->vendor?->name,
                 'supplier_code' => $po->vendor?->code,
                 'eta' => $po->eta_date?->toDateString(),
                 'amount' => (float) $po->total_amount,
                 'status' => $po->status->value,
-            ]),
+            ]);
+
+        return Inertia::render('ERP/Purchasing/PurchaseOrders', [
+            'purchaseOrders' => $purchaseOrders,
             'supplierFilter' => $request->query('supplier'),
-            'filters' => $request->only(['supplier', 'status', 'q']),
+            'filters' => $this->filtersWithPerPage($request, ['supplier', 'status', 'q']),
             'suppliers' => Vendor::query()->orderBy('name')->get(['code', 'name']),
             'products' => MasterProduct::query()->where('status', 'active')->orderBy('name')->get(['id', 'sku', 'barcode', 'name', 'uom', 'selling_price']),
         ]);
@@ -329,16 +337,21 @@ class ERPPurchasingController extends Controller
             });
         }
 
-        return Inertia::render('ERP/Purchasing/GoodsReceipts', [
-            'receipts' => $query->get()->map(fn (GoodsReceipt $receipt) => [
+        $receipts = $query
+            ->paginate($this->resolvedPerPage($request))
+            ->withQueryString()
+            ->through(fn (GoodsReceipt $receipt) => [
                 'number' => $receipt->number,
                 'po_number' => $receipt->purchaseOrder?->number,
                 'received_date' => $receipt->received_date?->toDateString(),
                 'items' => $receipt->lines()->count(),
                 'status' => $receipt->status->value,
-            ]),
+            ]);
+
+        return Inertia::render('ERP/Purchasing/GoodsReceipts', [
+            'receipts' => $receipts,
             'poFilter' => $request->query('po'),
-            'filters' => $request->only(['po', 'status', 'q']),
+            'filters' => $this->filtersWithPerPage($request, ['po', 'status', 'q']),
             'purchaseOrders' => PurchaseOrder::query()
                 ->where('status', DocumentStatus::Approved->value)
                 ->whereHas('lines', fn ($q) => $q->whereRaw('qty > received_qty'))

@@ -1,11 +1,12 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { reactive, watch } from 'vue';
 
 const props = defineProps({
-  suppliers: Array,
+  suppliers: Object,
   highlight: String,
   filters: Object,
 });
@@ -13,6 +14,7 @@ const props = defineProps({
 const filters = reactive({
   q: props.filters?.q ?? '',
   status: props.filters?.status ?? '',
+  per_page: props.filters?.per_page ?? props.suppliers?.per_page ?? 25,
 });
 
 let timer;
@@ -112,7 +114,7 @@ const openAddModal = () => {
             <thead><tr><th>Kode</th><th>Nama Supplier</th><th>Kontak</th><th>Lead Time</th><th>Status</th></tr></thead>
             <tbody>
               <tr
-                v-for="supplier in suppliers"
+                v-for="supplier in (suppliers?.data || [])"
                 :key="supplier.code"
                 :class="rowClass(supplier.code)"
                 tabindex="0"
@@ -126,9 +128,13 @@ const openAddModal = () => {
                 <td>{{ supplier.lead_time_days }} hari</td>
                 <td @click.stop><StatusBadge :status="supplier.status" /></td>
               </tr>
+              <tr v-if="!(suppliers?.data || []).length">
+                <td colspan="5" class="py-8 text-center text-base-content/50">Tidak ada supplier.</td>
+              </tr>
             </tbody>
           </table>
         </div>
+        <DataTablePagination :paginator="suppliers" @update:per-page="(n) => { filters.per_page = n; }" />
       </div>
 
       <dialog id="modal-add-supplier" class="modal">

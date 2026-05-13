@@ -3,6 +3,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
 import ConfirmModal from '@/Components/ConfirmModal.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { useForm, router } from '@inertiajs/vue3';
 import { ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
@@ -96,6 +97,7 @@ const doDelete = () => { router.delete(route('cash-out.destroy', deletingId.valu
                         </tbody>
                     </table>
                 </div>
+                <DataTablePagination :paginator="cashOuts" @update:per-page="(n) => { filters.per_page = n; }" />
             </div>
         </div>
 

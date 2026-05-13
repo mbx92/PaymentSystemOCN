@@ -34,15 +34,8 @@ class CrmCustomerController extends Controller
             $query->where('source', $source);
         }
 
-        $customers = $query->orderBy('name')->get();
-
-        $users = User::query()
-            ->whereHas('roles', fn ($r) => $r->whereIn('name', ['admin', 'manajer']))
-            ->orderBy('name')
-            ->get(['id', 'name']);
-
-        return Inertia::render('ERP/CRM/Customers', [
-            'customers' => $customers->map(fn (CrmCustomer $c) => [
+        $customers = $query->orderBy('name')->paginate($this->resolvedPerPage($request))->withQueryString()
+            ->through(fn (CrmCustomer $c) => [
                 'id' => $c->id,
                 'code' => $c->code,
                 'name' => $c->name,
@@ -58,9 +51,17 @@ class CrmCustomerController extends Controller
                 'is_active' => $c->is_active,
                 'notes' => $c->notes,
                 'created_at' => $c->created_at?->format('Y-m-d'),
-            ]),
+            ]);
+
+        $users = User::query()
+            ->whereHas('roles', fn ($r) => $r->whereIn('name', ['admin', 'manajer']))
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        return Inertia::render('ERP/CRM/Customers', [
+            'customers' => $customers,
             'users' => $users,
-            'filters' => $request->only(['q', 'is_active', 'source']),
+            'filters' => $this->filtersWithPerPage($request, ['q', 'is_active', 'source']),
         ]);
     }
 

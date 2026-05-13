@@ -1,10 +1,11 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 
 const props = defineProps({
-  rules: Array,
+  rules: Object,
   filters: Object,
 });
 
@@ -15,6 +16,7 @@ const applyFilters = () => {
   router.get(route('erp.admin.parser-rules'), {
     search: filterSearch.value,
     status: filterStatus.value,
+    per_page: props.filters?.per_page ?? props.rules?.per_page ?? 25,
   }, {
     preserveState: true,
     preserveScroll: true,
@@ -22,7 +24,19 @@ const applyFilters = () => {
   });
 };
 
-const filteredRules = computed(() => props.rules ?? []);
+const onPerPage = (n) => {
+  router.get(route('erp.admin.parser-rules'), {
+    search: filterSearch.value,
+    status: filterStatus.value,
+    per_page: n,
+  }, {
+    preserveState: true,
+    preserveScroll: true,
+    replace: true,
+  });
+};
+
+const filteredRules = computed(() => props.rules?.data ?? []);
 
 /** Contoh template custom reply (harga string — hindari {{ }} literal di atribut template Vue) */
 const parserReplyPlaceholderExample = 'Contoh:\n**{{name}}**\nStok: {{stock}} {{uom}}\n{{stock_status}}';
@@ -223,6 +237,7 @@ const confirmDelete = () => {
             </tbody>
           </table>
         </div>
+        <DataTablePagination :paginator="rules" @update:per-page="onPerPage" />
       </div>
     </div>
 

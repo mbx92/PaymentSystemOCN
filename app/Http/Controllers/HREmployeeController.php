@@ -10,12 +10,10 @@ use Inertia\Response;
 
 class HREmployeeController extends Controller
 {
-    public function index(): Response
+    public function index(Request $request): Response
     {
-        $employees = Employee::query()->orderBy('name')->get();
-
-        return Inertia::render('ERP/HR/Employees', [
-            'employees' => $employees->map(fn (Employee $e) => [
+        $employees = Employee::query()->orderBy('name')->paginate($this->resolvedPerPage($request))->withQueryString()
+            ->through(fn (Employee $e) => [
                 'id' => $e->id,
                 'employee_no' => $e->employee_no,
                 'name' => $e->name,
@@ -24,7 +22,11 @@ class HREmployeeController extends Controller
                 'position' => $e->position,
                 'base_salary' => (float) $e->base_salary,
                 'is_active' => $e->is_active,
-            ]),
+            ]);
+
+        return Inertia::render('ERP/HR/Employees', [
+            'employees' => $employees,
+            'filters' => $this->filtersWithPerPage($request, []),
         ]);
     }
 

@@ -1,5 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { reactive, watch } from 'vue';
 
@@ -18,6 +19,7 @@ const filters = reactive({
   from: props.filters?.from ?? '',
   to: props.filters?.to ?? '',
   q: props.filters?.q ?? '',
+  per_page: props.filters?.per_page ?? props.movements?.per_page ?? 25,
 });
 
 let timer;
@@ -122,31 +124,7 @@ watch(
             </tbody>
           </table>
         </div>
-        <div class="card-body pt-3">
-          <div class="flex items-center justify-between text-sm">
-            <div class="text-base-content/60">
-              Menampilkan {{ movements.from ?? 0 }}–{{ movements.to ?? 0 }} dari {{ movements.total ?? 0 }}
-            </div>
-            <div class="join">
-              <button
-                class="btn btn-sm join-item"
-                :class="movements.prev_page_url ? 'btn-outline' : 'btn-disabled'"
-                :disabled="!movements.prev_page_url"
-                @click="movements.prev_page_url && router.visit(movements.prev_page_url, { preserveState: true })"
-              >
-                Prev
-              </button>
-              <button
-                class="btn btn-sm join-item"
-                :class="movements.next_page_url ? 'btn-outline' : 'btn-disabled'"
-                :disabled="!movements.next_page_url"
-                @click="movements.next_page_url && router.visit(movements.next_page_url, { preserveState: true })"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        </div>
+        <DataTablePagination :paginator="movements" @update:per-page="(n) => { filters.per_page = n; }" />
       </div>
     </div>
   </AppLayout>

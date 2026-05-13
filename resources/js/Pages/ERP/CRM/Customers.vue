@@ -1,10 +1,11 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { reactive, ref, watch } from 'vue';
 
 const props = defineProps({
-  customers: Array,
+  customers: Object,
   users: Array,
   filters: Object,
 });
@@ -13,6 +14,7 @@ const filters = reactive({
   q: props.filters?.q ?? '',
   is_active: props.filters?.is_active ?? '',
   source: props.filters?.source ?? '',
+  per_page: props.filters?.per_page ?? props.customers?.per_page ?? 25,
 });
 
 let timer;
@@ -176,7 +178,7 @@ const remove = (row) => {
       <div class="ocn-panel">
         <div class="ocn-panel__head">
           <h2 class="ocn-panel__title">Daftar customer</h2>
-          <p class="ocn-panel__desc">{{ (customers || []).length }} customer ditemukan.</p>
+          <p class="ocn-panel__desc">{{ customers?.total ?? 0 }} customer ditemukan.</p>
         </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra table-sm">
@@ -194,7 +196,7 @@ const remove = (row) => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in (customers || [])" :key="row.id">
+              <tr v-for="row in (customers?.data || [])" :key="row.id">
                 <td class="font-mono text-xs">{{ row.code }}</td>
                 <td class="font-medium">{{ row.name }}</td>
                 <td>{{ row.company || '—' }}</td>
@@ -221,12 +223,13 @@ const remove = (row) => {
                   <button type="button" class="btn btn-ghost btn-xs text-error" @click="remove(row)">Hapus</button>
                 </td>
               </tr>
-              <tr v-if="!(customers || []).length">
+              <tr v-if="!(customers?.data || []).length">
                 <td colspan="9" class="py-8 text-center text-base-content/50">Belum ada data customer.</td>
               </tr>
             </tbody>
           </table>
         </div>
+        <DataTablePagination :paginator="customers" @update:per-page="(n) => { filters.per_page = n; }" />
       </div>
     </div>
 

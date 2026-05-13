@@ -47,7 +47,7 @@ class ErpSystemLogController extends Controller
 
         $logs = $query
             ->orderByDesc('created_at')
-            ->paginate(20)
+            ->paginate($this->resolvedPerPage($request))
             ->withQueryString()
             ->through(fn (ErpSystemLog $log) => [
                 'id' => $log->id,
@@ -77,10 +77,9 @@ class ErpSystemLogController extends Controller
 
         return Inertia::render('ERP/Admin/SystemLogs', [
             'logs' => $logs,
-            'filters' => $request->only(['level', 'channel', 'event', 'method', 'q', 'date_from', 'date_to']),
+            'filters' => $this->filtersWithPerPage($request, ['level', 'channel', 'event', 'method', 'q', 'date_from', 'date_to']),
             'levels' => $levels,
             'channels' => $channels,
         ]);
     }
 }
-

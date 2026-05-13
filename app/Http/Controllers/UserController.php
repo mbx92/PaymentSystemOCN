@@ -10,35 +10,37 @@ use Spatie\Permission\Models\Role;
 
 class UserController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $users = User::with('roles')->orderBy('name')->get()->map(fn ($u) => [
-            'id'    => $u->id,
-            'name'  => $u->name,
-            'email' => $u->email,
-            'role'  => $u->roles->first()?->name ?? '-',
-        ]);
+        $users = User::with('roles')->orderBy('name')->paginate($this->resolvedPerPage($request))->withQueryString()
+            ->through(fn ($u) => [
+                'id' => $u->id,
+                'name' => $u->name,
+                'email' => $u->email,
+                'role' => $u->roles->first()?->name ?? '-',
+            ]);
 
         $roles = Role::all(['id', 'name']);
 
         return Inertia::render('Users/Index', [
             'users' => $users,
             'roles' => $roles,
+            'filters' => $this->filtersWithPerPage($request, []),
         ]);
     }
 
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name'     => 'required|string|max:255',
-            'email'    => 'required|email|unique:users,email',
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:8|confirmed',
-            'role'     => 'required|in:admin,manajer,anggota',
+            'role' => 'required|in:admin,manajer,anggota',
         ]);
 
         $user = User::create([
-            'name'     => $validated['name'],
-            'email'    => $validated['email'],
+            'name' => $validated['name'],
+            'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
         ]);
         $user->assignRole($validated['role']);
@@ -49,18 +51,18 @@ class UserController extends Controller
     public function update(Request $request, User $user)
     {
         $validated = $request->validate([
-            'name'     => 'required|string|max:255',
-            'email'    => "required|email|unique:users,email,{$user->id}",
+            'name' => 'required|string|max:255',
+            'email' => "required|email|unique:users,email,{$user->id}",
             'password' => 'nullable|string|min:8|confirmed',
-            'role'     => 'required|in:admin,manajer,anggota',
+            'role' => 'required|in:admin,manajer,anggota',
         ]);
 
         $user->update([
-            'name'  => $validated['name'],
+            'name' => $validated['name'],
             'email' => $validated['email'],
         ]);
 
-        if (!empty($validated['password'])) {
+        if (! empty($validated['password'])) {
             $user->update(['password' => Hash::make($validated['password'])]);
         }
 
@@ -75,6 +77,7 @@ class UserController extends Controller
             return back()->withErrors(['user' => 'Tidak dapat menghapus akun sendiri.']);
         }
         $user->delete();
+
         return back()->with('flash', ['type' => 'success', 'message' => 'User berhasil dihapus.']);
     }
 }

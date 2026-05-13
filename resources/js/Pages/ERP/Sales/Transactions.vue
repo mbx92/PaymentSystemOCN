@@ -1,12 +1,13 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { useCurrency } from '@/composables/useCurrency';
 import { reactive, watch } from 'vue';
 
 const props = defineProps({
-  transactions: Array,
+  transactions: Object,
   filters: Object,
 });
 
@@ -16,6 +17,7 @@ const filters = reactive({
   status: props.filters?.status ?? '',
   date_from: props.filters?.date_from ?? '',
   date_to: props.filters?.date_to ?? '',
+  per_page: props.filters?.per_page ?? props.transactions?.per_page ?? 25,
 });
 
 let timer;
@@ -106,7 +108,7 @@ const openTransaction = (trxId) => {
               </thead>
               <tbody>
                 <tr
-                  v-for="trx in transactions"
+                  v-for="trx in (transactions?.data || [])"
                   :key="trx.id"
                   class="cursor-pointer transition-colors hover:bg-primary/5"
                   @click="openTransaction(trx.id)"
@@ -122,13 +124,14 @@ const openTransaction = (trxId) => {
                   <td>{{ trx.cashier || '-' }}</td>
                   <td @click.stop><StatusBadge :status="trx.status" /></td>
                 </tr>
-                <tr v-if="!transactions?.length">
+                <tr v-if="!(transactions?.data || []).length">
                   <td colspan="10" class="py-10 text-center text-base-content/50">Belum ada transaksi POS.</td>
                 </tr>
               </tbody>
             </table>
           </div>
         </div>
+        <DataTablePagination :paginator="transactions" @update:per-page="(n) => { filters.per_page = n; }" />
       </div>
     </div>
   </AppLayout>

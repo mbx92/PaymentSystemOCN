@@ -1,10 +1,11 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 
-defineProps({
-  categories: Array,
+const props = defineProps({
+  categories: Object,
 });
 
 const form = useForm({
@@ -62,14 +63,21 @@ const submit = () => {
           <table class="table table-zebra">
             <thead><tr><th>Nama</th><th>Deskripsi</th><th>Status</th></tr></thead>
             <tbody>
-              <tr v-for="category in categories" :key="category.id">
+              <tr v-for="category in (categories?.data || [])" :key="category.id">
                 <td class="font-semibold">{{ category.name }}</td>
                 <td>{{ category.description || '-' }}</td>
                 <td><StatusBadge :status="category.status" /></td>
               </tr>
+              <tr v-if="!(categories?.data || []).length">
+                <td colspan="3" class="py-8 text-center text-base-content/50">Belum ada kategori.</td>
+              </tr>
             </tbody>
           </table>
         </div>
+        <DataTablePagination
+          :paginator="categories"
+          @update:per-page="(n) => router.get(route('erp.inventory.categories'), { per_page: n }, { preserveState: true, replace: true })"
+        />
       </div>
     </div>
   </AppLayout>

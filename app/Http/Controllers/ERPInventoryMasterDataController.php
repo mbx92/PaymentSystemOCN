@@ -36,14 +36,17 @@ class ERPInventoryMasterDataController extends Controller
         }
 
         return Inertia::render('ERP/Inventory/Warehouses', [
-            'warehouses' => $query->get()->map(fn (Warehouse $warehouse) => [
-                'id' => $warehouse->id,
-                'code' => $warehouse->code,
-                'name' => $warehouse->name,
-                'address' => $warehouse->address,
-                'status' => $warehouse->is_active ? 'active' : 'inactive',
-            ]),
-            'filters' => $request->only(['q', 'status']),
+            'warehouses' => $query
+                ->paginate($this->resolvedPerPage($request))
+                ->withQueryString()
+                ->through(fn (Warehouse $warehouse) => [
+                    'id' => $warehouse->id,
+                    'code' => $warehouse->code,
+                    'name' => $warehouse->name,
+                    'address' => $warehouse->address,
+                    'status' => $warehouse->is_active ? 'active' : 'inactive',
+                ]),
+            'filters' => $this->filtersWithPerPage($request, ['q', 'status']),
         ]);
     }
 
@@ -85,10 +88,14 @@ class ERPInventoryMasterDataController extends Controller
         return back()->with('flash', ['type' => 'success', 'message' => 'Warehouse berhasil diperbarui.']);
     }
 
-    public function categories(): Response
+    public function categories(Request $request): Response
     {
         return Inertia::render('ERP/Inventory/Categories', [
-            'categories' => ProductCategory::query()->orderBy('name')->get(),
+            'categories' => ProductCategory::query()
+                ->orderBy('name')
+                ->paginate($this->resolvedPerPage($request))
+                ->withQueryString(),
+            'filters' => $this->filtersWithPerPage($request, []),
         ]);
     }
 
@@ -105,11 +112,15 @@ class ERPInventoryMasterDataController extends Controller
         return back()->with('flash', ['type' => 'success', 'message' => 'Kategori berhasil ditambahkan.']);
     }
 
-    public function uoms(): Response
+    public function uoms(Request $request): Response
     {
+        $perPage = $this->resolvedPerPage($request);
+
         return Inertia::render('ERP/Inventory/Uoms', [
-            'uoms' => Uom::query()->orderBy('code')->get(),
-            'conversions' => UomConversion::query()->with('fromUom', 'toUom')->latest()->get(),
+            'uoms' => Uom::query()->orderBy('code')->paginate($perPage, ['*'], 'uoms_page')->withQueryString(),
+            'conversions' => UomConversion::query()->with('fromUom', 'toUom')->latest()->paginate($perPage, ['*'], 'conversions_page')->withQueryString(),
+            'uomsForSelect' => Uom::query()->orderBy('code')->get(['id', 'code', 'name']),
+            'filters' => $this->filtersWithPerPage($request, []),
         ]);
     }
 

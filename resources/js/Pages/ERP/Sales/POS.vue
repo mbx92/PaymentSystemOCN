@@ -542,7 +542,7 @@ onBeforeUnmount(() => {
             <p v-if="checkoutError" class="mt-2 text-sm text-error">{{ checkoutError }}</p>
             <p v-if="hasStockViolation" class="mt-1 text-xs text-error">Ada qty melebihi stok tersedia. Perbaiki sebelum proses.</p>
             <button
-              class="btn mt-4 w-full border-0 bg-primary text-primary-content disabled:!bg-slate-300 disabled:!text-slate-500"
+              class="btn btn-primary mt-4 w-full border-0"
               :disabled="!canProcessPayment || processingPayment"
               @click="processPayment"
             >
@@ -744,7 +744,7 @@ onBeforeUnmount(() => {
             <p v-if="checkoutError" class="mt-2 text-sm text-error">{{ checkoutError }}</p>
             <p v-if="hasStockViolation" class="mt-1 text-xs text-error">Ada qty melebihi stok tersedia. Perbaiki sebelum proses.</p>
             <button
-              class="btn mt-4 w-full border-0 bg-primary text-primary-content disabled:!bg-slate-300 disabled:!text-slate-500"
+              class="btn btn-primary mt-4 w-full border-0"
               :disabled="!canProcessPayment || processingPayment"
               @click="processPayment"
             >

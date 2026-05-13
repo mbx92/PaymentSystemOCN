@@ -1,11 +1,13 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { useCurrency } from '@/composables/useCurrency';
 
-defineProps({
-  invoices: Array,
+const props = defineProps({
+  invoices: Object,
+  filters: Object,
 });
 
 const { format } = useCurrency();
@@ -49,7 +51,7 @@ const openInvoice = (invoice) => {
             </thead>
             <tbody>
               <tr
-                v-for="invoice in invoices"
+                v-for="invoice in (invoices?.data || [])"
                 :key="invoice.number"
                 class="cursor-pointer hover"
                 tabindex="0"
@@ -65,12 +67,16 @@ const openInvoice = (invoice) => {
                 <td>{{ invoice.finished_at || '-' }}</td>
                 <td><StatusBadge :status="invoice.status" /></td>
               </tr>
-              <tr v-if="!invoices.length">
+              <tr v-if="!(invoices?.data || []).length">
                 <td colspan="8" class="py-8 text-center text-base-content/50">Belum ada project selesai yang bisa dibuat invoice.</td>
               </tr>
             </tbody>
           </table>
         </div>
+        <DataTablePagination
+          :paginator="invoices"
+          @update:per-page="(n) => router.get(route('erp.sales.project-invoices'), { per_page: n }, { preserveState: true, replace: true })"
+        />
       </div>
     </div>
   </AppLayout>

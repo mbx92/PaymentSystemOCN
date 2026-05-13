@@ -1,5 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
@@ -16,6 +17,7 @@ const filters = ref({
   date_from: props.filters?.date_from ?? '',
   date_to: props.filters?.date_to ?? '',
   q: props.filters?.q ?? '',
+  per_page: props.filters?.per_page ?? props.entries?.per_page ?? 25,
 });
 
 let timer;
@@ -131,19 +133,7 @@ const formatDate = (dateStr) => {
         </div>
       </div>
 
-      <div v-if="entries.last_page > 1" class="flex justify-center">
-        <div class="join">
-          <Link
-            v-for="link in entries.links"
-            :key="link.label"
-            :href="link.url"
-            class="join-item btn btn-sm"
-            :class="{ 'btn-active': link.active, 'btn-disabled': !link.url }"
-            v-html="link.label"
-            preserve-state
-          />
-        </div>
-      </div>
+      <DataTablePagination :paginator="entries" @update:per-page="(n) => { filters.per_page = n; }" />
     </div>
   </AppLayout>
 </template>

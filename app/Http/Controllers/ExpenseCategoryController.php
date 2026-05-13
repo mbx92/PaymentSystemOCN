@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\ERP\Accounting\Models\Account;
-use App\Models\CategoryCoaMapping;
 use App\Models\CashCategory;
+use App\Models\CategoryCoaMapping;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -12,7 +12,7 @@ use Inertia\Response;
 
 class ExpenseCategoryController extends Controller
 {
-    public function index(): Response
+    public function index(Request $request): Response
     {
         $mappings = CategoryCoaMapping::query()
             ->where('domain', 'cash_out')
@@ -24,27 +24,34 @@ class ExpenseCategoryController extends Controller
             ->where('domain', 'cash_out')
             ->orderBy('sort_order')
             ->orderBy('label')
-            ->get(['key', 'label', 'is_active']);
+            ->paginate($this->resolvedPerPage($request))
+            ->withQueryString()
+            ->through(function ($c) use ($mappings) {
+                $map = $mappings->get($c->key);
+
+                return [
+                    'category' => $c->key,
+                    'label' => $c->label,
+                    'is_active' => (bool) $c->is_active,
+                    'account_id' => $map?->account_id,
+                    'account' => $map?->account
+                        ? [
+                            'id' => $map->account->id,
+                            'code' => $map->account->code,
+                            'name' => $map->account->name,
+                            'type' => $map->account->type,
+                        ]
+                        : null,
+                ];
+            });
 
         return Inertia::render('ERP/Accounting/ExpenseCategories', [
-            'categories' => $categories->map(fn ($c) => [
-                'category' => $c->key,
-                'label' => $c->label,
-                'is_active' => (bool) $c->is_active,
-                'account_id' => $mappings->get($c->key)?->account_id,
-                'account' => $mappings->get($c->key)?->account
-                    ? [
-                        'id' => $mappings->get($c->key)->account->id,
-                        'code' => $mappings->get($c->key)->account->code,
-                        'name' => $mappings->get($c->key)->account->name,
-                        'type' => $mappings->get($c->key)->account->type,
-                    ]
-                    : null,
-            ])->values(),
+            'categories' => $categories,
             'accounts' => Account::query()
                 ->where('is_active', true)
                 ->orderBy('code')
                 ->get(['id', 'code', 'name', 'type']),
+            'filters' => $this->filtersWithPerPage($request, []),
         ]);
     }
 
@@ -99,4 +106,3 @@ class ExpenseCategoryController extends Controller
         return back()->with('flash', ['type' => 'success', 'message' => 'Kategori pengeluaran berhasil ditambahkan.']);
     }
 }
-

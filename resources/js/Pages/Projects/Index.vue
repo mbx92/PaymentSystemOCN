@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Link, router } from '@inertiajs/vue3';
 import { ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
@@ -12,12 +13,18 @@ const { format } = useCurrency();
 const search = ref(props.filters.search ?? '');
 const status = ref(props.filters.status ?? '');
 const projectType = ref(props.filters.project_type ?? '');
+const perPage = ref(Number(props.filters.per_page ?? props.projects.per_page ?? 25));
 
 let timer;
-watch([search, status, projectType], () => {
+watch([search, status, projectType, perPage], () => {
     clearTimeout(timer);
     timer = setTimeout(() => {
-        router.get(route('projects.index'), { search: search.value, status: status.value, project_type: projectType.value }, { preserveState: true, replace: true });
+        router.get(route('projects.index'), {
+            search: search.value,
+            status: status.value,
+            project_type: projectType.value,
+            per_page: perPage.value,
+        }, { preserveState: true, replace: true });
     }, 400);
 });
 
@@ -124,15 +131,10 @@ const projectTypeLabel = (value) => {
                         </table>
                     </div>
 
-                    <!-- Pagination -->
-                    <div v-if="projects.last_page > 1" class="flex justify-center p-4 gap-2">
-                        <Link
-                            v-for="link in projects.links" :key="link.label"
-                            :href="link.url ?? '#'"
-                            v-html="link.label"
-                            :class="['btn btn-sm', link.active ? 'btn-primary' : 'btn-ghost', !link.url ? 'btn-disabled' : '']"
-                        />
-                    </div>
+                    <DataTablePagination
+                        :paginator="projects"
+                        @update:per-page="(n) => { perPage.value = n; }"
+                    />
                 </div>
             </div>
         </div>

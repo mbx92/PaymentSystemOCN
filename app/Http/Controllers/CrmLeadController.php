@@ -32,15 +32,8 @@ class CrmLeadController extends Controller
             $query->where('source', $source);
         }
 
-        $leads = $query->orderByDesc('created_at')->get();
-
-        $users = User::query()
-            ->whereHas('roles', fn ($r) => $r->whereIn('name', ['admin', 'manajer']))
-            ->orderBy('name')
-            ->get(['id', 'name']);
-
-        return Inertia::render('ERP/CRM/Leads', [
-            'leads' => $leads->map(fn (CrmLead $lead) => [
+        $leads = $query->orderByDesc('created_at')->paginate($this->resolvedPerPage($request))->withQueryString()
+            ->through(fn (CrmLead $lead) => [
                 'id' => $lead->id,
                 'name' => $lead->name,
                 'company' => $lead->company,
@@ -53,9 +46,17 @@ class CrmLeadController extends Controller
                 'pic_name' => $lead->pic?->name,
                 'notes' => $lead->notes,
                 'created_at' => $lead->created_at?->format('Y-m-d H:i'),
-            ]),
+            ]);
+
+        $users = User::query()
+            ->whereHas('roles', fn ($r) => $r->whereIn('name', ['admin', 'manajer']))
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        return Inertia::render('ERP/CRM/Leads', [
+            'leads' => $leads,
             'users' => $users,
-            'filters' => $request->only(['q', 'status', 'source']),
+            'filters' => $this->filtersWithPerPage($request, ['q', 'status', 'source']),
         ]);
     }
 

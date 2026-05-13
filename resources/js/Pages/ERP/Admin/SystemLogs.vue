@@ -1,7 +1,8 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
-import { computed, reactive, ref, watch } from 'vue';
+import { reactive, ref, watch } from 'vue';
 
 const props = defineProps({
   logs: Object,
@@ -18,6 +19,7 @@ const filters = reactive({
   q: props.filters?.q ?? '',
   date_from: props.filters?.date_from ?? '',
   date_to: props.filters?.date_to ?? '',
+  per_page: props.filters?.per_page ?? props.logs?.per_page ?? 25,
 });
 
 let timer;
@@ -49,14 +51,6 @@ const methodBadgeClass = (method) => {
   if (m === 'PUT' || m === 'PATCH') return 'badge-warning';
   if (m === 'DELETE') return 'badge-error';
   return 'badge-ghost';
-};
-
-const hasPrev = computed(() => !!props.logs?.prev_page_url);
-const hasNext = computed(() => !!props.logs?.next_page_url);
-
-const gotoPage = (url) => {
-  if (!url) return;
-  router.visit(url, { preserveState: true, replace: true });
 };
 
 const showModal = ref(false);
@@ -214,21 +208,7 @@ const closeModal = () => {
             </table>
           </div>
 
-          <div class="flex items-center justify-between text-xs text-base-content/60">
-            <div>
-              Menampilkan
-              <span class="font-semibold">{{ logs.from ?? 0 }}</span>
-              -
-              <span class="font-semibold">{{ logs.to ?? 0 }}</span>
-              dari
-              <span class="font-semibold">{{ logs.total }}</span>
-              log.
-            </div>
-            <div class="flex items-center gap-2">
-              <button class="btn btn-xs" :disabled="!hasPrev" @click="gotoPage(logs.prev_page_url)">Prev</button>
-              <button class="btn btn-xs" :disabled="!hasNext" @click="gotoPage(logs.next_page_url)">Next</button>
-            </div>
-          </div>
+          <DataTablePagination :paginator="logs" @update:per-page="(n) => { filters.per_page = n; }" />
         </div>
       </div>
       <div v-if="showModal && selectedLog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40">

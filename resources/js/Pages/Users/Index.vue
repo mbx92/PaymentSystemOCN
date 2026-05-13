@@ -2,10 +2,11 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
 import ConfirmModal from '@/Components/ConfirmModal.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { useForm, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
 
-defineProps({ users: Array, roles: Array });
+defineProps({ users: Object, roles: Array, filters: Object });
 
 const form = useForm({ name: '', email: '', password: '', password_confirmation: '', role: 'anggota' });
 const editingId = ref(null);
@@ -51,7 +52,7 @@ const doDelete = () => { router.delete(route('users.destroy', deletingId.value))
                     <table class="table table-zebra">
                         <thead><tr><th>Nama</th><th>Email</th><th>Role</th><th></th></tr></thead>
                         <tbody>
-                            <tr v-for="u in users" :key="u.id">
+                            <tr v-for="u in users.data" :key="u.id">
                                 <td class="font-medium">{{ u.name }}</td>
                                 <td>{{ u.email }}</td>
                                 <td><StatusBadge :status="u.role" /></td>
@@ -65,6 +66,10 @@ const doDelete = () => { router.delete(route('users.destroy', deletingId.value))
                         </tbody>
                     </table>
                 </div>
+                <DataTablePagination
+                    :paginator="users"
+                    @update:per-page="(n) => router.get(route('users.index'), { per_page: n }, { preserveState: true, replace: true })"
+                />
             </div>
         </div>
 

@@ -19,37 +19,42 @@ class ERPInventoryController extends Controller
     {
         $warehouses = Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']);
         $selectedWarehouseId = (int) $request->integer('warehouse_id', $warehouses->first()?->id ?? 0);
+        $perPage = $this->resolvedPerPage($request);
 
-        $products = MasterProduct::query()
+        $paginator = MasterProduct::query()
             ->orderBy('name')
-            ->get()
-            ->map(function (MasterProduct $product) use ($selectedWarehouseId) {
-                $qty = 0;
-                $reservedQty = 0;
-                if ($selectedWarehouseId) {
-                    $stockRow = MasterProductWarehouseStock::query()
-                        ->where('master_product_id', $product->id)
-                        ->where('warehouse_id', $selectedWarehouseId)
-                        ->first();
+            ->paginate($perPage)
+            ->withQueryString();
 
-                    $qty = (float) ($stockRow?->qty ?? 0);
-                    $reservedQty = (float) ($stockRow?->reserved_qty ?? 0);
-                }
+        $products = $paginator->through(function (MasterProduct $product) use ($selectedWarehouseId) {
+            $qty = 0;
+            $reservedQty = 0;
+            if ($selectedWarehouseId) {
+                $stockRow = MasterProductWarehouseStock::query()
+                    ->where('master_product_id', $product->id)
+                    ->where('warehouse_id', $selectedWarehouseId)
+                    ->first();
 
-                $availableQty = $qty - $reservedQty;
+                $qty = (float) ($stockRow?->qty ?? 0);
+                $reservedQty = (float) ($stockRow?->reserved_qty ?? 0);
+            }
 
-                return [
-                    'id' => $product->id,
-                    'sku' => $product->sku,
-                    'name' => $product->name,
-                    'stock' => $qty,
-                    'reserved_qty' => $reservedQty,
-                    'available_qty' => $availableQty,
-                    'min_stock' => $product->min_stock,
-                    'total_sold' => $product->total_sold,
-                    'status' => $product->status,
-                ];
-            });
+            $availableQty = $qty - $reservedQty;
+
+            return [
+                'id' => $product->id,
+                'sku' => $product->sku,
+                'name' => $product->name,
+                'stock' => $qty,
+                'reserved_qty' => $reservedQty,
+                'available_qty' => $availableQty,
+                'min_stock' => $product->min_stock,
+                'total_sold' => $product->total_sold,
+                'status' => $product->status,
+            ];
+        });
+
+        $idsOnPage = collect($products->items())->pluck('id')->all();
 
         $reservedStocks = collect();
         $reservedBreakdownByProduct = collect();
@@ -75,15 +80,17 @@ class ERPInventoryController extends Controller
                     'planned_qty' => (float) $material->planned_qty,
                     'reserved_qty' => (float) $material->reserved_qty,
                     'issued_qty' => (float) $material->issued_qty,
-                ])->values());
+                ])->values())
+                ->only($idsOnPage);
         }
 
         return Inertia::render('ERP/Inventory/StockManagement', [
             'products' => $products,
             'warehouses' => $warehouses,
-            'filters' => [
-                'warehouse_id' => $selectedWarehouseId,
-            ],
+            'filters' => array_merge(
+                $this->filtersWithPerPage($request, ['warehouse_id']),
+                ['warehouse_id' => $selectedWarehouseId],
+            ),
             'reserved_alert' => [
                 'count' => $reservedStocks->count(),
                 'total_reserved_qty' => (float) $reservedStocks->sum('reserved_qty'),
@@ -404,7 +411,7 @@ class ERPInventoryController extends Controller
             });
         }
 
-        $movements = $query->paginate(25)->withQueryString();
+        $movements = $query->paginate($this->resolvedPerPage($request))->withQueryString();
 
         return Inertia::render('ERP/Inventory/StockMovements', [
             'movements' => $movements->through(fn (ProductStockMovement $m) => [
@@ -417,7 +424,7 @@ class ERPInventoryController extends Controller
                 'qty' => (float) $m->qty,
                 'note' => $m->note,
             ]),
-            'filters' => $request->only(['warehouse_id', 'product_id', 'type', 'from', 'to', 'q']),
+            'filters' => $this->filtersWithPerPage($request, ['warehouse_id', 'product_id', 'type', 'from', 'to', 'q']),
             'warehouses' => $warehouses,
             'products' => $products,
             'types' => [

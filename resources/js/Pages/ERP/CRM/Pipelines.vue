@@ -1,11 +1,12 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { reactive, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 
 const props = defineProps({
-  pipelines: Array,
+  pipelines: Object,
   customers: Array,
   leads: Array,
   users: Array,
@@ -17,6 +18,7 @@ const { format } = useCurrency();
 const filters = reactive({
   q: props.filters?.q ?? '',
   stage: props.filters?.stage ?? '',
+  per_page: props.filters?.per_page ?? props.pipelines?.per_page ?? 25,
 });
 
 let timer;
@@ -159,7 +161,7 @@ const remove = (row) => {
       <div class="ocn-panel">
         <div class="ocn-panel__head">
           <h2 class="ocn-panel__title">Daftar pipeline</h2>
-          <p class="ocn-panel__desc">{{ (pipelines || []).length }} pipeline ditemukan.</p>
+          <p class="ocn-panel__desc">{{ pipelines?.total ?? 0 }} pipeline ditemukan.</p>
         </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra table-sm">
@@ -177,7 +179,7 @@ const remove = (row) => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in (pipelines || [])" :key="row.id">
+              <tr v-for="row in (pipelines?.data || [])" :key="row.id">
                 <td class="font-mono text-xs">{{ row.code }}</td>
                 <td class="font-medium">{{ row.title }}</td>
                 <td class="text-sm">
@@ -202,12 +204,13 @@ const remove = (row) => {
                   <button type="button" class="btn btn-ghost btn-xs text-error" @click="remove(row)">Hapus</button>
                 </td>
               </tr>
-              <tr v-if="!(pipelines || []).length">
+              <tr v-if="!(pipelines?.data || []).length">
                 <td colspan="9" class="py-8 text-center text-base-content/50">Belum ada data pipeline.</td>
               </tr>
             </tbody>
           </table>
         </div>
+        <DataTablePagination :paginator="pipelines" @update:per-page="(n) => { filters.per_page = n; }" />
       </div>
     </div>
 
