@@ -6,11 +6,13 @@ use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Shared\Enums\DocumentStatus;
 use App\Models\CashOut;
+use App\Models\CashCategory;
 use App\Models\CategoryCoaMapping;
 use App\Models\Project;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class CashOutController extends Controller
@@ -57,6 +59,7 @@ class CashOutController extends Controller
                 ->where('type', 'asset')
                 ->orderBy('code')
                 ->get(['id', 'code', 'name']),
+            'categoryOptions' => $this->categoryOptions(),
             'filters' => $this->filtersWithPerPage($request, ['project_id', 'category', 'date_from', 'date_to']),
         ]);
     }
@@ -66,7 +69,7 @@ class CashOutController extends Controller
         $validated = $request->validate([
             'project_id' => 'nullable|uuid|exists:projects,id',
             'cash_account_id' => 'required|exists:accounts,id',
-            'category' => 'required|in:biaya_tim,komisi_referral,operasional,lainnya',
+            'category' => 'required|string|max:50',
             'amount' => 'required|numeric|min:1',
             'date' => 'required|date',
             'note' => 'nullable|string',
@@ -79,13 +82,8 @@ class CashOutController extends Controller
         $validated['approved_by'] = Auth::id();
         $validated['posted_at'] = now();
         $validated['posted_by'] = Auth::id();
-        $expenseAccountId = CategoryCoaMapping::query()
-            ->where('domain', 'cash_out')
-            ->where('category', $validated['category'])
-            ->value('account_id');
-        if (! $expenseAccountId) {
-            return back()->withErrors(['category' => 'Kategori kas keluar belum di-mapping ke akun CoA.'])->withInput();
-        }
+        $this->assertCategoryExists($validated['category']);
+        $expenseAccountId = $this->resolveMappedAccountId($validated['category']);
         $cashOut = CashOut::create($validated);
         $expenseAccount = Account::query()->findOrFail($expenseAccountId);
         $cashAccount = Account::query()->findOrFail((int) $validated['cash_account_id']);
@@ -111,12 +109,15 @@ class CashOutController extends Controller
         $validated = $request->validate([
             'project_id' => 'nullable|uuid|exists:projects,id',
             'cash_account_id' => 'required|exists:accounts,id',
-            'category' => 'required|in:biaya_tim,komisi_referral,operasional,lainnya',
+            'category' => 'required|string|max:50',
             'amount' => 'required|numeric|min:1',
             'date' => 'required|date',
             'note' => 'nullable|string',
             'recipient_name' => 'nullable|string|max:255',
         ]);
+
+        $this->assertCategoryExists($validated['category']);
+        $this->resolveMappedAccountId($validated['category']);
 
         $cashOut->update($validated);
 
@@ -128,5 +129,51 @@ class CashOutController extends Controller
         $cashOut->delete();
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Kas keluar berhasil dihapus.']);
+    }
+
+    private function assertCategoryExists(string $category): void
+    {
+        $exists = CashCategory::query()
+            ->where('domain', 'cash_out')
+            ->where('key', $category)
+            ->where('is_active', true)
+            ->exists();
+
+        if (! $exists) {
+            throw ValidationException::withMessages([
+                'category' => 'Kategori kas keluar tidak valid atau nonaktif.',
+            ]);
+        }
+    }
+
+    private function resolveMappedAccountId(string $category): int
+    {
+        $accountId = CategoryCoaMapping::query()
+            ->where('domain', 'cash_out')
+            ->where('category', $category)
+            ->value('account_id');
+
+        if (! $accountId) {
+            throw ValidationException::withMessages([
+                'category' => 'Kategori kas keluar belum di-mapping ke akun CoA.',
+            ]);
+        }
+
+        return (int) $accountId;
+    }
+
+    private function categoryOptions()
+    {
+        return CashCategory::query()
+            ->where('domain', 'cash_out')
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('label')
+            ->get(['key', 'label'])
+            ->map(fn (CashCategory $category): array => [
+                'value' => $category->key,
+                'label' => $category->label,
+            ])
+            ->values();
     }
 }

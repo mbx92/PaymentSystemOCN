@@ -15,10 +15,13 @@ const props = defineProps({
     warehouse_stocks: Object,
     team_members: Array,
     team_roles: Array,
+    cash_accounts: Array,
+    cash_category_options: Object,
 });
 const { format } = useCurrency();
 const activeTab = ref('info');
 const deletingMaterialId = ref(null);
+const createFolderForm = useForm({});
 
 // Mark term paid
 const payForm = useForm({ paid_at: new Date().toISOString().slice(0, 10), note: '' });
@@ -53,8 +56,7 @@ const filteredMaterialProducts = computed(() => {
         .map((p) => {
             const stock = whStocks[p.id];
             return { ...p, available: stock ? stock.available : 0 };
-        })
-        .filter((p) => p.available > 0);
+        });
 });
 
 const selectMaterialProduct = (product) => {
@@ -74,6 +76,22 @@ const selectedProductAvailable = computed(() => {
     return stock ? stock.available : 0;
 });
 
+const materialStatusLabel = (status) => ({
+    planned: 'Planned',
+    partial: 'Partial',
+    ready: 'Ready',
+    issued: 'Issued',
+    reserved: 'Ready',
+}[status] ?? status);
+
+const materialStatusClass = (status) => ({
+    planned: 'badge-warning',
+    partial: 'badge-info',
+    ready: 'badge-success',
+    issued: 'badge-primary',
+    reserved: 'badge-success',
+}[status] ?? 'badge-ghost');
+
 const submitMaterial = () => {
     materialForm.post(route('projects.materials.store', props.project.id), {
         preserveScroll: true,
@@ -92,6 +110,12 @@ const confirmDeleteMaterial = (id) => {
 const deleteMaterial = () => {
     if (!deletingMaterialId.value) return;
     router.delete(route('projects.materials.destroy', { project: props.project.id, material: deletingMaterialId.value }));
+};
+
+const createLegalFolder = () => {
+    createFolderForm.post(route('projects.legal-folder.create', props.project.id), {
+        preserveScroll: true,
+    });
 };
 
 const teamForm = useForm({
@@ -280,8 +304,29 @@ const ganttPhases = computed(() => {
 });
 
 // Cash forms
-const cashInForm = useForm({ project_id: props.project.id, category: 'pendapatan_jasa', amount: 0, date: new Date().toISOString().slice(0, 10), note: '' });
-const cashOutForm = useForm({ project_id: props.project.id, category: 'biaya_tim', amount: 0, date: new Date().toISOString().slice(0, 10), note: '', recipient_name: '' });
+const defaultCashAccountId = computed(() => props.cash_accounts?.[0]?.id ?? '');
+const cashInCategories = computed(() => props.cash_category_options?.in ?? []);
+const cashOutCategories = computed(() => props.cash_category_options?.out ?? []);
+const cashCategoryLabels = computed(() => props.cash_category_options?.labels ?? {});
+const categoryLabel = (value) => cashCategoryLabels.value?.[value] ?? value;
+
+const cashInForm = useForm({
+    project_id: props.project.id,
+    cash_account_id: defaultCashAccountId.value,
+    category: 'pendapatan_project',
+    amount: 0,
+    date: new Date().toISOString().slice(0, 10),
+    note: '',
+});
+const cashOutForm = useForm({
+    project_id: props.project.id,
+    cash_account_id: defaultCashAccountId.value,
+    category: 'biaya_tim',
+    amount: 0,
+    date: new Date().toISOString().slice(0, 10),
+    note: '',
+    recipient_name: '',
+});
 
 const submitCashIn = () => cashInForm.post(route('cash-in.store'), { onSuccess: () => { cashInForm.reset('amount', 'note'); document.getElementById('modal-cash-in').close(); } });
 const submitCashOut = () => cashOutForm.post(route('cash-out.store'), { onSuccess: () => { cashOutForm.reset('amount', 'note', 'recipient_name'); document.getElementById('modal-cash-out').close(); } });
@@ -497,7 +542,7 @@ const deleteProject = () => {
 
                 <div class="ocn-panel">
                     <div class="ocn-panel__head">
-                        <h2 class="ocn-panel__title">Daftar material (BOM reserved)</h2>
+                        <h2 class="ocn-panel__title">Daftar material project</h2>
                     </div>
                     <div class="overflow-x-auto">
                         <table class="table table-sm">
@@ -510,7 +555,7 @@ const deleteProject = () => {
                                     <td>{{ m.planned_qty }} {{ m.uom }}</td>
                                     <td>{{ m.reserved_qty }} {{ m.uom }}</td>
                                     <td>{{ m.issued_qty }} {{ m.uom }}</td>
-                                    <td><span class="badge badge-ghost badge-sm">{{ m.status }}</span></td>
+                                    <td><span class="badge badge-sm" :class="materialStatusClass(m.status)">{{ materialStatusLabel(m.status) }}</span></td>
                                     <td class="text-right"><button class="btn btn-ghost btn-xs text-error" @click="confirmDeleteMaterial(m.id)">Hapus</button></td>
                                 </tr>
                                 <tr v-if="!project.materials.length"><td colspan="8" class="text-center py-6 text-base-content/50">Belum ada material project.</td></tr>
@@ -525,6 +570,26 @@ const deleteProject = () => {
                 <div class="flex gap-2">
                     <button class="btn btn-success btn-sm" onclick="document.getElementById('modal-cash-in').showModal()">+ Kas Masuk</button>
                     <button class="btn btn-error btn-sm" onclick="document.getElementById('modal-cash-out').showModal()">+ Kas Keluar</button>
+                </div>
+                <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <div class="stats shadow border border-base-300 bg-base-100">
+                        <div class="stat">
+                            <div class="stat-title">Dana Material Client</div>
+                            <div class="stat-value text-base">{{ format(project.summary.material_fund_received || 0) }}</div>
+                        </div>
+                    </div>
+                    <div class="stats shadow border border-base-300 bg-base-100">
+                        <div class="stat">
+                            <div class="stat-title">Terpakai Material</div>
+                            <div class="stat-value text-base">{{ format(project.summary.material_fund_used || 0) }}</div>
+                        </div>
+                    </div>
+                    <div class="stats shadow border border-base-300 bg-base-100">
+                        <div class="stat">
+                            <div class="stat-title">Sisa Dana Material</div>
+                            <div class="stat-value text-base">{{ format(project.summary.material_fund_balance || 0) }}</div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="ocn-panel">
@@ -558,7 +623,7 @@ const deleteProject = () => {
                                             {{ c.type === 'in' ? 'Kas Masuk' : 'Kas Keluar' }}
                                         </span>
                                     </td>
-                                    <td><span class="badge badge-sm badge-ghost">{{ c.category }}</span></td>
+                                    <td><span class="badge badge-sm badge-ghost">{{ categoryLabel(c.category) }}</span></td>
                                     <td class="text-right font-semibold tabular-nums" :class="c.type === 'in' ? 'text-success' : 'text-error'">
                                         {{ c.type === 'in' ? '+' : '-' }}{{ format(c.amount) }}
                                     </td>
@@ -586,20 +651,33 @@ const deleteProject = () => {
                     <div class="card-body space-y-3">
                         <p class="text-sm text-base-content/70 flex flex-wrap items-center gap-2">
                             Path vault:
-                            <span class="font-mono text-xs bg-base-200 px-2 py-0.5 rounded">{{ project.legal_documents?.vault_path || '-' }}</span>
-                            <span v-if="project.legal_documents?.uses_custom_mapping" class="badge badge-info badge-sm">Map manual</span>
-                            <span v-else class="badge badge-ghost badge-sm">Default otomatis</span>
+                            <span class="font-mono text-xs bg-base-200 px-2 py-0.5 rounded">
+                                {{ project.legal_documents?.vault_path || project.legal_documents?.default_path_hint || '-' }}
+                            </span>
+                            <span v-if="project.legal_documents?.folder_exists" class="badge badge-success badge-sm">Folder tersedia</span>
+                            <span v-else class="badge badge-warning badge-sm">Belum dibuat</span>
+                            <span v-if="project.legal_documents?.has_saved_mapping" class="badge badge-info badge-sm">Path tersimpan</span>
+                            <span v-else class="badge badge-ghost badge-sm">Default disarankan</span>
                         </p>
-                        <p v-if="!project.legal_documents?.uses_custom_mapping && project.legal_documents?.default_path_hint" class="text-xs text-base-content/55">
-                            Default bila path kustom kosong: <span class="font-mono">{{ project.legal_documents.default_path_hint }}</span>
+                        <p class="text-xs text-base-content/55">
+                            Folder dokumen dibuat hanya saat tombol dibuat ditekan. Setelah dibuat, path disimpan ke project agar tidak berubah saat nama project diedit.
                             — ubah di <Link :href="route('projects.edit', project.id)" class="link link-primary">Edit project</Link>.
                         </p>
+                        <p v-if="createFolderForm.errors.legal_vault_path" class="text-xs text-error">{{ createFolderForm.errors.legal_vault_path }}</p>
                         <div class="flex flex-wrap gap-2">
+                            <button
+                                v-if="!project.legal_documents?.folder_exists"
+                                type="button"
+                                class="btn btn-primary btn-sm"
+                                :disabled="createFolderForm.processing"
+                                @click="createLegalFolder"
+                            >Buat folder dokumen</button>
                             <Link
-                                v-if="project.legal_documents?.vault_path"
+                                v-if="project.legal_documents?.folder_exists && project.legal_documents?.vault_path"
                                 :href="route('erp.hr.legal', { path: project.legal_documents.vault_path })"
                                 class="btn btn-primary btn-sm"
                             >Buka folder di Legal</Link>
+                            <Link :href="route('projects.edit', project.id)" class="btn btn-outline btn-sm">Atur path</Link>
                             <Link :href="route('erp.hr')" class="btn btn-outline btn-sm">Ke modul HR</Link>
                         </div>
                     </div>
@@ -893,9 +971,17 @@ const deleteProject = () => {
                     <div>
                         <label class="label"><span class="label-text">Kategori</span></label>
                         <select v-model="cashInForm.category" class="select select-bordered w-full">
-                            <option value="pendapatan_jasa">Pendapatan Jasa</option>
-                            <option value="lainnya">Lainnya</option>
+                            <option v-for="category in cashInCategories" :key="category.value" :value="category.value">{{ category.label }}</option>
                         </select>
+                        <p v-if="cashInForm.errors.category" class="text-error text-xs mt-1">{{ cashInForm.errors.category }}</p>
+                    </div>
+                    <div>
+                        <label class="label"><span class="label-text">Akun Kas / Bank</span></label>
+                        <select v-model="cashInForm.cash_account_id" class="select select-bordered w-full">
+                            <option value="">Pilih akun kas/bank</option>
+                            <option v-for="account in cash_accounts" :key="account.id" :value="account.id">{{ account.code }} - {{ account.name }}</option>
+                        </select>
+                        <p v-if="cashInForm.errors.cash_account_id" class="text-error text-xs mt-1">{{ cashInForm.errors.cash_account_id }}</p>
                     </div>
                     <CurrencyInput v-model="cashInForm.amount" label="Jumlah" :required="true" :error="cashInForm.errors.amount" />
                     <div>
@@ -923,11 +1009,17 @@ const deleteProject = () => {
                     <div>
                         <label class="label"><span class="label-text">Kategori</span></label>
                         <select v-model="cashOutForm.category" class="select select-bordered w-full">
-                            <option value="biaya_tim">Biaya Tim</option>
-                            <option value="komisi_referral">Komisi Referral</option>
-                            <option value="operasional">Operasional</option>
-                            <option value="lainnya">Lainnya</option>
+                            <option v-for="category in cashOutCategories" :key="category.value" :value="category.value">{{ category.label }}</option>
                         </select>
+                        <p v-if="cashOutForm.errors.category" class="text-error text-xs mt-1">{{ cashOutForm.errors.category }}</p>
+                    </div>
+                    <div>
+                        <label class="label"><span class="label-text">Akun Kas / Bank</span></label>
+                        <select v-model="cashOutForm.cash_account_id" class="select select-bordered w-full">
+                            <option value="">Pilih akun kas/bank</option>
+                            <option v-for="account in cash_accounts" :key="account.id" :value="account.id">{{ account.code }} - {{ account.name }}</option>
+                        </select>
+                        <p v-if="cashOutForm.errors.cash_account_id" class="text-error text-xs mt-1">{{ cashOutForm.errors.cash_account_id }}</p>
                     </div>
                     <CurrencyInput v-model="cashOutForm.amount" label="Jumlah" :required="true" :error="cashOutForm.errors.amount" />
                     <div>
@@ -1024,7 +1116,7 @@ const deleteProject = () => {
                                     <td class="text-right tabular-nums font-medium text-success">{{ p.available }}</td>
                                 </tr>
                                 <tr v-if="filteredMaterialProducts.length === 0">
-                                    <td colspan="4" class="text-center py-6 text-base-content/50">Tidak ada produk dengan stok tersedia di warehouse ini.</td>
+                                    <td colspan="4" class="text-center py-6 text-base-content/50">Tidak ada material project aktif.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1035,9 +1127,9 @@ const deleteProject = () => {
                     <p class="text-sm font-semibold mb-3">Produk dipilih: <span class="text-primary">{{ selectedMaterialProduct?.sku }} — {{ selectedMaterialProduct?.name }}</span></p>
                     <div class="grid grid-cols-2 gap-3">
                         <div>
-                            <label class="label"><span class="label-text">Qty Reserve <span class="text-error">*</span></span></label>
-                            <input v-model.number="materialForm.planned_qty" type="number" min="1" :max="selectedProductAvailable" step="1" class="input input-bordered w-full" />
-                            <p class="mt-1 text-xs text-base-content/60">Maks: {{ selectedProductAvailable }}</p>
+                            <label class="label"><span class="label-text">Qty Kebutuhan <span class="text-error">*</span></span></label>
+                            <input v-model.number="materialForm.planned_qty" type="number" min="1" step="1" class="input input-bordered w-full" />
+                            <p class="mt-1 text-xs text-base-content/60">Tersedia: {{ selectedProductAvailable }}. Kekurangan otomatis masuk perencanaan PO.</p>
                         </div>
                         <div>
                             <label class="label"><span class="label-text">Catatan</span></label>
@@ -1054,7 +1146,7 @@ const deleteProject = () => {
                         :disabled="!materialForm.master_product_id || materialForm.planned_qty <= 0 || materialForm.processing"
                         @click="submitMaterial"
                     >
-                        Tambah & Reserve
+                        Tambah Kebutuhan
                     </button>
                 </div>
             </div>

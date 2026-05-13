@@ -156,7 +156,7 @@ const submit = () => {
                         <p class="text-xs text-base-content/65 -mt-1">
                             Relatif dari root vault (tanpa awalan <span class="font-mono">legal-vault/</span>).
                             Contoh: <span class="font-mono">Kontrak Klien/ACME</span>.
-                            Kosongkan untuk memakai folder otomatis:
+                            Kosongkan bila project belum membutuhkan folder dokumen. Folder dapat dibuat manual dari tab Dokumen dengan default:
                             <span class="font-mono text-[11px]">{{ project.suggested_legal_vault_path || 'Project Contracts/…' }}</span>
                         </p>
                         <input

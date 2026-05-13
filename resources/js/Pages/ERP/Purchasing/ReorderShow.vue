@@ -62,6 +62,14 @@ const goBack = () => {
                 <dt class="text-xs font-semibold uppercase text-base-content/50">Target stok (min + kebutuhan lead)</dt>
                 <dd class="font-semibold">{{ detail.target_stock }}</dd>
               </div>
+              <div>
+                <dt class="text-xs font-semibold uppercase text-base-content/50">Kurang material project</dt>
+                <dd class="font-semibold">{{ detail.project_shortage_qty }}</dd>
+              </div>
+              <div>
+                <dt class="text-xs font-semibold uppercase text-base-content/50">Masih on order</dt>
+                <dd class="font-semibold">{{ detail.on_order_qty }}</dd>
+              </div>
               <div class="sm:col-span-2">
                 <dt class="text-xs font-semibold uppercase text-base-content/50">Saran qty pembelian</dt>
                 <dd><span class="badge badge-primary badge-lg font-mono">{{ detail.suggested_qty }}</span></dd>

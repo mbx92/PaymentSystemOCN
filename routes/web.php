@@ -189,6 +189,7 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/projects/budgets/{budget}/pdf', [ProjectBudgetController::class, 'pdf'])->name('erp.projects.budgets.pdf');
         Route::post('projects/{project}/materials', [ProjectController::class, 'storeMaterial'])->name('projects.materials.store');
         Route::delete('projects/{project}/materials/{material}', [ProjectController::class, 'destroyMaterial'])->name('projects.materials.destroy');
+        Route::post('projects/{project}/legal-folder', [ProjectController::class, 'createLegalFolder'])->name('projects.legal-folder.create');
         Route::patch('projects/{project}/status', [ProjectController::class, 'updateStatus'])->name('projects.status.update');
         Route::post('projects/{project}/team-members', [ProjectController::class, 'storeTeamMember'])->name('projects.team-members.store');
         Route::delete('projects/{project}/team-members/{teamDistribution}', [ProjectController::class, 'destroyTeamMember'])->name('projects.team-members.destroy');

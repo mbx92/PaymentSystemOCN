@@ -52,8 +52,12 @@ class DatabaseSeeder extends Seeder
             ['code' => '1101', 'name' => 'Piutang Usaha', 'type' => 'asset', 'normal_balance' => 'debit'],
             ['code' => '1201', 'name' => 'Persediaan Barang Dagang', 'type' => 'asset', 'normal_balance' => 'debit'],
             ['code' => '2001', 'name' => 'Hutang Usaha', 'type' => 'liability', 'normal_balance' => 'credit'],
+            ['code' => '2005', 'name' => 'Pendapatan Diterima Dimuka', 'type' => 'liability', 'normal_balance' => 'credit'],
+            ['code' => '2006', 'name' => 'Dana Titipan Material Client', 'type' => 'liability', 'normal_balance' => 'credit'],
             ['code' => '4001', 'name' => 'Pendapatan Jasa', 'type' => 'revenue', 'normal_balance' => 'credit'],
+            ['code' => '4003', 'name' => 'Pendapatan Project', 'type' => 'revenue', 'normal_balance' => 'credit'],
             ['code' => '5001', 'name' => 'Beban Operasional', 'type' => 'expense', 'normal_balance' => 'debit'],
+            ['code' => '5009', 'name' => 'HPP - Harga Pokok Penjualan', 'type' => 'expense', 'normal_balance' => 'debit'],
         ];
 
         foreach ($chartOfAccounts as $account) {

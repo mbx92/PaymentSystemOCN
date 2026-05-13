@@ -25,6 +25,11 @@ const form = useForm({ name: '', email: '', password: '', password_confirmation:
 const editingId = ref(null);
 const editForm = useForm({ name: '', email: '', password: '', password_confirmation: '', role: 'anggota' });
 
+const openAddUser = () => {
+    form.clearErrors();
+    document.getElementById('modal-add-user')?.showModal();
+};
+
 const submitAdd = () => form.post(route('users.store'), {
     onSuccess: () => {
         form.reset();
@@ -85,7 +90,7 @@ const doDelete = () => { router.delete(route('users.destroy', deletingId.value))
                     </div>
                     <div class="flex flex-wrap items-center gap-2">
                         <span class="badge badge-ghost badge-sm">{{ users.total ?? users.data?.length ?? 0 }} akun</span>
-                        <button class="btn btn-primary btn-sm" @click="document.getElementById('modal-add-user')?.showModal()">
+                        <button type="button" class="btn btn-primary btn-sm" @click="openAddUser">
                             + Tambah User
                         </button>
                     </div>
@@ -159,7 +164,7 @@ const doDelete = () => { router.delete(route('users.destroy', deletingId.value))
                 </div>
                 <div class="modal-action">
                     <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
-                    <button class="btn btn-primary" :disabled="form.processing" @click="submitAdd">Simpan</button>
+                    <button type="button" class="btn btn-primary" :disabled="form.processing" @click="submitAdd">Simpan</button>
                 </div>
             </div>
         </dialog>
@@ -197,7 +202,7 @@ const doDelete = () => { router.delete(route('users.destroy', deletingId.value))
                 </div>
                 <div class="modal-action">
                     <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
-                    <button class="btn btn-primary" :disabled="editForm.processing" @click="submitEdit">Simpan</button>
+                    <button type="button" class="btn btn-primary" :disabled="editForm.processing" @click="submitEdit">Simpan</button>
                 </div>
             </div>
         </dialog>

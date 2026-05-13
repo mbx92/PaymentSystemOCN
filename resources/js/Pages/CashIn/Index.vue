@@ -5,11 +5,16 @@ import ConfirmModal from '@/Components/ConfirmModal.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
 import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { useForm, router } from '@inertiajs/vue3';
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 
-const props = defineProps({ cashIns: Object, total: Number, projects: Array, paymentMethods: Array, cashAccounts: Array, filters: Object });
+const props = defineProps({ cashIns: Object, total: Number, projects: Array, paymentMethods: Array, cashAccounts: Array, categoryOptions: Array, filters: Object });
 const { format } = useCurrency();
+const defaultCategory = (preferred) => props.categoryOptions?.some((category) => category.value === preferred)
+    ? preferred
+    : (props.categoryOptions?.[0]?.value ?? preferred);
+const categoryLabelMap = computed(() => Object.fromEntries((props.categoryOptions ?? []).map((category) => [category.value, category.label])));
+const categoryLabel = (value) => categoryLabelMap.value[value] ?? value;
 
 const filters = ref({ ...props.filters });
 let timer;
@@ -22,7 +27,7 @@ const form = useForm({
     project_id: '',
     payment_method_id: '',
     cash_account_id: '',
-    category: 'pendapatan_jasa',
+    category: defaultCategory('pendapatan_project'),
     amount: 0,
     date: new Date().toISOString().slice(0,10),
     note: '',
@@ -32,7 +37,7 @@ const editForm = useForm({
     project_id: '',
     payment_method_id: '',
     cash_account_id: '',
-    category: 'pendapatan_jasa',
+    category: defaultCategory('pendapatan_project'),
     amount: 0,
     date: '',
     note: '',
@@ -78,8 +83,7 @@ const doDelete = () => { router.delete(route('cash-in.destroy', deletingId.value
                 </select>
                 <select v-model="filters.category" class="select select-bordered select-sm">
                     <option value="">Semua Kategori</option>
-                    <option value="pendapatan_jasa">Pendapatan Jasa</option>
-                    <option value="lainnya">Lainnya</option>
+                    <option v-for="category in categoryOptions" :key="category.value" :value="category.value">{{ category.label }}</option>
                 </select>
                 <input v-model="filters.date_from" type="date" class="input input-bordered input-sm" />
                 <input v-model="filters.date_to" type="date" class="input input-bordered input-sm" />
@@ -109,7 +113,7 @@ const doDelete = () => { router.delete(route('cash-in.destroy', deletingId.value
                                 <td>{{ c.date }}</td>
                                 <td class="font-medium">{{ c.project_name }}</td>
                                 <td>{{ c.payment_method_name || '-' }}</td>
-                                <td><span class="badge badge-sm badge-ghost">{{ c.category }}</span></td>
+                                <td><span class="badge badge-sm badge-ghost">{{ categoryLabel(c.category) }}</span></td>
                                 <td class="font-semibold text-success">{{ format(c.amount) }}</td>
                                 <td><StatusBadge :status="c.document_status" /></td>
                                 <td class="font-mono text-xs">{{ c.journal_entry_id ?? '-' }}</td>
@@ -147,8 +151,7 @@ const doDelete = () => { router.delete(route('cash-in.destroy', deletingId.value
                     <div>
                         <label class="label"><span class="label-text">Kategori</span></label>
                         <select v-model="form.category" class="select select-bordered w-full">
-                            <option value="pendapatan_jasa">Pendapatan Jasa</option>
-                            <option value="lainnya">Lainnya</option>
+                            <option v-for="category in categoryOptions" :key="category.value" :value="category.value">{{ category.label }}</option>
                         </select>
                     </div>
                     <div>
@@ -200,8 +203,7 @@ const doDelete = () => { router.delete(route('cash-in.destroy', deletingId.value
                     <div>
                         <label class="label"><span class="label-text">Kategori</span></label>
                         <select v-model="editForm.category" class="select select-bordered w-full">
-                            <option value="pendapatan_jasa">Pendapatan Jasa</option>
-                            <option value="lainnya">Lainnya</option>
+                            <option v-for="category in categoryOptions" :key="category.value" :value="category.value">{{ category.label }}</option>
                         </select>
                     </div>
                     <div>

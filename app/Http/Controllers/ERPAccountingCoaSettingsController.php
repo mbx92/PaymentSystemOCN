@@ -172,14 +172,22 @@ class ERPAccountingCoaSettingsController extends Controller
 
         $categoryDefaults = [
             ['domain' => 'cash_in', 'category' => 'pendapatan_project', 'account_code' => '4003'],
+            ['domain' => 'cash_in', 'category' => 'uang_muka_project', 'account_code' => '2005'],
+            ['domain' => 'cash_in', 'category' => 'dana_material_client', 'account_code' => '2006'],
             ['domain' => 'cash_in', 'category' => 'pendapatan_pos', 'account_code' => '4002'],
+            ['domain' => 'cash_in', 'category' => 'penjualan_pos', 'account_code' => '4002'],
             ['domain' => 'cash_in', 'category' => 'pendapatan_jasa', 'account_code' => '4001'],
             ['domain' => 'cash_in', 'category' => 'piutang_masuk', 'account_code' => '1101'],
             ['domain' => 'cash_in', 'category' => 'investasi_masuk', 'account_code' => '3001'],
             ['domain' => 'cash_in', 'category' => 'pendapatan_lainnya', 'account_code' => '4004'],
+            ['domain' => 'cash_in', 'category' => 'lainnya', 'account_code' => '4004'],
             ['domain' => 'cash_in', 'category' => 'refund_pembelian', 'account_code' => '2001'],
             ['domain' => 'cash_out', 'category' => 'operasional', 'account_code' => '5001'],
+            ['domain' => 'cash_out', 'category' => 'biaya_tim', 'account_code' => '5002'],
+            ['domain' => 'cash_out', 'category' => 'komisi_referral', 'account_code' => '5014'],
             ['domain' => 'cash_out', 'category' => 'gaji_karyawan', 'account_code' => '5002'],
+            ['domain' => 'cash_out', 'category' => 'pembelian_material_project', 'account_code' => '5009'],
+            ['domain' => 'cash_out', 'category' => 'pemakaian_dana_material_client', 'account_code' => '2006'],
             ['domain' => 'cash_out', 'category' => 'pembelian_bahan', 'account_code' => '5009'],
             ['domain' => 'cash_out', 'category' => 'sewa_tempat', 'account_code' => '5003'],
             ['domain' => 'cash_out', 'category' => 'listrik_air', 'account_code' => '5004'],
@@ -188,6 +196,7 @@ class ERPAccountingCoaSettingsController extends Controller
             ['domain' => 'cash_out', 'category' => 'pajak', 'account_code' => '5012'],
             ['domain' => 'cash_out', 'category' => 'pinjaman', 'account_code' => '2004'],
             ['domain' => 'cash_out', 'category' => 'pengeluaran_lainnya', 'account_code' => '5013'],
+            ['domain' => 'cash_out', 'category' => 'lainnya', 'account_code' => '5013'],
             ['domain' => 'cash_out', 'category' => 'refund_penjualan_pos', 'account_code' => '4005'],
         ];
 
@@ -229,6 +238,8 @@ class ERPAccountingCoaSettingsController extends Controller
         $usageMap = [
             'cash_in' => [
                 'pendapatan_project' => 'Dipakai untuk pembayaran invoice dan termin project.',
+                'uang_muka_project' => 'Dipakai untuk kas masuk uang muka project sebagai pendapatan diterima dimuka.',
+                'dana_material_client' => 'Dipakai untuk dana titipan client yang khusus membiayai material project.',
                 'pendapatan_jasa' => 'Dipakai untuk kas masuk manual kategori jasa.',
                 'penjualan_pos' => 'Dipakai untuk klasifikasi arus kas penjualan POS.',
                 'lainnya' => 'Dipakai untuk kas masuk manual lain-lain.',
@@ -238,6 +249,8 @@ class ERPAccountingCoaSettingsController extends Controller
                 'biaya_tim' => 'Dipakai untuk pembayaran biaya tim.',
                 'komisi_referral' => 'Dipakai untuk komisi referral.',
                 'operasional' => 'Dipakai untuk biaya operasional umum.',
+                'pembelian_material_project' => 'Dipakai untuk pembelian material project dari dana internal perusahaan.',
+                'pemakaian_dana_material_client' => 'Dipakai untuk realisasi pemakaian dana titipan material client.',
                 'lainnya' => 'Dipakai untuk kas keluar manual lain-lain.',
             ],
         ];
@@ -272,4 +285,3 @@ class ERPAccountingCoaSettingsController extends Controller
             ->values();
     }
 }
-

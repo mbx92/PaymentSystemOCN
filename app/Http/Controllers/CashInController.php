@@ -6,12 +6,14 @@ use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Shared\Enums\DocumentStatus;
 use App\Models\CashIn;
+use App\Models\CashCategory;
 use App\Models\CategoryCoaMapping;
 use App\Models\PaymentMethod;
 use App\Models\Project;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class CashInController extends Controller
@@ -63,6 +65,7 @@ class CashInController extends Controller
                 ->where('type', 'asset')
                 ->orderBy('code')
                 ->get(['id', 'code', 'name']),
+            'categoryOptions' => $this->categoryOptions(),
             'filters' => $this->filtersWithPerPage($request, ['project_id', 'category', 'date_from', 'date_to']),
         ]);
     }
@@ -73,7 +76,7 @@ class CashInController extends Controller
             'project_id' => 'required|uuid|exists:projects,id',
             'payment_method_id' => 'nullable|exists:payment_methods,id',
             'cash_account_id' => 'required|exists:accounts,id',
-            'category' => 'required|in:pendapatan_jasa,lainnya',
+            'category' => 'required|string|max:50',
             'amount' => 'required|numeric|min:1',
             'date' => 'required|date',
             'note' => 'nullable|string',
@@ -85,13 +88,8 @@ class CashInController extends Controller
         $validated['approved_by'] = Auth::id();
         $validated['posted_at'] = now();
         $validated['posted_by'] = Auth::id();
-        $revenueAccountId = CategoryCoaMapping::query()
-            ->where('domain', 'cash_in')
-            ->where('category', $validated['category'])
-            ->value('account_id');
-        if (! $revenueAccountId) {
-            return back()->withErrors(['category' => 'Kategori kas masuk belum di-mapping ke akun CoA.'])->withInput();
-        }
+        $this->assertCategoryExists($validated['category']);
+        $revenueAccountId = $this->resolveMappedAccountId($validated['category']);
 
         $cashIn = CashIn::create($validated);
 
@@ -120,11 +118,14 @@ class CashInController extends Controller
             'project_id' => 'required|uuid|exists:projects,id',
             'payment_method_id' => 'nullable|exists:payment_methods,id',
             'cash_account_id' => 'required|exists:accounts,id',
-            'category' => 'required|in:pendapatan_jasa,lainnya',
+            'category' => 'required|string|max:50',
             'amount' => 'required|numeric|min:1',
             'date' => 'required|date',
             'note' => 'nullable|string',
         ]);
+
+        $this->assertCategoryExists($validated['category']);
+        $this->resolveMappedAccountId($validated['category']);
 
         $cashIn->update($validated);
 
@@ -136,5 +137,51 @@ class CashInController extends Controller
         $cashIn->delete();
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Kas masuk berhasil dihapus.']);
+    }
+
+    private function assertCategoryExists(string $category): void
+    {
+        $exists = CashCategory::query()
+            ->where('domain', 'cash_in')
+            ->where('key', $category)
+            ->where('is_active', true)
+            ->exists();
+
+        if (! $exists) {
+            throw ValidationException::withMessages([
+                'category' => 'Kategori kas masuk tidak valid atau nonaktif.',
+            ]);
+        }
+    }
+
+    private function resolveMappedAccountId(string $category): int
+    {
+        $accountId = CategoryCoaMapping::query()
+            ->where('domain', 'cash_in')
+            ->where('category', $category)
+            ->value('account_id');
+
+        if (! $accountId) {
+            throw ValidationException::withMessages([
+                'category' => 'Kategori kas masuk belum di-mapping ke akun CoA.',
+            ]);
+        }
+
+        return (int) $accountId;
+    }
+
+    private function categoryOptions()
+    {
+        return CashCategory::query()
+            ->where('domain', 'cash_in')
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('label')
+            ->get(['key', 'label'])
+            ->map(fn (CashCategory $category): array => [
+                'value' => $category->key,
+                'label' => $category->label,
+            ])
+            ->values();
     }
 }

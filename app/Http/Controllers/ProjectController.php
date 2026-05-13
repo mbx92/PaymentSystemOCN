@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\ERP\Accounting\Models\Account;
 use App\ERP\Inventory\Models\Warehouse;
+use App\Models\CashCategory;
 use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
 use App\Models\Project;
@@ -17,6 +19,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
@@ -104,7 +107,15 @@ class ProjectController extends Controller
         }
         $teamRoles = TeamRole::query()->where('is_active', true)->orderBy('name')->get();
 
-        $legalVaultRelativePath = $this->resolveLegalVaultPath($project);
+        $legalVaultRelativePath = $this->existingLegalVaultRelativePath($project);
+        $legalVaultFolderExists = $legalVaultRelativePath !== null && $this->legalVaultPathExists($legalVaultRelativePath);
+        $cashInCategories = $this->cashCategoryOptions('cash_in');
+        $cashOutCategories = $this->cashCategoryOptions('cash_out');
+        $cashCategoryLabels = $cashInCategories
+            ->concat($cashOutCategories)
+            ->pluck('label', 'value');
+        $materialFundReceived = (float) $project->cashIns->where('category', 'dana_material_client')->sum('amount');
+        $materialFundUsed = (float) $project->cashOuts->where('category', 'pemakaian_dana_material_client')->sum('amount');
 
         return Inertia::render('Projects/Show', [
             'project' => [
@@ -177,6 +188,9 @@ class ProjectController extends Controller
                     'total_referral_commission' => $project->total_referral_commission,
                     'total_operational' => $project->total_operational,
                     'net_team_value' => $project->net_team_value,
+                    'material_fund_received' => $materialFundReceived,
+                    'material_fund_used' => $materialFundUsed,
+                    'material_fund_balance' => $materialFundReceived - $materialFundUsed,
                 ],
                 'materials' => $project->materials->map(fn ($m) => [
                     'id' => $m->id,
@@ -192,6 +206,8 @@ class ProjectController extends Controller
                 ]),
                 'legal_documents' => [
                     'vault_path' => $legalVaultRelativePath,
+                    'folder_exists' => $legalVaultFolderExists,
+                    'has_saved_mapping' => $project->legal_vault_path !== null && trim((string) $project->legal_vault_path) !== '',
                     'uses_custom_mapping' => $project->legal_vault_path !== null && trim((string) $project->legal_vault_path) !== '',
                     'default_path_hint' => $this->defaultLegalVaultRelativePath($project),
                 ],
@@ -205,8 +221,10 @@ class ProjectController extends Controller
             ],
             'material_products' => MasterProduct::query()
                 ->where('status', 'active')
+                ->where('product_type', 'project_material')
+                ->whereIn('sales_channel', ['project', 'both'])
                 ->orderBy('name')
-                ->get(['id', 'sku', 'name', 'uom']),
+                ->get(['id', 'sku', 'name', 'uom', 'sales_channel', 'product_type']),
             'warehouses' => Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']),
             'warehouse_stocks' => MasterProductWarehouseStock::query()
                 ->get(['master_product_id', 'warehouse_id', 'qty', 'reserved_qty'])
@@ -221,6 +239,16 @@ class ProjectController extends Controller
                 'id' => $role->id,
                 'name' => $role->name,
             ]),
+            'cash_accounts' => Account::query()
+                ->where('is_active', true)
+                ->where('type', 'asset')
+                ->orderBy('code')
+                ->get(['id', 'code', 'name']),
+            'cash_category_options' => [
+                'in' => $cashInCategories,
+                'out' => $cashOutCategories,
+                'labels' => $cashCategoryLabels,
+            ],
         ]);
     }
 
@@ -492,7 +520,13 @@ class ProjectController extends Controller
     public function storeMaterial(Request $request, Project $project)
     {
         $validated = $request->validate([
-            'master_product_id' => 'required|exists:master_products,id',
+            'master_product_id' => [
+                'required',
+                Rule::exists('master_products', 'id')
+                    ->where('status', 'active')
+                    ->where('product_type', 'project_material')
+                    ->whereIn('sales_channel', ['project', 'both']),
+            ],
             'warehouse_id' => 'required|exists:warehouses,id',
             'planned_qty' => 'required|numeric|min:0.01',
             'notes' => 'nullable|string|max:500',
@@ -509,13 +543,9 @@ class ProjectController extends Controller
                     ['qty' => 0, 'reserved_qty' => 0],
                 );
 
-            $available = (float) $stock->qty - (float) $stock->reserved_qty;
-            $toReserve = (float) $validated['planned_qty'];
-            if ($toReserve > $available) {
-                throw ValidationException::withMessages([
-                    'planned_qty' => 'Stok tersedia tidak mencukupi. Tersedia: '.max($available, 0),
-                ]);
-            }
+            $available = max((float) $stock->qty - (float) $stock->reserved_qty, 0);
+            $plannedQty = (float) $validated['planned_qty'];
+            $toReserve = min($plannedQty, $available);
 
             $material = ProjectMaterial::query()->firstOrNew([
                 'project_id' => $project->id,
@@ -530,15 +560,18 @@ class ProjectController extends Controller
                 $material->status = 'reserved';
             }
 
-            $material->planned_qty = (float) $material->planned_qty + $toReserve;
+            $material->planned_qty = (float) $material->planned_qty + $plannedQty;
             $material->reserved_qty = (float) $material->reserved_qty + $toReserve;
             $material->notes = $validated['notes'] ?? $material->notes;
+            $material->status = $this->projectMaterialStatus($material);
             $material->save();
 
-            $stock->increment('reserved_qty', $toReserve);
+            if ($toReserve > 0) {
+                $stock->increment('reserved_qty', $toReserve);
+            }
         });
 
-        return back()->with('flash', ['type' => 'success', 'message' => 'Material project berhasil ditambahkan dan stok di-reserve.']);
+        return back()->with('flash', ['type' => 'success', 'message' => 'Kebutuhan material project berhasil ditambahkan. Stok tersedia otomatis di-reserve, kekurangan masuk perencanaan PO.']);
     }
 
     public function destroyMaterial(Project $project, ProjectMaterial $material)
@@ -565,6 +598,65 @@ class ProjectController extends Controller
         });
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Material project dihapus dan reserve dikembalikan.']);
+    }
+
+    public function createLegalFolder(Project $project)
+    {
+        $relative = $project->legal_vault_path !== null && trim((string) $project->legal_vault_path) !== ''
+            ? trim((string) $project->legal_vault_path)
+            : $this->defaultLegalVaultRelativePath($project);
+
+        try {
+            $relative = LegalVaultPath::normalize($relative);
+        } catch (\InvalidArgumentException $e) {
+            throw ValidationException::withMessages([
+                'legal_vault_path' => $e->getMessage(),
+            ]);
+        }
+
+        $this->mkdirLegalVaultPath($relative);
+
+        if ($project->legal_vault_path !== $relative) {
+            $project->update(['legal_vault_path' => $relative]);
+        }
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Folder dokumen project berhasil dibuat.']);
+    }
+
+    private function projectMaterialStatus(ProjectMaterial $material): string
+    {
+        $plannedQty = (float) $material->planned_qty;
+        $reservedQty = (float) $material->reserved_qty;
+        $issuedQty = (float) $material->issued_qty;
+
+        if ($plannedQty > 0 && $issuedQty >= $plannedQty) {
+            return 'issued';
+        }
+
+        if ($plannedQty > 0 && $reservedQty >= $plannedQty) {
+            return 'ready';
+        }
+
+        if ($reservedQty > 0) {
+            return 'partial';
+        }
+
+        return 'planned';
+    }
+
+    private function cashCategoryOptions(string $domain)
+    {
+        return CashCategory::query()
+            ->where('domain', $domain)
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('label')
+            ->get(['key', 'label'])
+            ->map(fn (CashCategory $category) => [
+                'value' => $category->key,
+                'label' => $category->label,
+            ])
+            ->values();
     }
 
     protected function assertPaymentsTotalHundredPercent(array $payments): void
@@ -608,23 +700,23 @@ class ProjectController extends Controller
         $this->createPaymentRows($project, $payments);
     }
 
-    private function resolveLegalVaultPath(Project $project): string
+    private function existingLegalVaultRelativePath(Project $project): ?string
     {
         $custom = $project->legal_vault_path;
         if (is_string($custom) && trim($custom) !== '') {
             try {
                 $normalized = LegalVaultPath::normalize(trim($custom));
             } catch (\InvalidArgumentException) {
-                return $this->ensureDefaultProjectLegalVaultFolder($project);
+                return null;
             }
             if ($normalized !== '') {
-                $this->mkdirLegalVaultPath($normalized);
-
                 return $normalized;
             }
         }
 
-        return $this->ensureDefaultProjectLegalVaultFolder($project);
+        $default = $this->defaultLegalVaultRelativePath($project);
+
+        return $this->legalVaultPathExists($default) ? $default : null;
     }
 
     /**
@@ -640,14 +732,6 @@ class ProjectController extends Controller
         return 'Project Contracts/'.$slug;
     }
 
-    private function ensureDefaultProjectLegalVaultFolder(Project $project): string
-    {
-        $relative = $this->defaultLegalVaultRelativePath($project);
-        $this->mkdirLegalVaultPath($relative);
-
-        return $relative;
-    }
-
     private function mkdirLegalVaultPath(string $relative): void
     {
         $root = storage_path('app/legal-vault');
@@ -659,5 +743,13 @@ class ProjectController extends Controller
         if (! File::isDirectory($target)) {
             File::makeDirectory($target, 0755, true);
         }
+    }
+
+    private function legalVaultPathExists(string $relative): bool
+    {
+        $root = storage_path('app/legal-vault');
+        $target = $root.DIRECTORY_SEPARATOR.str_replace('/', DIRECTORY_SEPARATOR, $relative);
+
+        return File::isDirectory($target);
     }
 }

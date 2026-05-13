@@ -8,6 +8,7 @@ use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Inventory\Models\Warehouse;
 use App\ERP\Purchasing\Models\GoodsReceipt;
 use App\ERP\Purchasing\Models\PurchaseOrder;
+use App\ERP\Purchasing\Models\PurchaseOrderLine;
 use App\ERP\Purchasing\Models\Vendor;
 use App\ERP\Shared\Enums\DocumentStatus;
 use App\ERP\Shared\Services\DocumentNumberService;
@@ -15,6 +16,7 @@ use App\ERP\Shared\Services\ErpSystemLogger;
 use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
 use App\Models\ProductStockMovement;
+use App\Models\ProjectMaterial;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -468,6 +470,26 @@ class ERPPurchasingController extends Controller
 
     public function reorderPlanning(Request $request): Response
     {
+        $projectShortages = ProjectMaterial::query()
+            ->select('master_product_id')
+            ->selectRaw('SUM(GREATEST(planned_qty - reserved_qty, 0)) as shortage_qty')
+            ->whereHas('project', fn ($q) => $q->whereIn('status', ['negosiasi', 'berjalan']))
+            ->whereRaw('planned_qty > reserved_qty')
+            ->groupBy('master_product_id')
+            ->pluck('shortage_qty', 'master_product_id');
+
+        $onOrderQty = PurchaseOrderLine::query()
+            ->select('master_product_id')
+            ->selectRaw('SUM(qty - received_qty) as on_order_qty')
+            ->whereRaw('qty > received_qty')
+            ->whereHas('purchaseOrder', fn ($q) => $q->whereIn('status', [
+                DocumentStatus::Draft->value,
+                DocumentStatus::Submitted->value,
+                DocumentStatus::Approved->value,
+            ]))
+            ->groupBy('master_product_id')
+            ->pluck('on_order_qty', 'master_product_id');
+
         $products = MasterProduct::query()
             ->when($request->filled('q'), fn ($q) => $q->where('name', 'like', '%'.$request->string('q')->toString().'%')
                 ->orWhere('sku', 'like', '%'.$request->string('q')->toString().'%'))
@@ -475,11 +497,14 @@ class ERPPurchasingController extends Controller
             ->get();
 
         $reorderSuggestions = $products
-            ->map(function (MasterProduct $item) {
+            ->map(function (MasterProduct $item) use ($projectShortages, $onOrderQty) {
                 $dailyUsage = $item->total_sold > 0 ? $item->total_sold / 30 : 0;
                 $leadDemand = (int) ceil($dailyUsage * max($item->lead_time_days, 1));
                 $targetStock = $item->min_stock + $leadDemand;
-                $suggestedQty = max($targetStock - $item->stock, 0);
+                $stockSuggestion = max($targetStock - $item->stock, 0);
+                $projectShortageQty = (float) ($projectShortages[$item->id] ?? 0);
+                $onOrder = (float) ($onOrderQty[$item->id] ?? 0);
+                $suggestedQty = max($stockSuggestion + $projectShortageQty - $onOrder, 0);
 
                 return [
                     'id' => $item->id,
@@ -490,6 +515,9 @@ class ERPPurchasingController extends Controller
                     'lead_time_days' => $item->lead_time_days,
                     'total_sold' => $item->total_sold,
                     'suggested_qty' => $suggestedQty,
+                    'stock_suggestion_qty' => $stockSuggestion,
+                    'project_shortage_qty' => $projectShortageQty,
+                    'on_order_qty' => $onOrder,
                     'selling_price' => (float) $item->selling_price,
                 ];
             })
@@ -511,7 +539,22 @@ class ERPPurchasingController extends Controller
         $dailyUsage = $item->total_sold > 0 ? $item->total_sold / 30 : 0;
         $leadDemand = (int) ceil($dailyUsage * max($item->lead_time_days, 1));
         $targetStock = $item->min_stock + $leadDemand;
-        $suggestedQty = max($targetStock - $item->stock, 0);
+        $stockSuggestion = max($targetStock - $item->stock, 0);
+        $projectShortageQty = (float) ProjectMaterial::query()
+            ->where('master_product_id', $item->id)
+            ->whereHas('project', fn ($q) => $q->whereIn('status', ['negosiasi', 'berjalan']))
+            ->whereRaw('planned_qty > reserved_qty')
+            ->sum(DB::raw('GREATEST(planned_qty - reserved_qty, 0)'));
+        $onOrder = (float) PurchaseOrderLine::query()
+            ->where('master_product_id', $item->id)
+            ->whereRaw('qty > received_qty')
+            ->whereHas('purchaseOrder', fn ($q) => $q->whereIn('status', [
+                DocumentStatus::Draft->value,
+                DocumentStatus::Submitted->value,
+                DocumentStatus::Approved->value,
+            ]))
+            ->sum(DB::raw('qty - received_qty'));
+        $suggestedQty = max($stockSuggestion + $projectShortageQty - $onOrder, 0);
 
         $detail = [
             'id' => $item->id,
@@ -525,6 +568,9 @@ class ERPPurchasingController extends Controller
             'suggested_qty' => $suggestedQty,
             'target_stock' => $targetStock,
             'daily_usage_est' => round($dailyUsage, 2),
+            'stock_suggestion_qty' => $stockSuggestion,
+            'project_shortage_qty' => $projectShortageQty,
+            'on_order_qty' => $onOrder,
         ];
 
         return Inertia::render('ERP/Purchasing/ReorderShow', [
@@ -653,6 +699,15 @@ class ERPPurchasingController extends Controller
                             ['qty' => 0]
                         );
                         $row->increment('qty', (float) $line->qty_received);
+
+                        $allocatedToProjects = $this->allocateProjectMaterialReservations(
+                            $product->id,
+                            (int) $warehouseId,
+                            (float) $line->qty_received,
+                        );
+                        if ($allocatedToProjects > 0) {
+                            $row->increment('reserved_qty', $allocatedToProjects);
+                        }
                     }
                     $product->increment('stock', (float) $line->qty_received);
                     $poLine?->increment('received_qty', (float) $line->qty_received);
@@ -715,5 +770,63 @@ class ERPPurchasingController extends Controller
         return redirect()
             ->route('erp.purchasing.goods-receipts.show', $goodsReceipt)
             ->with('flash', ['type' => 'info', 'message' => 'Tidak ada perubahan status.']);
+    }
+
+    private function allocateProjectMaterialReservations(int $productId, int $warehouseId, float $receivedQty): float
+    {
+        $remaining = $receivedQty;
+        $allocated = 0.0;
+
+        ProjectMaterial::query()
+            ->with('project')
+            ->where('master_product_id', $productId)
+            ->where('warehouse_id', $warehouseId)
+            ->whereHas('project', fn ($q) => $q->whereIn('status', ['negosiasi', 'berjalan']))
+            ->whereRaw('planned_qty > reserved_qty')
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get()
+            ->each(function (ProjectMaterial $material) use (&$remaining, &$allocated): void {
+                if ($remaining <= 0) {
+                    return;
+                }
+
+                $shortage = max((float) $material->planned_qty - (float) $material->reserved_qty, 0);
+                $toReserve = min($shortage, $remaining);
+                if ($toReserve <= 0) {
+                    return;
+                }
+
+                $material->reserved_qty = (float) $material->reserved_qty + $toReserve;
+                $material->status = $this->projectMaterialStatus($material);
+                $material->save();
+
+                $remaining -= $toReserve;
+                $allocated += $toReserve;
+            });
+
+        return $allocated;
+    }
+
+    private function projectMaterialStatus(ProjectMaterial $material): string
+    {
+        $plannedQty = (float) $material->planned_qty;
+        $reservedQty = (float) $material->reserved_qty;
+        $issuedQty = (float) $material->issued_qty;
+
+        if ($plannedQty > 0 && $issuedQty >= $plannedQty) {
+            return 'issued';
+        }
+
+        if ($plannedQty > 0 && $reservedQty >= $plannedQty) {
+            return 'ready';
+        }
+
+        if ($reservedQty > 0) {
+            return 'partial';
+        }
+
+        return 'planned';
     }
 }
