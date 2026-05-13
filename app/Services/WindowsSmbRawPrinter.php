@@ -93,56 +93,26 @@ class WindowsSmbRawPrinter
 
     private function sampleZplForProfile(LabelProfile $p): string
     {
-        $pw = max(100, $p->widthDots());
-        $ll = max(80, $p->heightDots());
-        $ml = $p->marginLeftDots();
-        $mt = $p->marginTopDots();
-        $innerH = $ll - $mt - 8;
-        $barH = max(36, min(120, (int) ($innerH * 0.35)));
-        $line2 = $mt + 26;
-        $title = $this->sanitizeForZplText((string) $p->name);
-
-        return "^XA\n"
-            ."^PW{$pw}\n"
-            ."^LL{$ll}\n"
-            ."^LH0,0\n"
-            ."^FO{$ml},{$mt}^A0N,22,22^FDPaymentSystemOCN^FS\n"
-            ."^FO{$ml},{$line2}^A0N,16,16^FD{$title}^FS\n"
-            ."^FO{$ml},".($line2 + 28)."^BY2^BCN,{$barH},Y,N,N^FD1234567890^FS\n"
-            ."^XZ\n";
+        return $this->productBarcodeZpl($p, '1234567890', 'PaymentSystemOCN', $p->labelsAcross(), 'TEST');
     }
 
     private function sampleEplForProfile(LabelProfile $p): string
     {
-        $q = max(200, $p->widthDots());
-        $Q = max(200, $p->heightDots());
-        $gap = $p->gapDots();
-        $ml = $p->marginLeftDots();
-        $mt = $p->marginTopDots();
-        $barH = max(30, min(100, (int) (($Q - $mt - 20) * 0.35)));
-        $title = $this->sanitizeForEplQuoted((string) $p->name);
-
-        return "N\n"
-            ."q{$q}\n"
-            ."Q{$Q},{$gap}\n"
-            ."A{$ml},{$mt},0,3,1,1,N,\"PaymentSystemOCN\"\n"
-            ."A{$ml},".($mt + 28).",0,2,1,1,N,\"{$title}\"\n"
-            ."B{$ml},".($mt + 56).",0,1,2,4,{$barH},B,\"1234567890\"\n"
-            ."P1\n";
+        return $this->productBarcodeEpl($p, '1234567890', 'PaymentSystemOCN', $p->labelsAcross(), 'TEST');
     }
 
-    private function sanitizeForZplText(string $text): string
+    private function sanitizeForZplText(string $text, int $maxLen = 80): string
     {
         $text = str_replace(['^', '~'], ' ', $text);
 
-        return substr($text, 0, 80);
+        return substr($text, 0, $maxLen);
     }
 
-    private function sanitizeForEplQuoted(string $text): string
+    private function sanitizeForEplQuoted(string $text, int $maxLen = 60): string
     {
         $text = str_replace(["\n", "\r", '"'], [' ', ' ', "'"], $text);
 
-        return substr($text, 0, 60);
+        return substr($text, 0, $maxLen);
     }
 
     /**
@@ -164,66 +134,221 @@ class WindowsSmbRawPrinter
 
     private function productBarcodeZpl(LabelProfile $p, string $barcode, string $name, int $copies, string $priceLine): string
     {
-        $pw = max(100, $p->widthDots());
+        $labelsAcross = $p->labelsAcross();
+        $pw = max(100, $p->physicalWidthDots());
         $ll = max(80, $p->heightDots());
-        $ml = $p->marginLeftDots();
-        $mt = $p->marginTopDots();
-        $safeName = $this->sanitizeForZplText($name);
-        $safePrice = trim($priceLine) !== '' ? $this->sanitizeForZplText($priceLine) : '';
-        $safeBarcode = $this->sanitizeBarcodeForZpl($barcode);
+        $copies = max(1, min(999, $copies));
+        $jobs = [];
 
-        $nameY = $mt + 2;
-        $priceY = $nameY + 18;
-        $barY = $safePrice !== '' ? $priceY + 20 : $nameY + 22;
-        $roomBelowBar = $ll - $barY - 8;
-        $barH = max(28, min(100, (int) ($roomBelowBar * 0.55)));
+        for ($printed = 0; $printed < $copies;) {
+            $body = "^XA\n"
+                ."^PW{$pw}\n"
+                ."^LL{$ll}\n"
+                ."^LH0,0\n";
 
-        $priceField = $safePrice !== ''
-            ? "^FO{$ml},{$priceY}^A0N,20,20^FD{$safePrice}^FS\n"
-            : '';
+            for ($col = 0; $col < $labelsAcross && $printed < $copies; $col++, $printed++) {
+                $body .= $this->zplLabelFieldsForColumn($p, $col, $barcode, $name, $priceLine);
+            }
 
-        $one = "^XA\n"
-            ."^PW{$pw}\n"
-            ."^LL{$ll}\n"
-            ."^LH0,0\n"
-            ."^FO{$ml},{$nameY}^A0N,16,16^FD{$safeName}^FS\n"
-            .$priceField
-            ."^FO{$ml},{$barY}^BY2^BCN,{$barH},Y,N,N^FD{$safeBarcode}^FS\n"
-            ."^XZ\n";
+            $jobs[] = $body."^XZ\n";
+        }
 
-        return str_repeat($one, $copies);
+        return implode('', $jobs);
     }
 
     private function productBarcodeEpl(LabelProfile $p, string $barcode, string $name, int $copies, string $priceLine): string
     {
-        $q = max(200, $p->widthDots());
-        $Q = max(200, $p->heightDots());
+        $labelsAcross = $p->labelsAcross();
+        $q = max(100, $p->physicalWidthDots());
+        $Q = max(80, $p->heightDots());
         $gap = $p->gapDots();
+        $copies = max(1, min(999, $copies));
+        $jobs = [];
+
+        for ($printed = 0; $printed < $copies;) {
+            $body = "N\n"
+                ."q{$q}\n"
+                ."Q{$Q},{$gap}\n";
+
+            for ($col = 0; $col < $labelsAcross && $printed < $copies; $col++, $printed++) {
+                $body .= $this->eplLabelFieldsForColumn($p, $col, $barcode, $name, $priceLine);
+            }
+
+            $jobs[] = $body."P1\n";
+        }
+
+        return implode('', $jobs);
+    }
+
+    private function zplLabelFieldsForColumn(LabelProfile $p, int $col, string $barcode, string $name, string $priceLine): string
+    {
         $ml = $p->marginLeftDots();
         $mt = $p->marginTopDots();
-        $safeName = $this->sanitizeForEplQuoted($name);
-        $safePrice = trim($priceLine) !== '' ? $this->sanitizeForEplQuoted($priceLine) : '';
-        $safeBarcode = $this->sanitizeBarcodeForEpl($barcode);
+        $labelWidthDots = $p->widthDots();
+        $labelHeightDots = max(80, $p->heightDots());
+        $x = ($col * $p->columnPitchDots()) + $ml;
+        $fieldWidth = max(40, $labelWidthDots - ($ml * 2));
+        $isCompact = (float) $p->width_mm <= 35 || (float) $p->height_mm <= 18;
 
-        $nameY = $mt;
-        $priceY = $nameY + 22;
-        $barY = $safePrice !== '' ? $priceY + 22 : $nameY + 28;
-        $roomBelowBar = $Q - $barY - 12;
-        $barH = max(28, min(90, (int) ($roomBelowBar * 0.55)));
+        $nameFont = $isCompact ? 12 : 16;
+        $priceFont = $isCompact ? 14 : 20;
+        $barcodeFont = $isCompact ? 10 : 14;
+        $nameY = $mt + ($isCompact ? 0 : 2);
+        $priceY = $nameY + ($isCompact ? 14 : 18);
+        $hasPrice = trim($priceLine) !== '';
+        $barY = $hasPrice ? $priceY + ($isCompact ? 15 : 20) : $nameY + ($isCompact ? 16 : 22);
+        $bottomReserve = $isCompact ? 16 : 8;
+        $barH = $isCompact
+            ? max(26, min(46, $labelHeightDots - $barY - $bottomReserve))
+            : max(28, min(100, (int) (($labelHeightDots - $barY - 8) * 0.55)));
+        $barcodeFormat = $this->normalizeBarcodeForProfile($p, $barcode);
+        $moduleWidth = $this->fittedBarcodeWidth($p, $barcodeFormat['type'], $barcodeFormat['data'], $fieldWidth);
+        $humanReadable = $isCompact ? 'N' : 'Y';
 
-        $priceLineEpl = $safePrice !== ''
-            ? "A{$ml},{$priceY},0,2,1,1,N,\"{$safePrice}\"\n"
+        $safeName = $this->sanitizeForZplText($name, max(8, (int) floor($fieldWidth / max(1, $nameFont * 0.58))));
+        $safePrice = $hasPrice
+            ? $this->sanitizeForZplText($priceLine, max(8, (int) floor($fieldWidth / max(1, $priceFont * 0.58))))
             : '';
+        $safeBarcode = $barcodeFormat['data'];
+        $safeBarcodeText = $barcodeFormat['text'];
 
-        $one = "N\n"
-            ."q{$q}\n"
-            ."Q{$Q},{$gap}\n"
-            ."A{$ml},{$nameY},0,2,1,1,N,\"{$safeName}\"\n"
-            .$priceLineEpl
-            .'B'.$ml.','.$barY.",0,1,2,4,{$barH},B,\"{$safeBarcode}\"\n"
-            ."P1\n";
+        $fields = "^FO{$x},{$nameY}^A0N,{$nameFont},{$nameFont}^FB{$fieldWidth},1,0,L,0^FD{$safeName}^FS\n";
+        if ($safePrice !== '') {
+            $fields .= "^FO{$x},{$priceY}^A0N,{$priceFont},{$priceFont}^FB{$fieldWidth},1,0,L,0^FD{$safePrice}^FS\n";
+        }
 
-        return str_repeat($one, $copies);
+        $fields .= "^FO{$x},{$barY}".$this->zplBarcodeField($barcodeFormat['type'], $moduleWidth, $barH, $humanReadable, $safeBarcode);
+
+        if ($isCompact) {
+            $barcodeTextY = $barY + $barH + 2;
+            if ($barcodeTextY + $barcodeFont <= $labelHeightDots - $mt) {
+                $barcodeText = $this->sanitizeForZplText($safeBarcodeText, max(8, (int) floor($fieldWidth / 6)));
+                $fields .= "^FO{$x},{$barcodeTextY}^A0N,{$barcodeFont},{$barcodeFont}^FB{$fieldWidth},1,0,L,0^FD{$barcodeText}^FS\n";
+            }
+        }
+
+        return $fields;
+    }
+
+    private function eplLabelFieldsForColumn(LabelProfile $p, int $col, string $barcode, string $name, string $priceLine): string
+    {
+        $ml = $p->marginLeftDots();
+        $mt = $p->marginTopDots();
+        $labelWidthDots = $p->widthDots();
+        $labelHeightDots = max(80, $p->heightDots());
+        $x = ($col * $p->columnPitchDots()) + $ml;
+        $fieldWidth = max(40, $labelWidthDots - ($ml * 2));
+        $isCompact = (float) $p->width_mm <= 35 || (float) $p->height_mm <= 18;
+
+        $font = $isCompact ? 1 : 2;
+        $fontDotWidth = $isCompact ? 8 : 12;
+        $nameY = $mt;
+        $priceY = $nameY + ($isCompact ? 14 : 22);
+        $hasPrice = trim($priceLine) !== '';
+        $barY = $hasPrice ? $priceY + ($isCompact ? 15 : 22) : $nameY + ($isCompact ? 18 : 28);
+        $bottomReserve = $isCompact ? 15 : 12;
+        $barH = $isCompact
+            ? max(26, min(46, $labelHeightDots - $barY - $bottomReserve))
+            : max(28, min(90, (int) (($labelHeightDots - $barY - 12) * 0.55)));
+        $barcodeFormat = $this->normalizeBarcodeForProfile($p, $barcode);
+        $narrow = $this->fittedBarcodeWidth($p, $barcodeFormat['type'], $barcodeFormat['data'], $fieldWidth);
+        $wide = $barcodeFormat['type'] === 'code39' ? $narrow * 3 : max(2, $narrow);
+        $humanReadable = $isCompact ? 'N' : 'B';
+
+        $safeName = $this->sanitizeForEplQuoted($name, max(8, (int) floor($fieldWidth / $fontDotWidth)));
+        $safePrice = $hasPrice
+            ? $this->sanitizeForEplQuoted($priceLine, max(8, (int) floor($fieldWidth / ($isCompact ? 8 : 10))))
+            : '';
+        $safeBarcode = $barcodeFormat['data'];
+        $safeBarcodeText = $barcodeFormat['text'];
+
+        $fields = "A{$x},{$nameY},0,{$font},1,1,N,\"{$safeName}\"\n";
+        if ($safePrice !== '') {
+            $fields .= "A{$x},{$priceY},0,{$font},1,1,N,\"{$safePrice}\"\n";
+        }
+
+        $fields .= 'B'.$x.','.$barY.',0,'.$this->eplBarcodeSelection($barcodeFormat['type']).",{$narrow},{$wide},{$barH},{$humanReadable},\"{$safeBarcode}\"\n";
+
+        if ($isCompact) {
+            $barcodeTextY = $barY + $barH + 2;
+            if ($barcodeTextY + 10 <= $labelHeightDots - $mt) {
+                $barcodeText = $this->sanitizeForEplQuoted($safeBarcodeText, max(8, (int) floor($fieldWidth / 8)));
+                $fields .= "A{$x},{$barcodeTextY},0,1,1,1,N,\"{$barcodeText}\"\n";
+            }
+        }
+
+        return $fields;
+    }
+
+    /**
+     * @return array{type: string, data: string, text: string}
+     */
+    private function normalizeBarcodeForProfile(LabelProfile $p, string $data): array
+    {
+        $type = $p->barcodeType();
+
+        if ($type === 'ean13') {
+            $digits = preg_replace('/\D+/', '', $data) ?? '';
+            if (strlen($digits) === 12) {
+                return ['type' => 'ean13', 'data' => $digits, 'text' => $digits.$this->ean13CheckDigit($digits)];
+            }
+            if (strlen($digits) === 13) {
+                return ['type' => 'ean13', 'data' => substr($digits, 0, 12), 'text' => $digits];
+            }
+        }
+
+        if ($type === 'code39') {
+            $code39 = strtoupper(preg_replace('/[^0-9A-Z .\-\/+$%]/', '', $data) ?? '');
+            if ($code39 !== '') {
+                $code39 = substr($code39, 0, 32);
+
+                return ['type' => 'code39', 'data' => $code39, 'text' => $code39];
+            }
+        }
+
+        $code128 = $this->sanitizeBarcodeForZpl($data);
+
+        return ['type' => 'code128', 'data' => $code128, 'text' => $code128];
+    }
+
+    private function zplBarcodeField(string $type, int $moduleWidth, int $barH, string $humanReadable, string $safeBarcode): string
+    {
+        return match ($type) {
+            'ean13' => "^BY{$moduleWidth}^BEN,{$barH},{$humanReadable},N^FD{$safeBarcode}^FS\n",
+            'code39' => "^BY{$moduleWidth},3^B3N,N,{$barH},{$humanReadable},N^FD{$safeBarcode}^FS\n",
+            default => "^BY{$moduleWidth}^BCN,{$barH},{$humanReadable},N,N^FD{$safeBarcode}^FS\n",
+        };
+    }
+
+    private function eplBarcodeSelection(string $type): string
+    {
+        return match ($type) {
+            'ean13' => 'E30',
+            'code39' => '3',
+            default => '1',
+        };
+    }
+
+    private function fittedBarcodeWidth(LabelProfile $p, string $type, string $data, int $printableWidth): int
+    {
+        $modules = match ($type) {
+            'ean13' => 95,
+            'code39' => max(1, strlen($data)) * 13 + 10,
+            default => (max(1, strlen($data)) + 3) * 11 + 2,
+        };
+        $maxWidth = max(1, (int) floor($printableWidth / max(1, $modules)));
+
+        return max(1, min($p->barcodeWidth(), $maxWidth, 3));
+    }
+
+    private function ean13CheckDigit(string $digits12): string
+    {
+        $sum = 0;
+        for ($i = 0; $i < 12; $i++) {
+            $sum += (int) $digits12[$i] * ($i % 2 === 0 ? 1 : 3);
+        }
+
+        return (string) ((10 - ($sum % 10)) % 10);
     }
 
     private function sanitizeBarcodeForZpl(string $s): string

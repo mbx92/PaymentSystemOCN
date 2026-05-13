@@ -11,6 +11,13 @@ defineProps({
 const formDefaults = {
     width_mm: 76.2, height_mm: 127, dpi: 203,
     margin_left_mm: 4, margin_top_mm: 4, gap_mm: 3, rows: 1, protocol: 'tspl',
+    barcode_type: 'code128', barcode_width: 1,
+};
+
+const barcodeTypeLabels = {
+    code128: 'Code 128',
+    ean13: 'EAN-13',
+    code39: 'Code 39',
 };
 
 const form = useForm({ name: '', ...formDefaults });
@@ -42,6 +49,8 @@ const editForm = useForm({
     gap_mm: 0,
     rows: 1,
     protocol: 'tspl',
+    barcode_type: 'code128',
+    barcode_width: 1,
 });
 
 const openEditModal = (row) => {
@@ -55,6 +64,8 @@ const openEditModal = (row) => {
     editForm.gap_mm = Number(row.gap_mm);
     editForm.rows = row.rows ?? 1;
     editForm.protocol = row.protocol;
+    editForm.barcode_type = row.barcode_type ?? 'code128';
+    editForm.barcode_width = row.barcode_width ?? 1;
     document.getElementById('modal-edit-label-profile')?.showModal();
 };
 
@@ -151,7 +162,8 @@ const openSimulationModal = async (row) => {
               <th>DPI</th>
               <th>Margin L/T mm</th>
               <th>Gap mm</th>
-              <th>Row</th>
+              <th>Kolom/row</th>
+              <th>Barcode</th>
               <th>Protocol</th>
               <th class="w-40" />
             </tr>
@@ -165,6 +177,7 @@ const openSimulationModal = async (row) => {
               <td>{{ p.margin_left_mm }} / {{ p.margin_top_mm }}</td>
               <td>{{ p.gap_mm }}</td>
               <td>{{ p.rows ?? 1 }}</td>
+              <td>{{ barcodeTypeLabels[p.barcode_type ?? 'code128'] }} / W{{ p.barcode_width ?? 1 }}</td>
               <td class="uppercase">{{ p.protocol }}</td>
               <td>
                 <button type="button" class="btn btn-ghost btn-xs" @click="openQuickPreview(p)">Preview</button>
@@ -174,7 +187,7 @@ const openSimulationModal = async (row) => {
               </td>
             </tr>
             <tr v-if="!profiles?.length">
-              <td colspan="9" class="text-center text-sm text-base-content/60">Belum ada profil.</td>
+              <td colspan="10" class="text-center text-sm text-base-content/60">Belum ada profil.</td>
             </tr>
           </tbody>
         </table>
@@ -231,13 +244,13 @@ const openSimulationModal = async (row) => {
           </div>
           <div class="grid grid-cols-2 gap-2">
             <div>
-              <label class="label-text text-xs">Row pada roll</label>
+              <label class="label-text text-xs">Kolom/row pada roll</label>
               <select v-model.number="form.rows" class="select select-bordered select-sm w-full">
                 <option :value="1">1</option>
                 <option :value="2">2</option>
                 <option :value="3">3</option>
               </select>
-              <p class="text-[10px] text-base-content/50 mt-0.5">Jumlah label berdampingan pada roll.</p>
+              <p class="text-[10px] text-base-content/50 mt-0.5">Jumlah label berdampingan pada satu baris roll.</p>
               <p v-if="form.errors.rows" class="text-xs text-error">{{ form.errors.rows }}</p>
             </div>
             <div>
@@ -253,6 +266,28 @@ const openSimulationModal = async (row) => {
                   <input v-model="form.protocol" type="radio" class="radio radio-sm" value="epl"> <span class="label-text text-xs">EPL</span>
                 </label>
               </div>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="label-text text-xs">Tipe barcode</label>
+              <select v-model="form.barcode_type" class="select select-bordered select-sm w-full">
+                <option value="code128">Code 128</option>
+                <option value="ean13">EAN-13</option>
+                <option value="code39">Code 39</option>
+              </select>
+              <p class="text-[10px] text-base-content/50 mt-0.5">EAN-13 cocok untuk barcode produk numerik 12/13 digit.</p>
+              <p v-if="form.errors.barcode_type" class="text-xs text-error">{{ form.errors.barcode_type }}</p>
+            </div>
+            <div>
+              <label class="label-text text-xs">Lebar barcode</label>
+              <select v-model.number="form.barcode_width" class="select select-bordered select-sm w-full">
+                <option :value="1">1 - normal</option>
+                <option :value="2">2 - lebar</option>
+                <option :value="3">3 - maksimal</option>
+              </select>
+              <p class="text-[10px] text-base-content/50 mt-0.5">Akan dibatasi otomatis agar tidak keluar label.</p>
+              <p v-if="form.errors.barcode_width" class="text-xs text-error">{{ form.errors.barcode_width }}</p>
             </div>
           </div>
         </div>
@@ -312,13 +347,13 @@ const openSimulationModal = async (row) => {
           </div>
           <div class="grid grid-cols-2 gap-2">
             <div>
-              <label class="label-text text-xs">Row pada roll</label>
+              <label class="label-text text-xs">Kolom/row pada roll</label>
               <select v-model.number="editForm.rows" class="select select-bordered select-sm w-full">
                 <option :value="1">1</option>
                 <option :value="2">2</option>
                 <option :value="3">3</option>
               </select>
-              <p class="text-[10px] text-base-content/50 mt-0.5">Jumlah label berdampingan pada roll.</p>
+              <p class="text-[10px] text-base-content/50 mt-0.5">Jumlah label berdampingan pada satu baris roll.</p>
               <p v-if="editForm.errors.rows" class="text-xs text-error">{{ editForm.errors.rows }}</p>
             </div>
             <div>
@@ -334,6 +369,28 @@ const openSimulationModal = async (row) => {
                   <input v-model="editForm.protocol" type="radio" class="radio radio-sm" value="epl"> <span class="label-text text-xs">EPL</span>
                 </label>
               </div>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="label-text text-xs">Tipe barcode</label>
+              <select v-model="editForm.barcode_type" class="select select-bordered select-sm w-full">
+                <option value="code128">Code 128</option>
+                <option value="ean13">EAN-13</option>
+                <option value="code39">Code 39</option>
+              </select>
+              <p class="text-[10px] text-base-content/50 mt-0.5">EAN-13 cocok untuk barcode produk numerik 12/13 digit.</p>
+              <p v-if="editForm.errors.barcode_type" class="text-xs text-error">{{ editForm.errors.barcode_type }}</p>
+            </div>
+            <div>
+              <label class="label-text text-xs">Lebar barcode</label>
+              <select v-model.number="editForm.barcode_width" class="select select-bordered select-sm w-full">
+                <option :value="1">1 - normal</option>
+                <option :value="2">2 - lebar</option>
+                <option :value="3">3 - maksimal</option>
+              </select>
+              <p class="text-[10px] text-base-content/50 mt-0.5">Akan dibatasi otomatis agar tidak keluar label.</p>
+              <p v-if="editForm.errors.barcode_width" class="text-xs text-error">{{ editForm.errors.barcode_width }}</p>
             </div>
           </div>
         </div>
@@ -366,7 +423,8 @@ const openSimulationModal = async (row) => {
               <p class="mt-1 text-base-content/70">
                 {{ simulationData.profile.width_mm }} × {{ simulationData.profile.height_mm }} mm · DPI {{ simulationData.profile.dpi }} ·
                 Margin {{ simulationData.profile.margin_left_mm }}/{{ simulationData.profile.margin_top_mm }} mm · Gap {{ simulationData.profile.gap_mm }} mm ·
-                Row {{ simulationData.profile.rows ?? 1 }}
+                Kolom/row {{ simulationData.profile.rows ?? 1 }} ·
+                {{ barcodeTypeLabels[simulationData.profile.barcode_type ?? 'code128'] }} W{{ simulationData.profile.barcode_width ?? 1 }}
               </p>
             </div>
 
@@ -377,7 +435,7 @@ const openSimulationModal = async (row) => {
                   <p class="text-[11px] text-base-content/50">Simulasi tata letak label pada roll printer. Pilih jumlah row sesuai stok label.</p>
                 </div>
                 <div class="flex items-center gap-1">
-                  <span class="text-xs text-base-content/50 mr-1">Row:</span>
+                  <span class="text-xs text-base-content/50 mr-1">Kolom:</span>
                   <button v-for="n in 3" :key="n" type="button"
                   class="btn btn-sm min-h-0 h-7 min-w-8"
                   :class="previewRows === n ? 'btn-primary' : 'btn-ghost'"
@@ -435,12 +493,13 @@ const openSimulationModal = async (row) => {
           <p class="mt-1 text-sm text-base-content/70">
             {{ quickPreviewProfile.width_mm }} × {{ quickPreviewProfile.height_mm }} mm · DPI {{ quickPreviewProfile.dpi }} ·
             Margin {{ quickPreviewProfile.margin_left_mm }}/{{ quickPreviewProfile.margin_top_mm }} mm · Gap {{ quickPreviewProfile.gap_mm }} mm ·
-            Row {{ quickPreviewProfile.rows ?? 1 }} ·
+            Kolom/row {{ quickPreviewProfile.rows ?? 1 }} ·
+            {{ barcodeTypeLabels[quickPreviewProfile.barcode_type ?? 'code128'] }} W{{ quickPreviewProfile.barcode_width ?? 1 }} ·
             <span class="uppercase">{{ quickPreviewProfile.protocol }}</span>
           </p>
           <div class="mt-4 space-y-3">
             <div class="flex items-center gap-2">
-              <span class="text-xs text-base-content/60">Row pada roll:</span>
+              <span class="text-xs text-base-content/60">Kolom/row pada roll:</span>
               <button v-for="n in 3" :key="n" type="button"
                 class="btn btn-sm min-h-0 h-7 min-w-8"
                 :class="quickPreviewRows === n ? 'btn-primary' : 'btn-ghost'"

@@ -20,6 +20,8 @@ class LabelProfileSeeder extends Seeder
                 'gap_mm' => 2,
                 'rows' => 1,
                 'protocol' => 'zpl',
+                'barcode_type' => 'code128',
+                'barcode_width' => 1,
             ],
             [
                 'name' => '50x25mm ZPL - Compact Barcode',
@@ -31,6 +33,8 @@ class LabelProfileSeeder extends Seeder
                 'gap_mm' => 2,
                 'rows' => 1,
                 'protocol' => 'zpl',
+                'barcode_type' => 'code128',
+                'barcode_width' => 1,
             ],
             [
                 'name' => '40x30mm ZPL - Mini Label',
@@ -42,6 +46,8 @@ class LabelProfileSeeder extends Seeder
                 'gap_mm' => 2,
                 'rows' => 1,
                 'protocol' => 'zpl',
+                'barcode_type' => 'code128',
+                'barcode_width' => 1,
             ],
             [
                 'name' => '100x50mm ZPL - Shipping Label',
@@ -53,6 +59,8 @@ class LabelProfileSeeder extends Seeder
                 'gap_mm' => 3,
                 'rows' => 1,
                 'protocol' => 'zpl',
+                'barcode_type' => 'code128',
+                'barcode_width' => 1,
             ],
             [
                 'name' => '100x150mm ZPL - Large Shipping',
@@ -64,6 +72,8 @@ class LabelProfileSeeder extends Seeder
                 'gap_mm' => 3,
                 'rows' => 1,
                 'protocol' => 'zpl',
+                'barcode_type' => 'code128',
+                'barcode_width' => 1,
             ],
             [
                 'name' => '76x127mm ZPL - Price Tag (3x5 inch)',
@@ -75,6 +85,8 @@ class LabelProfileSeeder extends Seeder
                 'gap_mm' => 3,
                 'rows' => 1,
                 'protocol' => 'zpl',
+                'barcode_type' => 'code128',
+                'barcode_width' => 1,
             ],
             [
                 'name' => '33x15mm ZPL - Jewelry/Small Item (3-row)',
@@ -86,6 +98,8 @@ class LabelProfileSeeder extends Seeder
                 'gap_mm' => 2,
                 'rows' => 3,
                 'protocol' => 'zpl',
+                'barcode_type' => 'ean13',
+                'barcode_width' => 2,
             ],
             [
                 'name' => '50x30mm TSPL - Standard TSPL',
@@ -97,6 +111,8 @@ class LabelProfileSeeder extends Seeder
                 'gap_mm' => 2,
                 'rows' => 1,
                 'protocol' => 'tspl',
+                'barcode_type' => 'code128',
+                'barcode_width' => 1,
             ],
             [
                 'name' => '100x50mm TSPL - Shipping TSPL',
@@ -108,6 +124,8 @@ class LabelProfileSeeder extends Seeder
                 'gap_mm' => 3,
                 'rows' => 1,
                 'protocol' => 'tspl',
+                'barcode_type' => 'code128',
+                'barcode_width' => 1,
             ],
         ];
 

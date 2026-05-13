@@ -17,6 +17,12 @@ const props = defineProps({
 
 const tabIds = ['thermal', 'label-smb', 'label-lan', 'label-profiles'];
 
+const barcodeTypeLabels = {
+  code128: 'Code 128',
+  ean13: 'EAN-13',
+  code39: 'Code 39',
+};
+
 const tab = ref(tabIds.includes(props.activeTab) ? props.activeTab : 'thermal');
 
 watch(
@@ -604,7 +610,7 @@ const testPrintLan = () => {
                   — pilih profil —
                 </option>
                 <option v-for="p in labelProfiles" :key="p.id" :value="p.id">
-                  {{ p.name }} — {{ p.width_mm }}×{{ p.height_mm }} mm, {{ p.dpi }} dpi, {{ String(p.protocol).toUpperCase() }}
+                  {{ p.name }} — {{ p.width_mm }}×{{ p.height_mm }} mm, {{ p.rows ?? 1 }} kolom, {{ barcodeTypeLabels[p.barcode_type ?? 'code128'] }} W{{ p.barcode_width ?? 1 }}, {{ p.dpi }} dpi, {{ String(p.protocol).toUpperCase() }}
                 </option>
               </select>
               <p v-if="smbForm.errors.label_smb_profile_id" class="text-xs text-error">{{ smbForm.errors.label_smb_profile_id }}</p>
@@ -697,7 +703,7 @@ const testPrintLan = () => {
                   — pakai profil dari Label SMB (jika ada) —
                 </option>
                 <option v-for="p in labelProfiles" :key="p.id" :value="p.id">
-                  {{ p.name }} — {{ p.width_mm }}×{{ p.height_mm }} mm, {{ p.dpi }} dpi
+                  {{ p.name }} — {{ p.width_mm }}×{{ p.height_mm }} mm, {{ p.rows ?? 1 }} kolom, {{ barcodeTypeLabels[p.barcode_type ?? 'code128'] }} W{{ p.barcode_width ?? 1 }}, {{ p.dpi }} dpi
                 </option>
               </select>
               <p v-if="lanForm.errors.label_lan_profile_id" class="text-xs text-error">{{ lanForm.errors.label_lan_profile_id }}</p>

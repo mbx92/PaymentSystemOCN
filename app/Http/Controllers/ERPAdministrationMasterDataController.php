@@ -459,7 +459,7 @@ class ERPAdministrationMasterDataController extends Controller
                 'label_smb_profile_id' => $setting?->label_smb_profile_id,
             ],
             'labelProfiles' => LabelProfile::query()->orderBy('name')->get([
-                'id', 'name', 'width_mm', 'height_mm', 'dpi', 'margin_left_mm', 'margin_top_mm', 'gap_mm', 'protocol',
+                'id', 'name', 'width_mm', 'height_mm', 'dpi', 'margin_left_mm', 'margin_top_mm', 'gap_mm', 'rows', 'protocol', 'barcode_type', 'barcode_width',
             ]),
             'serverIsWindows' => PHP_OS_FAMILY === 'Windows',
         ]);

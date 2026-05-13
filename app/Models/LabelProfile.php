@@ -17,6 +17,8 @@ class LabelProfile extends Model
         'gap_mm',
         'rows',
         'protocol',
+        'barcode_type',
+        'barcode_width',
     ];
 
     protected function casts(): array
@@ -29,6 +31,7 @@ class LabelProfile extends Model
             'margin_top_mm' => 'decimal:2',
             'gap_mm' => 'decimal:2',
             'rows' => 'integer',
+            'barcode_width' => 'integer',
         ];
     }
 
@@ -45,6 +48,40 @@ class LabelProfile extends Model
     public function widthDots(): int
     {
         return self::mmToDots((float) $this->width_mm, (int) $this->dpi);
+    }
+
+    public function labelsAcross(): int
+    {
+        return max(1, min(3, (int) ($this->rows ?: 1)));
+    }
+
+    public function barcodeType(): string
+    {
+        $type = strtolower(trim((string) ($this->barcode_type ?: 'code128')));
+
+        return in_array($type, ['code128', 'ean13', 'code39'], true) ? $type : 'code128';
+    }
+
+    public function barcodeWidth(): int
+    {
+        return max(1, min(3, (int) ($this->barcode_width ?: 1)));
+    }
+
+    public function columnPitchDots(): int
+    {
+        return $this->widthDots() + $this->gapDots();
+    }
+
+    public function physicalWidthMm(): float
+    {
+        $labelsAcross = $this->labelsAcross();
+
+        return ((float) $this->width_mm * $labelsAcross) + ((float) $this->gap_mm * max(0, $labelsAcross - 1));
+    }
+
+    public function physicalWidthDots(): int
+    {
+        return self::mmToDots($this->physicalWidthMm(), (int) $this->dpi);
     }
 
     public function heightDots(): int

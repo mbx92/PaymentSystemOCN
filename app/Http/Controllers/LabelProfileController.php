@@ -28,6 +28,8 @@ class LabelProfileController extends Controller
             'gap_mm' => 'required|numeric|min:0|max:30',
             'rows' => 'required|integer|min:1|max:3',
             'protocol' => 'required|string|in:zpl,epl,tspl',
+            'barcode_type' => 'required|string|in:code128,ean13,code39',
+            'barcode_width' => 'required|integer|min:1|max:3',
         ]);
 
         LabelProfile::query()->create($validated);
@@ -47,6 +49,8 @@ class LabelProfileController extends Controller
             'gap_mm' => 'required|numeric|min:0|max:30',
             'rows' => 'required|integer|min:1|max:3',
             'protocol' => 'required|string|in:zpl,epl,tspl',
+            'barcode_type' => 'required|string|in:code128,ean13,code39',
+            'barcode_width' => 'required|integer|min:1|max:3',
         ]);
 
         $labelProfile->update($validated);
@@ -68,6 +72,8 @@ class LabelProfileController extends Controller
                 'gap_mm' => (float) $labelProfile->gap_mm,
                 'rows' => (int) $labelProfile->rows,
                 'protocol' => $labelProfile->protocol,
+                'barcode_type' => $labelProfile->barcodeType(),
+                'barcode_width' => $labelProfile->barcodeWidth(),
             ],
             'simulation' => [
                 'native_protocol' => strtoupper((string) $labelProfile->protocol),

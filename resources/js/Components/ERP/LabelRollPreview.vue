@@ -51,7 +51,7 @@ const barcodeH = computed(() => {
 <template>
   <div class="inline-block rounded-xl border-2 border-dashed border-base-300 bg-[#f6f5f0] p-4 shadow-inner overflow-x-auto">
     <p class="text-[10px] uppercase tracking-wider text-base-content/50 mb-3 font-sans">
-      Preview label roll · {{ rows }} row{{ rows > 1 ? 's' : '' }} ·
+      Preview label roll · {{ rows }} kolom/row ·
       {{ widthMm }}×{{ heightMm }} mm · gap {{ gapMm }} mm
     </p>
 
