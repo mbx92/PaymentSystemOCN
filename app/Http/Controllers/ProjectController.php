@@ -221,7 +221,6 @@ class ProjectController extends Controller
             ],
             'material_products' => MasterProduct::query()
                 ->where('status', 'active')
-                ->where('product_type', 'project_material')
                 ->whereIn('sales_channel', ['project', 'both'])
                 ->orderBy('name')
                 ->get(['id', 'sku', 'name', 'category', 'uom', 'sales_channel', 'product_type']),
@@ -524,7 +523,6 @@ class ProjectController extends Controller
                 'required',
                 Rule::exists('master_products', 'id')
                     ->where('status', 'active')
-                    ->where('product_type', 'project_material')
                     ->whereIn('sales_channel', ['project', 'both']),
             ],
             'warehouse_id' => 'required|exists:warehouses,id',
@@ -590,7 +588,6 @@ class ProjectController extends Controller
 
         $products = MasterProduct::query()
             ->where('status', 'active')
-            ->where('product_type', 'project_material')
             ->whereIn('sales_channel', ['project', 'both'])
             ->when($keyword !== '', function ($query) use ($keyword) {
                 $query->where(function ($nested) use ($keyword) {
