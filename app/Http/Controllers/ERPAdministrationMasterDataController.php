@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\ERP\Core\Models\DocumentSequence;
 use App\ERP\Inventory\Models\Warehouse;
+use App\ERP\Purchasing\Models\GoodsReceiptLine;
+use App\ERP\Purchasing\Models\PurchaseOrderLine;
 use App\Exports\MasterProductImportTemplateExport;
 use App\Exports\ProjectImportTemplateExport;
 use App\Imports\MasterProductsImport;
@@ -13,7 +15,12 @@ use App\Models\ErpSetting;
 use App\Models\LabelProfile;
 use App\Models\LandingSite;
 use App\Models\LandingSitePage;
+use App\Models\MasterProduct;
+use App\Models\MasterProductWarehouseStock;
 use App\Models\PaymentMethod;
+use App\Models\PosSaleItem;
+use App\Models\ProductStockMovement;
+use App\Models\ProjectMaterial;
 use App\Services\LanEscPosPrinter;
 use App\Services\LanTsplPrinter;
 use App\Services\ServerMetricsService;
@@ -24,6 +31,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -741,6 +749,9 @@ class ERPAdministrationMasterDataController extends Controller
         return Inertia::render('ERP/Admin/DataImport', [
             'activeTab' => $tab,
             'seeders' => $this->dataImportSeederRows(),
+            'warehouses' => Warehouse::query()
+                ->orderBy('name')
+                ->get(['id', 'code', 'name']),
         ]);
     }
 
@@ -769,6 +780,121 @@ class ERPAdministrationMasterDataController extends Controller
                 'message' => "Gagal menjalankan seeder: {$e->getMessage()}",
             ], 500);
         }
+    }
+
+    /**
+     * Hapus penempatan produk per gudang. Produk yang hanya terdaftar di gudang ini juga dihapus dari master
+     * (jika tidak ada pembelian, GR, material project, POS, atau riwayat stok lain yang menaut).
+     * Stok di gudang boleh tidak nol. Operasi tetap ditolak bila ada riwayat pergerakan stok untuk gudang ini, material project
+     * ke gudang ini, atau baris penerimaan barang ke gudang ini (serta relasi global untuk produk yang akan dihapus dari master).
+     * Produk yang masih punya penempatan di gudang lain: hanya baris gudang ini yang dihapus.
+     */
+    public function clearWarehouseProductAssignments(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
+        ]);
+
+        $warehouseId = (int) $validated['warehouse_id'];
+
+        $stockForWarehouse = MasterProductWarehouseStock::query()->where('warehouse_id', $warehouseId);
+
+        if (! $stockForWarehouse->exists()) {
+            return back()->with('flash', [
+                'type' => 'warning',
+                'message' => 'Tidak ada penempatan produk di gudang yang dipilih.',
+            ]);
+        }
+
+        $reasons = [];
+
+        if (ProductStockMovement::query()->where('warehouse_id', $warehouseId)->exists()) {
+            $reasons[] = 'Masih ada riwayat pergerakan stok untuk gudang ini.';
+        }
+
+        if (ProjectMaterial::query()->where('warehouse_id', $warehouseId)->exists()) {
+            $reasons[] = 'Masih ada material project yang menaut ke gudang ini.';
+        }
+
+        if (GoodsReceiptLine::query()->whereHas('goodsReceipt', fn ($q) => $q->where('warehouse_id', $warehouseId))->exists()) {
+            $reasons[] = 'Masih ada baris penerimaan barang ke gudang ini.';
+        }
+
+        $productIds = $stockForWarehouse->clone()->pluck('master_product_id')->unique()->values()->all();
+
+        $masterProductIdsOnlyInThisWarehouse = [];
+        foreach ($productIds as $productId) {
+            $hasOtherWarehouse = MasterProductWarehouseStock::query()
+                ->where('master_product_id', $productId)
+                ->where('warehouse_id', '!=', $warehouseId)
+                ->exists();
+            if (! $hasOtherWarehouse) {
+                $masterProductIdsOnlyInThisWarehouse[] = $productId;
+            }
+        }
+
+        if ($masterProductIdsOnlyInThisWarehouse !== []) {
+            $onlyIds = $masterProductIdsOnlyInThisWarehouse;
+            if (ProductStockMovement::query()->whereIn('master_product_id', $onlyIds)->exists()) {
+                $reasons[] = 'Ada produk yang hanya terdaftar di gudang ini tetapi masih memiliki riwayat pergerakan stok.';
+            }
+            if (ProjectMaterial::query()->whereIn('master_product_id', $onlyIds)->exists()) {
+                $reasons[] = 'Ada produk yang hanya terdaftar di gudang ini tetapi masih dipakai sebagai material project.';
+            }
+            if (PurchaseOrderLine::query()->whereIn('master_product_id', $onlyIds)->exists()) {
+                $reasons[] = 'Ada produk yang hanya terdaftar di gudang ini tetapi masih ada di pembelian (PO).';
+            }
+            if (GoodsReceiptLine::query()->whereIn('master_product_id', $onlyIds)->exists()) {
+                $reasons[] = 'Ada produk yang hanya terdaftar di gudang ini tetapi masih ada di penerimaan barang.';
+            }
+            if (PosSaleItem::query()->whereIn('master_product_id', $onlyIds)->exists()) {
+                $reasons[] = 'Ada produk yang hanya terdaftar di gudang ini tetapi masih ada di riwayat penjualan POS.';
+            }
+        }
+
+        if ($reasons !== []) {
+            return back()->with('flash', [
+                'type' => 'error',
+                'message' => 'Tidak dapat mengosongkan penempatan produk: '.implode(' ', $reasons),
+            ]);
+        }
+
+        $deletedRows = $stockForWarehouse->clone()->count();
+        $deletedMasterCount = count($masterProductIdsOnlyInThisWarehouse);
+
+        DB::transaction(function () use ($warehouseId, $productIds, $masterProductIdsOnlyInThisWarehouse): void {
+            if ($masterProductIdsOnlyInThisWarehouse !== []) {
+                MasterProduct::query()->whereIn('id', $masterProductIdsOnlyInThisWarehouse)->delete();
+            }
+
+            MasterProductWarehouseStock::query()->where('warehouse_id', $warehouseId)->delete();
+
+            $survivorIds = array_values(array_diff($productIds, $masterProductIdsOnlyInThisWarehouse));
+
+            foreach ($survivorIds as $productId) {
+                if (! MasterProduct::query()->whereKey($productId)->exists()) {
+                    continue;
+                }
+
+                $sumQty = (float) MasterProductWarehouseStock::query()
+                    ->where('master_product_id', $productId)
+                    ->sum('qty');
+
+                MasterProduct::query()->whereKey($productId)->update([
+                    'stock' => max(0, (int) floor($sumQty)),
+                ]);
+            }
+        });
+
+        $msg = "Penempatan produk di gudang berhasil dikosongkan ({$deletedRows} baris dihapus).";
+        if ($deletedMasterCount > 0) {
+            $msg .= " {$deletedMasterCount} produk master ikut dihapus (hanya terdaftar di gudang ini).";
+        }
+
+        return back()->with('flash', [
+            'type' => 'success',
+            'message' => $msg,
+        ]);
     }
 
     public function masterProductImport(): RedirectResponse
@@ -1024,6 +1150,7 @@ class ERPAdministrationMasterDataController extends Controller
             ['key' => 'label_profiles', 'label' => 'Profil Label', 'description' => '9 profil label thermal (ZPL & TSPL) untuk ukuran retail.', 'class' => 'LabelProfileSeeder'],
             ['key' => 'parser_rules', 'label' => 'Parser Rules Chatbot', 'description' => '35 rule parser keyword untuk chatbot ERP.', 'class' => 'ErpChatParserRuleSeeder'],
             ['key' => 'pos_receipt', 'label' => 'Template Struk POS', 'description' => 'Template struk thermal POS default.', 'class' => 'FillThermalPosReceiptTemplatesSeeder'],
+            ['key' => 'project_flow', 'label' => 'Alur Project Demo', 'description' => '5 data project lengkap: budget, termin, cashflow, tim, task, referral, dan material.', 'class' => 'ProjectFlowSeeder'],
         ];
     }
 

@@ -3,6 +3,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
 import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
+import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { useCurrency } from '@/composables/useCurrency';
 import { reactive, watch } from 'vue';
 
@@ -48,7 +49,10 @@ const openTransaction = (trxId) => {
             <p class="mt-1 text-sm text-base-content/70">Riwayat transaksi POS yang sudah diproses.</p>
           </div>
           <div class="flex items-center gap-2">
-            <Link class="btn btn-ghost btn-sm" :href="route('erp.sales')">Back</Link>
+            <Link class="btn btn-ghost btn-sm gap-1.5" :href="route('erp.sales')">
+              <ArrowLeftIcon class="h-4 w-4" />
+              Back
+            </Link>
             <Link class="btn btn-primary btn-sm" :href="route('erp.sales.pos', { fullscreen: 1 })" target="_blank">Buka POS</Link>
           </div>
         </div>
@@ -95,6 +99,7 @@ const openTransaction = (trxId) => {
               <thead>
                 <tr>
                   <th>No Transaksi</th>
+                  <th>Channel</th>
                   <th>Waktu</th>
                   <th>Item</th>
                   <th>Total Qty</th>
@@ -114,6 +119,7 @@ const openTransaction = (trxId) => {
                   @click="openTransaction(trx.id)"
                 >
                   <td class="font-mono text-xs">{{ trx.number }}</td>
+                  <td><span class="badge badge-ghost badge-sm">{{ trx.sales_channel || '-' }}</span></td>
                   <td>{{ trx.sold_at || '-' }}</td>
                   <td>{{ trx.items_count }}</td>
                   <td>{{ trx.total_qty }}</td>
@@ -125,7 +131,7 @@ const openTransaction = (trxId) => {
                   <td @click.stop><StatusBadge :status="trx.status" /></td>
                 </tr>
                 <tr v-if="!(transactions?.data || []).length">
-                  <td colspan="10" class="py-10 text-center text-base-content/50">Belum ada transaksi POS.</td>
+                  <td colspan="11" class="py-10 text-center text-base-content/50">Belum ada transaksi POS.</td>
                 </tr>
               </tbody>
             </table>

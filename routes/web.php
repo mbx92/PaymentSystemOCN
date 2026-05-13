@@ -61,16 +61,22 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     Route::post('erp/chatbot/ask', [ErpChatbotController::class, 'ask'])->name('erp.chatbot.ask');
 
-    // Projects (Admin + Manajer)
-    Route::middleware('role:admin|manajer')->group(function () {
-        // ERP Module Landing Pages
+    Route::middleware('role_or_permission:admin|manajer|menu.erp.accounting|erp.accounting.post-journal')->group(function () {
         Route::get('erp/accounting', [ERPModuleController::class, 'accounting'])->name('erp.accounting');
         Route::get('erp/accounting/cashflow', [CashflowController::class, 'index'])->name('erp.accounting.cashflow');
+    });
+
+    Route::middleware('role_or_permission:admin|manajer|erp.accounting.post-journal')->group(function () {
         Route::post('erp/accounting/cashflow', [CashflowController::class, 'store'])->name('erp.accounting.cashflow.store');
         Route::patch('erp/accounting/cashflow/cash-in/{cashIn}', [CashflowController::class, 'updateCashIn'])->name('erp.accounting.cashflow.cash-in.update');
         Route::delete('erp/accounting/cashflow/cash-in/{cashIn}', [CashflowController::class, 'destroyCashIn'])->name('erp.accounting.cashflow.cash-in.destroy');
         Route::patch('erp/accounting/cashflow/cash-out/{cashOut}', [CashflowController::class, 'updateCashOut'])->name('erp.accounting.cashflow.cash-out.update');
         Route::delete('erp/accounting/cashflow/cash-out/{cashOut}', [CashflowController::class, 'destroyCashOut'])->name('erp.accounting.cashflow.cash-out.destroy');
+    });
+
+    // Projects (Admin + Manajer)
+    Route::middleware('role:admin|manajer')->group(function () {
+        // ERP Module Landing Pages
         Route::get('erp/accounting/operational', [OperationalController::class, 'index'])->name('erp.accounting.operational');
         Route::post('erp/accounting/operational', [OperationalController::class, 'store'])->name('erp.accounting.operational.store');
         Route::patch('erp/accounting/operational/{cashOut}', [OperationalController::class, 'update'])->name('erp.accounting.operational.update');
@@ -130,6 +136,9 @@ Route::middleware('auth')->group(function () {
         Route::post('erp/master-products/{masterProduct}/uom-mappings', [ERPMasterProductController::class, 'storeUomMapping'])->name('erp.master-products.uom-mappings.store');
         Route::patch('erp/master-products/{masterProduct}/uom-mappings/{mapping}', [ERPMasterProductController::class, 'updateUomMapping'])->name('erp.master-products.uom-mappings.update');
         Route::delete('erp/master-products/{masterProduct}/uom-mappings/{mapping}', [ERPMasterProductController::class, 'destroyUomMapping'])->name('erp.master-products.uom-mappings.destroy');
+        Route::post('erp/master-products/{masterProduct}/channel-prices', [ERPMasterProductController::class, 'storeChannelPrice'])->name('erp.master-products.channel-prices.store');
+        Route::patch('erp/master-products/{masterProduct}/channel-prices/{channelPrice}', [ERPMasterProductController::class, 'updateChannelPrice'])->name('erp.master-products.channel-prices.update');
+        Route::delete('erp/master-products/{masterProduct}/channel-prices/{channelPrice}', [ERPMasterProductController::class, 'destroyChannelPrice'])->name('erp.master-products.channel-prices.destroy');
         Route::get('erp/inventory/categories', [ERPInventoryMasterDataController::class, 'categories'])->name('erp.inventory.categories');
         Route::post('erp/inventory/categories', [ERPInventoryMasterDataController::class, 'storeCategory'])->name('erp.inventory.categories.store');
         Route::get('erp/inventory/warehouses', [ERPInventoryMasterDataController::class, 'warehouses'])->name('erp.inventory.warehouses');
@@ -295,6 +304,7 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/admin/data-import/projects/template', [ERPAdministrationMasterDataController::class, 'downloadProjectImportTemplate'])->name('erp.admin.data-import.projects.template');
         Route::post('erp/admin/data-import/projects', [ERPAdministrationMasterDataController::class, 'importProjects'])->name('erp.admin.data-import.projects.store');
         Route::post('erp/admin/data-import/run-seeder', [ERPAdministrationMasterDataController::class, 'runSeeder'])->name('erp.admin.data-import.run-seeder');
+        Route::post('erp/admin/data-import/warehouse-clear-products', [ERPAdministrationMasterDataController::class, 'clearWarehouseProductAssignments'])->name('erp.admin.data-import.warehouse-clear-products');
         Route::get('erp/admin/master-products/import', [ERPAdministrationMasterDataController::class, 'masterProductImport'])->name('erp.admin.master-products.import');
         Route::get('erp/admin/master-products/import/template', [ERPAdministrationMasterDataController::class, 'downloadMasterProductImportTemplate'])->name('erp.admin.master-products.import.template');
         Route::post('erp/admin/master-products/import', [ERPAdministrationMasterDataController::class, 'importMasterProducts'])->name('erp.admin.master-products.import.store');

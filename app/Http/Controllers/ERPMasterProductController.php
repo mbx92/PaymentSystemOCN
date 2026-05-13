@@ -6,6 +6,7 @@ use App\ERP\Inventory\Models\Warehouse;
 use App\Models\ErpSetting;
 use App\Models\LabelProfile;
 use App\Models\MasterProduct;
+use App\Models\MasterProductChannelPrice;
 use App\Models\MasterProductUomMapping;
 use App\Models\ProductCategory;
 use App\Models\Uom;
@@ -93,7 +94,7 @@ class ERPMasterProductController extends Controller
 
     public function show(MasterProduct $masterProduct, WindowsSmbRawPrinter $smb): Response
     {
-        $masterProduct->load('uomMappings');
+        $masterProduct->load(['uomMappings', 'channelPrices']);
 
         return Inertia::render('ERP/MasterProducts/Show', [
             'product' => $masterProduct,
@@ -107,6 +108,14 @@ class ERPMasterProductController extends Controller
                 'use_auto_price' => (bool) $mapping->use_auto_price,
                 'status' => $mapping->status,
             ]),
+            'channelPrices' => $masterProduct->channelPrices->map(fn (MasterProductChannelPrice $price) => [
+                'id' => $price->id,
+                'sales_channel' => $price->sales_channel,
+                'label' => $price->label ?: $this->priceChannelLabel($price->sales_channel),
+                'selling_price' => (float) $price->selling_price,
+                'status' => $price->status,
+            ]),
+            'priceChannels' => $this->priceChannels(),
             'uoms' => Uom::query()
                 ->where('status', 'active')
                 ->orderBy('code')
@@ -301,6 +310,54 @@ class ERPMasterProductController extends Controller
         return back()->with('flash', ['type' => 'success', 'message' => 'Mapping UoM produk berhasil dihapus.']);
     }
 
+    public function storeChannelPrice(Request $request, MasterProduct $masterProduct): RedirectResponse
+    {
+        $validated = $request->validate([
+            'sales_channel' => ['required', 'string', Rule::in(array_column($this->priceChannels(), 'key'))],
+            'selling_price' => 'required|numeric|min:0',
+            'status' => 'required|in:active,inactive',
+        ]);
+
+        MasterProductChannelPrice::query()->updateOrCreate(
+            [
+                'master_product_id' => $masterProduct->id,
+                'sales_channel' => $validated['sales_channel'],
+            ],
+            [
+                'label' => $this->priceChannelLabel($validated['sales_channel']),
+                'selling_price' => (float) $validated['selling_price'],
+                'status' => $validated['status'],
+            ]
+        );
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Harga sales channel produk berhasil disimpan.']);
+    }
+
+    public function updateChannelPrice(Request $request, MasterProduct $masterProduct, MasterProductChannelPrice $channelPrice): RedirectResponse
+    {
+        abort_unless($channelPrice->master_product_id === $masterProduct->id, 404);
+
+        $validated = $request->validate([
+            'selling_price' => 'required|numeric|min:0',
+            'status' => 'required|in:active,inactive',
+        ]);
+
+        $channelPrice->update([
+            'selling_price' => (float) $validated['selling_price'],
+            'status' => $validated['status'],
+        ]);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Harga sales channel produk berhasil diperbarui.']);
+    }
+
+    public function destroyChannelPrice(MasterProduct $masterProduct, MasterProductChannelPrice $channelPrice): RedirectResponse
+    {
+        abort_unless($channelPrice->master_product_id === $masterProduct->id, 404);
+        $channelPrice->delete();
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Harga sales channel produk berhasil dihapus.']);
+    }
+
     public function destroy(MasterProduct $masterProduct): RedirectResponse
     {
         $masterProduct->delete();
@@ -316,6 +373,22 @@ class ERPMasterProductController extends Controller
         }
 
         return round($basePrice * $multiplier, 2);
+    }
+
+    private function priceChannelLabel(string $key): string
+    {
+        return collect($this->priceChannels())->firstWhere('key', $key)['label'] ?? strtoupper($key);
+    }
+
+    private function priceChannels(): array
+    {
+        return [
+            ['key' => 'retail', 'label' => 'Retail'],
+            ['key' => 'grosir', 'label' => 'Grosir'],
+            ['key' => 'reseller', 'label' => 'Reseller'],
+            ['key' => 'marketplace', 'label' => 'Marketplace'],
+            ['key' => 'online', 'label' => 'Online'],
+        ];
     }
 
     /**

@@ -42,6 +42,11 @@ class MasterProduct extends Model
         return $this->hasMany(MasterProductUomMapping::class)->orderBy('uom_code');
     }
 
+    public function channelPrices(): HasMany
+    {
+        return $this->hasMany(MasterProductChannelPrice::class)->orderBy('sales_channel');
+    }
+
     public function warehouseStocks(): HasMany
     {
         return $this->hasMany(MasterProductWarehouseStock::class);

@@ -7,6 +7,7 @@ import { Head, Link, useForm, router } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { computed, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
+import { showGlobalAlert } from '@/utils/globalAlert';
 
 const props = defineProps({
   entries: Array,
@@ -15,12 +16,21 @@ const props = defineProps({
   paymentMethods: Array,
   cashAccounts: Array,
   filters: Object,
+  sourceOptions: Array,
   categoryOptions: Object,
+  canMutate: Boolean,
 });
 
 const { format } = useCurrency();
+const firstBackendError = (errors, fallback) => {
+  const first = Object.values(errors ?? {})[0];
+  if (Array.isArray(first)) return first[0] ?? fallback;
+  return typeof first === 'string' && first ? first : fallback;
+};
+
 const filters = ref({
   type: props.filters?.type ?? '',
+  source: props.filters?.source ?? '',
   project_id: props.filters?.project_id ?? '',
   category: props.filters?.category ?? '',
   date_from: props.filters?.date_from ?? '',
@@ -32,12 +42,20 @@ let timer;
 watch(filters, (val) => {
   clearTimeout(timer);
   timer = setTimeout(() => {
-    router.get(route('erp.accounting.cashflow'), val, { preserveState: true, replace: true });
+    router.get(route('erp.accounting.cashflow'), val, {
+      preserveState: true,
+      replace: true,
+      onError: (errors) => showGlobalAlert(firstBackendError(errors, 'Gagal memuat data cashflow.'), 'error'),
+    });
   }, 350);
 }, { deep: true });
 
 const typeBadgeClass = (type) => (type === 'in' ? 'badge-success' : 'badge-error');
 const typeLabel = (type) => (type === 'in' ? 'In' : 'Out');
+const sourceLabel = (source) => {
+  const found = (props.sourceOptions ?? []).find((opt) => opt.value === source);
+  return found?.label ?? (source || 'Manual / Umum');
+};
 
 const formatDate = (dateStr) => {
   if (!dateStr) return '-';
@@ -83,6 +101,11 @@ watch(() => form.type, (type) => {
 });
 
 const openAddModal = () => {
+  if (!props.canMutate) {
+    showGlobalAlert('Anda tidak memiliki izin untuk menambah transaksi cashflow.', 'warning');
+    return;
+  }
+
   form.reset();
   form.type = 'in';
   form.project_id = '';
@@ -100,6 +123,7 @@ const submitEntry = () => {
   form.post(route('erp.accounting.cashflow.store'), {
     preserveScroll: true,
     onSuccess: () => document.getElementById('modal-cashflow-entry')?.close(),
+    onError: (errors) => showGlobalAlert(firstBackendError(errors, 'Transaksi cashflow gagal disimpan.'), 'error'),
   });
 };
 
@@ -126,6 +150,11 @@ const openDetailModal = (entry) => {
 };
 
 const openEditModal = (entry) => {
+  if (!props.canMutate || entry.mutable === false) {
+    showGlobalAlert('Transaksi ini tidak bisa diubah dari halaman cashflow.', 'warning');
+    return;
+  }
+
   editForm.id = entry.id;
   editForm.type = entry.type;
   editForm.project_id = entry.project_id || '';
@@ -146,10 +175,16 @@ const submitEdit = () => {
   editForm.patch(routeName, {
     preserveScroll: true,
     onSuccess: () => document.getElementById('modal-cashflow-edit')?.close(),
+    onError: (errors) => showGlobalAlert(firstBackendError(errors, 'Transaksi cashflow gagal diperbarui.'), 'error'),
   });
 };
 
 const destroyEntry = (entry) => {
+  if (!props.canMutate || entry.mutable === false) {
+    showGlobalAlert('Transaksi ini tidak bisa dihapus dari halaman cashflow.', 'warning');
+    return;
+  }
+
   deletingEntry.value = entry;
   document.getElementById('modal-delete-cashflow-entry')?.showModal();
 };
@@ -162,6 +197,7 @@ const confirmDestroyEntry = () => {
   deleting.delete(routeName, {
     preserveScroll: true,
     onSuccess: () => { deletingEntry.value = null; selectedEntry.value = null; },
+    onError: (errors) => showGlobalAlert(firstBackendError(errors, 'Transaksi cashflow gagal dihapus.'), 'error'),
   });
 };
 </script>
@@ -180,7 +216,7 @@ const confirmDestroyEntry = () => {
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
               <div class="flex items-center gap-2">
-            <button class="btn btn-primary btn-sm" @click="openAddModal">+ Input Transaksi</button>
+            <button v-if="canMutate" class="btn btn-primary btn-sm" @click="openAddModal">+ Input Transaksi</button>
             <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.accounting')">
             <ArrowLeftIcon class="h-4 w-4" />
             Back
@@ -217,11 +253,14 @@ const confirmDestroyEntry = () => {
           <h2 class="ocn-panel__title">Filter cashflow</h2>
         </div>
         <div class="card-body">
-          <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
             <select v-model="filters.type" class="select select-bordered select-sm w-full">
               <option value="">Semua Jenis</option>
               <option value="in">Kas Masuk</option>
               <option value="out">Kas Keluar</option>
+            </select>
+            <select v-model="filters.source" class="select select-bordered select-sm w-full">
+              <option v-for="opt in sourceOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
             <select v-model="filters.project_id" class="select select-bordered select-sm w-full">
               <option value="">Semua Project</option>
@@ -275,6 +314,7 @@ const confirmDestroyEntry = () => {
                 </td>
                 <td>
                   <div class="font-medium">{{ entry.source_name || '-' }}</div>
+                  <div class="mt-0.5 text-xs text-base-content/40">{{ sourceLabel(entry.source) }}</div>
                   <div v-if="entry.type === 'in' ? entry.payment_method_name : entry.recipient_name"
                        class="text-xs text-base-content/40 mt-0.5">
                     {{ entry.type === 'in' ? entry.payment_method_name : entry.recipient_name }}
@@ -393,8 +433,8 @@ const confirmDestroyEntry = () => {
           <div class="text-base-content/60">Dicatat Oleh</div><div>{{ selectedEntry.creator_name }}</div>
         </div>
         <div class="modal-action">
-          <button class="btn btn-outline" @click="selectedEntry && openEditModal(selectedEntry)">Edit</button>
-          <button class="btn btn-error" @click="selectedEntry && destroyEntry(selectedEntry)">Hapus</button>
+          <button v-if="canMutate && selectedEntry?.mutable !== false" class="btn btn-outline" @click="selectedEntry && openEditModal(selectedEntry)">Edit</button>
+          <button v-if="canMutate && selectedEntry?.mutable !== false" class="btn btn-error" @click="selectedEntry && destroyEntry(selectedEntry)">Hapus</button>
           <form method="dialog"><button class="btn btn-ghost">Tutup</button></form>
         </div>
       </div>

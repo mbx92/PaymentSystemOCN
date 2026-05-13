@@ -4,6 +4,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { Head, Link, usePage } from '@inertiajs/vue3';
 import {
   ArrowDownCircleIcon,
+  ArrowLeftIcon,
   ArrowUpCircleIcon,
   ArrowUpTrayIcon,
   BookOpenIcon,
@@ -90,7 +91,10 @@ const workspaceMenus = computed(() =>
         <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">ERP Module</p>
         <div class="mt-2 flex items-center justify-between gap-3">
           <h1 class="text-3xl font-bold tracking-tight">{{ module }}</h1>
-          <Link class="btn btn-ghost btn-sm" :href="route('dashboard')">Back</Link>
+          <Link class="btn btn-ghost btn-sm gap-1.5" :href="route('dashboard')">
+            <ArrowLeftIcon class="h-4 w-4" />
+            Back
+          </Link>
         </div>
         <p class="mt-2 text-sm text-base-content/70">
           Pilih submenu {{ module }} untuk lanjut ke workflow operasional.

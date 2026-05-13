@@ -27,6 +27,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -43,10 +44,14 @@ class ERPSalesController extends Controller
         $products = MasterProduct::query()
             ->where('status', 'active')
             ->whereIn('sales_channel', ['pos', 'both'])
-            ->with(['uomMappings' => fn ($q) => $q->where('status', 'active')])
+            ->with([
+                'channelPrices' => fn ($q) => $q->where('status', 'active'),
+                'uomMappings' => fn ($q) => $q->where('status', 'active'),
+            ])
             ->orderBy('name')
             ->get(['id', 'sku', 'barcode', 'name', 'uom', 'selling_price', 'stock'])
             ->flatMap(function (MasterProduct $product) {
+                $baseChannelPrices = $this->productChannelPrices($product);
                 $base = [[
                     'id' => 'base-'.$product->id,
                     'master_product_id' => $product->id,
@@ -56,29 +61,40 @@ class ERPSalesController extends Controller
                     'uom' => $product->uom,
                     'variant_label' => $product->uom,
                     'price' => (float) $product->selling_price,
+                    'channel_prices' => $baseChannelPrices,
                     'stock' => $product->stock,
                     'multiplier' => 1,
                 ]];
 
-                $mapped = $product->uomMappings->map(fn ($mapping) => [
-                    'id' => 'map-'.$mapping->id,
-                    'master_product_id' => $product->id,
-                    'sku' => $product->sku.'-'.$mapping->uom_code,
-                    'barcode' => $product->barcode,
-                    'name' => $product->name,
-                    'uom' => $mapping->uom_code,
-                    'variant_label' => $mapping->uom_code,
-                    'price_operation' => $mapping->price_operation ?: 'multiply',
-                    'price' => (float) ($mapping->use_auto_price
-                        ? (($mapping->price_operation === 'divide')
-                            ? round((float) $product->selling_price / max((float) $mapping->multiplier, 0.0001), 2)
-                            : round((float) $product->selling_price * (float) $mapping->multiplier, 2))
-                        : $mapping->selling_price),
-                    'stock' => (int) (($mapping->price_operation === 'divide')
-                        ? floor((float) $product->stock * (float) $mapping->multiplier)
-                        : floor((float) $product->stock / max((float) $mapping->multiplier, 0.0001))),
-                    'multiplier' => (float) $mapping->multiplier,
-                ]);
+                $mapped = $product->uomMappings->map(function ($mapping) use ($product, $baseChannelPrices) {
+                    $operation = $mapping->price_operation ?: 'multiply';
+                    $mappedPrice = (float) ($mapping->use_auto_price
+                        ? $this->computeMappedPrice((float) $product->selling_price, (float) $mapping->multiplier, $operation)
+                        : $mapping->selling_price);
+
+                    return [
+                        'id' => 'map-'.$mapping->id,
+                        'master_product_id' => $product->id,
+                        'sku' => $product->sku.'-'.$mapping->uom_code,
+                        'barcode' => $product->barcode,
+                        'name' => $product->name,
+                        'uom' => $mapping->uom_code,
+                        'variant_label' => $mapping->uom_code,
+                        'price_operation' => $operation,
+                        'price' => $mappedPrice,
+                        'channel_prices' => $this->mappedChannelPrices(
+                            $baseChannelPrices,
+                            $mappedPrice,
+                            (float) $mapping->multiplier,
+                            $operation,
+                            (bool) $mapping->use_auto_price
+                        ),
+                        'stock' => (int) (($operation === 'divide')
+                            ? floor((float) $product->stock * (float) $mapping->multiplier)
+                            : floor((float) $product->stock / max((float) $mapping->multiplier, 0.0001))),
+                        'multiplier' => (float) $mapping->multiplier,
+                    ];
+                });
 
                 return collect($base)->concat($mapped);
             })
@@ -86,6 +102,7 @@ class ERPSalesController extends Controller
 
         return Inertia::render('ERP/Sales/POS', [
             'products' => $products,
+            'price_channels' => $this->priceChannels(),
             'fullscreen' => $request->boolean('fullscreen'),
             'payment_methods' => PaymentMethod::query()
                 ->where('status', 'active')
@@ -114,6 +131,7 @@ class ERPSalesController extends Controller
             ->through(fn (PosSale $sale) => [
                 'id' => $sale->id,
                 'number' => $sale->number,
+                'sales_channel' => $this->priceChannelLabel($sale->sales_channel ?: 'retail'),
                 'sold_at' => $sale->sold_at?->format('Y-m-d H:i:s'),
                 'items_count' => $sale->items->count(),
                 'total_qty' => (float) $sale->items->sum('qty'),
@@ -142,6 +160,8 @@ class ERPSalesController extends Controller
             'detail' => [
                 'id' => $posSale->id,
                 'number' => $posSale->number,
+                'sales_channel' => $posSale->sales_channel ?: 'retail',
+                'sales_channel_label' => $this->priceChannelLabel($posSale->sales_channel ?: 'retail'),
                 'status' => $posSale->status,
                 'sold_at' => $posSale->sold_at?->format('Y-m-d H:i:s'),
                 'cashier' => $posSale->soldBy?->name,
@@ -354,6 +374,7 @@ class ERPSalesController extends Controller
     public function checkoutPos(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'sales_channel' => ['required', 'string', Rule::in(array_column($this->priceChannels(), 'key'))],
             'payment_method_id' => 'required|exists:payment_methods,id',
             'cash_paid' => 'nullable|numeric|min:0',
             'additional_charges' => 'nullable|array',
@@ -371,7 +392,14 @@ class ERPSalesController extends Controller
         ]);
 
         $paymentMethod = PaymentMethod::query()->findOrFail((int) $validated['payment_method_id']);
-        $items = $validated['items'];
+        $salesChannel = $validated['sales_channel'];
+        $items = collect($validated['items'])
+            ->map(function (array $item) use ($salesChannel): array {
+                $item['unit_price'] = $this->resolveCheckoutUnitPrice($item, $salesChannel);
+
+                return $item;
+            })
+            ->all();
         $additionalCharges = collect($validated['additional_charges'] ?? [])
             ->map(fn (array $charge) => [
                 'charge_name' => trim((string) $charge['name']),
@@ -397,7 +425,7 @@ class ERPSalesController extends Controller
             ]);
         }
 
-        $checkoutResult = DB::transaction(function () use ($items, $grossTotal, $discountTotal, $additionalCharges, $additionalFee, $grandTotal, $cashPaid, $paymentMethod): array {
+        $checkoutResult = DB::transaction(function () use ($items, $grossTotal, $discountTotal, $additionalCharges, $additionalFee, $grandTotal, $cashPaid, $paymentMethod, $salesChannel): array {
             $transactionNumber = $this->documentNumberService->next('sales', 'pos_sale', [
                 'prefix' => 'POS',
                 'padding_length' => 6,
@@ -405,6 +433,7 @@ class ERPSalesController extends Controller
 
             $sale = PosSale::query()->create([
                 'number' => $transactionNumber,
+                'sales_channel' => $salesChannel,
                 'payment_method_id' => $paymentMethod->id,
                 'gross_total' => $grossTotal,
                 'discount_total' => $discountTotal,
@@ -516,6 +545,8 @@ class ERPSalesController extends Controller
                 'total_qty' => array_sum(array_map(fn ($item) => (float) $item['qty'], $saleItemsPayload)),
                 'grand_total' => (float) $sale->grand_total,
                 'payment_method' => $paymentMethod->name,
+                'sales_channel' => $salesChannel,
+                'sales_channel_label' => $this->priceChannelLabel($salesChannel),
                 'cashier' => Auth::user()?->name,
             ];
         });
@@ -532,6 +563,8 @@ class ERPSalesController extends Controller
             'cash_paid' => $cashPaid,
             'change' => max($cashPaid - $grandTotal, 0),
             'payment_method_name' => $paymentMethod->name,
+            'sales_channel' => $salesChannel,
+            'sales_channel_label' => $this->priceChannelLabel($salesChannel),
             'transaction' => $checkoutResult,
             'direct_print' => $directPrint,
         ]);
@@ -671,6 +704,84 @@ class ERPSalesController extends Controller
     private function resolvePosWarehouseId(): ?int
     {
         return Warehouse::query()->where('is_active', true)->orderBy('id')->value('id');
+    }
+
+    private function productChannelPrices(MasterProduct $product): array
+    {
+        $configured = $product->channelPrices
+            ->keyBy('sales_channel')
+            ->map(fn ($price) => (float) $price->selling_price);
+
+        return collect($this->priceChannels())
+            ->mapWithKeys(fn ($channel) => [
+                $channel['key'] => (float) ($configured[$channel['key']] ?? $product->selling_price),
+            ])
+            ->all();
+    }
+
+    private function mappedChannelPrices(array $baseChannelPrices, float $manualPrice, float $multiplier, string $operation, bool $useAutoPrice): array
+    {
+        if (! $useAutoPrice) {
+            return collect($this->priceChannels())
+                ->mapWithKeys(fn ($channel) => [$channel['key'] => $manualPrice])
+                ->all();
+        }
+
+        return collect($baseChannelPrices)
+            ->map(fn ($price) => $this->computeMappedPrice((float) $price, $multiplier, $operation))
+            ->all();
+    }
+
+    private function computeMappedPrice(float $basePrice, float $multiplier, string $operation): float
+    {
+        if ($operation === 'divide') {
+            return round($basePrice / max($multiplier, 0.0001), 2);
+        }
+
+        return round($basePrice * $multiplier, 2);
+    }
+
+    private function resolveCheckoutUnitPrice(array $item, string $salesChannel): float
+    {
+        $product = MasterProduct::query()
+            ->with([
+                'channelPrices' => fn ($q) => $q->where('status', 'active'),
+                'uomMappings' => fn ($q) => $q->where('status', 'active'),
+            ])
+            ->findOrFail((int) $item['master_product_id']);
+
+        $basePrice = (float) ($product->channelPrices->firstWhere('sales_channel', $salesChannel)?->selling_price ?? $product->selling_price);
+        $uom = (string) ($item['uom'] ?? $product->uom);
+        if ($uom === (string) $product->uom) {
+            return $basePrice;
+        }
+
+        $mapping = $product->uomMappings->firstWhere('uom_code', $uom);
+        if (! $mapping) {
+            return $basePrice;
+        }
+
+        if (! (bool) $mapping->use_auto_price) {
+            return (float) $mapping->selling_price;
+        }
+
+        return $this->computeMappedPrice($basePrice, (float) $mapping->multiplier, $mapping->price_operation ?: 'multiply');
+    }
+
+    private function priceChannelLabel(string $key): string
+    {
+        return collect($this->priceChannels())->firstWhere('key', $key)['label'] ?? strtoupper($key);
+    }
+
+    private function priceChannels(): array
+    {
+        return [
+            ['key' => 'retail', 'label' => 'Retail'],
+            ['key' => 'grosir', 'label' => 'Grosir'],
+            ['key' => 'reseller', 'label' => 'Reseller'],
+            ['key' => 'marketplace', 'label' => 'Marketplace'],
+            ['key' => 'online', 'label' => 'Online'],
+        ];
     }
 
     private function authorizeHighPrivilege(Request $request): void

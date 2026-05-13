@@ -16,6 +16,8 @@ const props = defineProps({
     default: () => ({ available: false, hint: null }),
   },
   uomMappings: Array,
+  channelPrices: Array,
+  priceChannels: Array,
   uoms: Array,
   categories: Array,
 });
@@ -71,9 +73,22 @@ const editMappingForm = useForm({
 });
 const currentEditingMappingId = ref(null);
 const editingMapping = computed(() => (props.uomMappings ?? []).find((item) => item.id === currentEditingMappingId.value) ?? null);
+const channelPriceForm = useForm({
+  sales_channel: 'retail',
+  selling_price: 0,
+  status: 'active',
+});
+const editChannelPriceForm = useForm({
+  selling_price: 0,
+  status: 'active',
+});
+const currentEditingChannelPriceId = ref(null);
+const editingChannelPrice = computed(() => (props.channelPrices ?? []).find((item) => item.id === currentEditingChannelPriceId.value) ?? null);
 
 const usedUomCodes = computed(() => new Set([props.product.uom, ...(props.uomMappings ?? []).map((m) => m.uom_code)]));
 const availableUoms = computed(() => (props.uoms ?? []).filter((uom) => !usedUomCodes.value.has(uom.code)));
+const usedPriceChannels = computed(() => new Set((props.channelPrices ?? []).map((price) => price.sales_channel)));
+const availablePriceChannels = computed(() => (props.priceChannels ?? []).filter((channel) => !usedPriceChannels.value.has(channel.key)));
 const totalVariants = computed(() => 1 + (props.uomMappings?.length || 0));
 const basePrice = computed(() => Number(props.product?.selling_price || 0));
 const addPreviewPrice = computed(() => {
@@ -141,6 +156,49 @@ const removeMapping = (mappingId) => {
   router.delete(route('erp.master-products.uom-mappings.destroy', {
     masterProduct: props.product.id,
     mapping: mappingId,
+  }), {
+    preserveScroll: true,
+  });
+};
+
+const openAddChannelPriceModal = () => {
+  channelPriceForm.reset('sales_channel', 'selling_price', 'status');
+  channelPriceForm.sales_channel = availablePriceChannels.value[0]?.key ?? props.priceChannels?.[0]?.key ?? 'retail';
+  channelPriceForm.selling_price = Number(props.product.selling_price || 0);
+  channelPriceForm.status = 'active';
+  document.getElementById('modal-add-channel-price')?.showModal();
+};
+
+const submitChannelPrice = () => {
+  channelPriceForm.post(route('erp.master-products.channel-prices.store', props.product.id), {
+    preserveScroll: true,
+    onSuccess: () => document.getElementById('modal-add-channel-price')?.close(),
+  });
+};
+
+const openEditChannelPriceModal = (channelPrice) => {
+  currentEditingChannelPriceId.value = channelPrice.id;
+  editChannelPriceForm.reset('selling_price', 'status');
+  editChannelPriceForm.selling_price = Number(channelPrice.selling_price || 0);
+  editChannelPriceForm.status = channelPrice.status || 'active';
+  document.getElementById('modal-edit-channel-price')?.showModal();
+};
+
+const submitEditChannelPrice = () => {
+  if (!currentEditingChannelPriceId.value) return;
+  editChannelPriceForm.patch(route('erp.master-products.channel-prices.update', {
+    masterProduct: props.product.id,
+    channelPrice: currentEditingChannelPriceId.value,
+  }), {
+    preserveScroll: true,
+    onSuccess: () => document.getElementById('modal-edit-channel-price')?.close(),
+  });
+};
+
+const removeChannelPrice = (channelPriceId) => {
+  router.delete(route('erp.master-products.channel-prices.destroy', {
+    masterProduct: props.product.id,
+    channelPrice: channelPriceId,
   }), {
     preserveScroll: true,
   });
@@ -365,6 +423,37 @@ const regenerateEditBarcode = async () => {
 
       <div class="ocn-panel">
         <div class="ocn-panel__head flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 class="ocn-panel__title">Multi harga sales channel</h2>
+            <p class="ocn-panel__desc">Harga POS berdasarkan channel transaksi kasir.</p>
+          </div>
+          <button class="btn btn-primary btn-sm shrink-0" :disabled="availablePriceChannels.length === 0" @click="openAddChannelPriceModal">Tambah harga</button>
+        </div>
+        <div class="card-body p-0">
+          <div class="overflow-x-auto">
+            <table class="table table-sm">
+              <thead><tr><th>Sales Channel</th><th>Harga Jual</th><th>Status</th><th></th></tr></thead>
+              <tbody>
+                <tr v-for="price in channelPrices" :key="price.id">
+                  <td class="font-semibold">{{ price.label }}</td>
+                  <td>{{ format(price.selling_price) }}</td>
+                  <td><StatusBadge :status="price.status" /></td>
+                  <td class="text-right">
+                    <button class="btn btn-ghost btn-xs" @click="openEditChannelPriceModal(price)">Edit</button>
+                    <button class="btn btn-ghost btn-xs text-error" @click="removeChannelPrice(price.id)">Hapus</button>
+                  </td>
+                </tr>
+                <tr v-if="!channelPrices?.length">
+                  <td colspan="4" class="py-6 text-center text-base-content/50">Belum ada multi harga. POS memakai harga dasar produk.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="ocn-panel">
+        <div class="ocn-panel__head flex flex-wrap items-center justify-between gap-2">
           <h2 class="ocn-panel__title">Mapping UoM per produk</h2>
           <button class="btn btn-primary btn-sm shrink-0" @click="openAddMappingModal">Tambah mapping</button>
         </div>
@@ -408,6 +497,75 @@ const regenerateEditBarcode = async () => {
         confirm-text="Hapus"
         @confirm="deleteProduct"
       />
+
+      <dialog id="modal-add-channel-price" class="modal">
+        <div class="modal-box max-w-lg">
+          <h3 class="font-bold text-lg">Tambah Harga Sales Channel</h3>
+          <div class="mt-4 space-y-3">
+            <div>
+              <label class="label"><span class="label-text">Sales Channel</span></label>
+              <select v-model="channelPriceForm.sales_channel" class="select select-bordered w-full">
+                <option value="" disabled>Pilih sales channel</option>
+                <option v-for="channel in availablePriceChannels" :key="channel.key" :value="channel.key">{{ channel.label }}</option>
+              </select>
+              <p v-if="channelPriceForm.errors.sales_channel" class="text-error text-xs mt-1">{{ channelPriceForm.errors.sales_channel }}</p>
+            </div>
+            <div>
+              <label class="label"><span class="label-text">Harga Jual</span></label>
+              <input v-model.number="channelPriceForm.selling_price" type="number" min="0" step="100" class="input input-bordered w-full" />
+              <p v-if="channelPriceForm.errors.selling_price" class="text-error text-xs mt-1">{{ channelPriceForm.errors.selling_price }}</p>
+            </div>
+            <div>
+              <label class="label cursor-pointer justify-start gap-3 mt-1">
+                <input
+                  :checked="channelPriceForm.status === 'active'"
+                  type="checkbox"
+                  class="toggle toggle-success"
+                  @change="channelPriceForm.status = $event.target.checked ? 'active' : 'inactive'"
+                />
+                <span class="label-text">{{ channelPriceForm.status === 'active' ? 'active' : 'inactive' }}</span>
+              </label>
+              <p v-if="channelPriceForm.errors.status" class="text-error text-xs mt-1">{{ channelPriceForm.errors.status }}</p>
+            </div>
+          </div>
+          <div class="modal-action">
+            <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
+            <button class="btn btn-primary" :disabled="channelPriceForm.processing || !availablePriceChannels.length" @click="submitChannelPrice">Simpan Harga</button>
+          </div>
+        </div>
+      </dialog>
+
+      <dialog id="modal-edit-channel-price" class="modal">
+        <div class="modal-box max-w-lg">
+          <h3 class="font-bold text-lg">Edit Harga Sales Channel</h3>
+          <div class="mt-4 space-y-3">
+            <div class="rounded-xl border border-base-300 bg-base-200/50 p-3 text-sm">
+              Sales Channel: <span class="font-semibold">{{ editingChannelPrice?.label || '-' }}</span>
+            </div>
+            <div>
+              <label class="label"><span class="label-text">Harga Jual</span></label>
+              <input v-model.number="editChannelPriceForm.selling_price" type="number" min="0" step="100" class="input input-bordered w-full" />
+              <p v-if="editChannelPriceForm.errors.selling_price" class="text-error text-xs mt-1">{{ editChannelPriceForm.errors.selling_price }}</p>
+            </div>
+            <div>
+              <label class="label cursor-pointer justify-start gap-3 mt-1">
+                <input
+                  :checked="editChannelPriceForm.status === 'active'"
+                  type="checkbox"
+                  class="toggle toggle-success"
+                  @change="editChannelPriceForm.status = $event.target.checked ? 'active' : 'inactive'"
+                />
+                <span class="label-text">{{ editChannelPriceForm.status === 'active' ? 'active' : 'inactive' }}</span>
+              </label>
+              <p v-if="editChannelPriceForm.errors.status" class="text-error text-xs mt-1">{{ editChannelPriceForm.errors.status }}</p>
+            </div>
+          </div>
+          <div class="modal-action">
+            <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
+            <button class="btn btn-primary" :disabled="editChannelPriceForm.processing" @click="submitEditChannelPrice">Update Harga</button>
+          </div>
+        </div>
+      </dialog>
 
       <dialog id="modal-add-uom-mapping" class="modal">
         <div class="modal-box max-w-xl">

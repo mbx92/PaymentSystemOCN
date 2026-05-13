@@ -3,14 +3,27 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
+import { ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 
 const props = defineProps({
   balances: Object,
   totals: Object,
+  filters: Object,
+  sourceOptions: Array,
 });
 
 const { format } = useCurrency();
+const filters = ref({
+  source: props.filters?.source ?? '',
+});
+
+watch(filters, (val) => {
+  router.get(route('reports.trial-balance'), {
+    source: val.source,
+    per_page: props.balances?.per_page ?? 25,
+  }, { preserveState: true, replace: true });
+}, { deep: true });
 
 const typeLabel = (type) => {
   const map = {
@@ -81,8 +94,16 @@ const typeBadgeClass = (type) => {
 
       <div class="ocn-panel">
         <div class="ocn-panel__head flex items-center justify-between gap-2">
-          <h2 class="ocn-panel__title">Daftar akun</h2>
-          <span class="text-xs text-base-content/60">{{ balances?.total ?? 0 }} akun</span>
+          <div>
+            <h2 class="ocn-panel__title">Daftar akun</h2>
+            <p class="ocn-panel__desc mt-1">Gunakan sumber untuk memisahkan saldo dari Project, POS, atau transaksi manual.</p>
+          </div>
+          <div class="flex flex-wrap items-center justify-end gap-2">
+            <select v-model="filters.source" class="select select-bordered select-sm w-44">
+              <option v-for="opt in sourceOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </select>
+            <span class="text-xs text-base-content/60">{{ balances?.total ?? 0 }} akun</span>
+          </div>
         </div>
         <div class="overflow-x-auto">
           <table class="table">
@@ -142,7 +163,7 @@ const typeBadgeClass = (type) => {
         </div>
         <DataTablePagination
           :paginator="balances"
-          @update:per-page="(n) => router.get(route('reports.trial-balance'), { per_page: n }, { preserveState: true, replace: true })"
+          @update:per-page="(n) => router.get(route('reports.trial-balance'), { source: filters.source, per_page: n }, { preserveState: true, replace: true })"
         />
       </div>
     </div>

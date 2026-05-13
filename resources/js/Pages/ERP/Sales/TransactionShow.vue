@@ -136,7 +136,11 @@ const printReceipt = async () => {
         </div>
       </div>
 
-      <div class="grid grid-cols-2 gap-3 lg:grid-cols-6">
+      <div class="grid grid-cols-2 gap-3 lg:grid-cols-7">
+        <div class="rounded-xl border border-base-300 bg-base-100 p-3 shadow-sm">
+          <p class="text-[11px] uppercase text-base-content/50">Channel</p>
+          <p class="mt-1 font-semibold">{{ detail.sales_channel_label || detail.sales_channel || '-' }}</p>
+        </div>
         <div class="rounded-xl border border-base-300 bg-base-100 p-3 shadow-sm">
           <p class="text-[11px] uppercase text-base-content/50">Gross</p>
           <p class="mt-1 font-semibold">{{ format(detail.gross_total) }}</p>

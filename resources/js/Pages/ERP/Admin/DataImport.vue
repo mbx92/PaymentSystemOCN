@@ -11,6 +11,7 @@ import {ArrowLeftIcon,
 const props = defineProps({
   activeTab: String,
   seeders: { type: Array, default: () => [] },
+  warehouses: { type: Array, default: () => [] },
 });
 
 const page = usePage();
@@ -38,11 +39,13 @@ const projectFileInput = ref(null);
 
 const productForm = useForm({ file: null });
 const projectForm = useForm({ file: null });
+const clearWarehouseForm = useForm({ warehouse_id: '' });
 
 const flash = computed(() => page.props.flash ?? {});
 const importErrors = computed(() => flash.value?.import_errors ?? []);
 const importedCount = computed(() => flash.value?.imported_count);
 const importKind = computed(() => flash.value?.import_kind ?? null);
+const projectFlowSeeder = computed(() => props.seeders.find((s) => s.class === 'ProjectFlowSeeder'));
 
 function pickProductFile() {
   productFileInput.value?.click();
@@ -79,6 +82,19 @@ function submitProjects() {
       projectForm.reset('file');
       if (projectFileInput.value) projectFileInput.value.value = '';
     },
+  });
+}
+
+function submitClearWarehouseProducts() {
+  if (!clearWarehouseForm.warehouse_id) return;
+  const w = props.warehouses.find((x) => String(x.id) === String(clearWarehouseForm.warehouse_id));
+  const label = w ? `${w.name} (${w.code})` : 'gudang ini';
+  const ok = window.confirm(
+    `Hapus semua penempatan produk di ${label}? Stok di gudang ini boleh tidak nol — data penempatan (dan produk master yang hanya di sini) akan dihapus sesuai aturan relasi. Produk yang masih ada di gudang lain tetap ada, hanya baris gudang ini yang dihapus.`,
+  );
+  if (!ok) return;
+  clearWarehouseForm.post(route('erp.admin.data-import.warehouse-clear-products'), {
+    preserveScroll: true,
   });
 }
 
@@ -237,6 +253,42 @@ async function runAllSeeders() {
               </li>
             </ul>
           </div>
+
+          <div class="divider my-2" />
+
+          <div class="rounded-xl border border-base-200 bg-base-200/30 p-4 space-y-3">
+            <div>
+              <h3 class="font-semibold text-sm">Kosongkan penempatan produk per gudang</h3>
+              <p class="text-xs text-base-content/70 mt-1">
+                Menghapus baris stok per gudang (termasuk jika qty/reservasi masih ada). Produk yang <strong>hanya</strong> terdaftar di gudang ini akan <strong>ikut terhapus dari master</strong> bila tidak ada PO, penerimaan barang, material project, POS, atau riwayat stok yang menaut. Produk yang masih ada di gudang lain hanya kehilangan penempatan di gudang ini.
+              </p>
+            </div>
+            <div v-if="warehouses.length === 0" class="text-xs text-base-content/60">
+              Belum ada gudang di master data.
+            </div>
+            <div v-else class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+              <label class="form-control w-full max-w-xs">
+                <span class="label-text text-xs font-medium">Gudang</span>
+                <select v-model="clearWarehouseForm.warehouse_id" class="select select-bordered select-sm w-full">
+                  <option value="" disabled>Pilih gudang</option>
+                  <option v-for="wh in warehouses" :key="wh.id" :value="wh.id">
+                    {{ wh.name }} ({{ wh.code }})
+                  </option>
+                </select>
+              </label>
+              <button
+                type="button"
+                class="btn btn-outline btn-error btn-sm"
+                :disabled="!clearWarehouseForm.warehouse_id || clearWarehouseForm.processing"
+                @click="submitClearWarehouseProducts"
+              >
+                {{ clearWarehouseForm.processing ? 'Memproses…' : 'Kosongkan produk di gudang' }}
+              </button>
+            </div>
+            <p v-if="clearWarehouseForm.errors.warehouse_id" class="text-xs text-error">
+              {{ clearWarehouseForm.errors.warehouse_id }}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -252,6 +304,16 @@ async function runAllSeeders() {
           <div class="flex flex-wrap gap-2">
             <a :href="projectTemplateUrl" class="btn btn-outline btn-sm gap-2">Unduh template project (.xlsx)</a>
             <Link :href="route('projects.index')" class="btn btn-ghost btn-sm">Ke daftar project</Link>
+            <button
+              v-if="projectFlowSeeder"
+              type="button"
+              class="btn btn-outline btn-sm gap-1.5"
+              :disabled="seederState[projectFlowSeeder.key]?.loading"
+              @click="runSeeder(projectFlowSeeder)"
+            >
+              <ArrowPathIcon class="h-4 w-4" :class="seederState[projectFlowSeeder.key]?.loading ? 'animate-spin' : ''" />
+              {{ seederState[projectFlowSeeder.key]?.loading ? 'Menjalankan…' : 'Seeder alur project' }}
+            </button>
           </div>
 
           <ul class="list-disc space-y-1 pl-5 text-sm text-base-content/80">

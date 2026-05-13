@@ -3,7 +3,7 @@ import { computed, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
 import { useForm, Link } from '@inertiajs/vue3';
-import { PlusIcon, TrashIcon } from '@heroicons/vue/24/outline';
+import { ArrowLeftIcon, PlusIcon, TrashIcon } from '@heroicons/vue/24/outline';
 import { useCurrency } from '@/composables/useCurrency';
 
 const { format } = useCurrency();
@@ -91,7 +91,10 @@ const submit = () => form.post(route('projects.store'));
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
               <div class="flex flex-wrap items-center gap-2">
-                        <Link :href="route('projects.index')" class="btn btn-ghost btn-sm">Kembali</Link>
+                        <Link :href="route('projects.index')" class="btn btn-ghost btn-sm gap-1.5">
+                            <ArrowLeftIcon class="h-4 w-4" />
+                            Kembali
+                        </Link>
                         <Link :href="route('erp.projects')" class="btn btn-ghost btn-sm shrink-0 gap-1.5"><ArrowLeftIcon class="h-4 w-4" />
                             Back</Link>
                     </div>

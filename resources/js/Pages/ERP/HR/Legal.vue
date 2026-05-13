@@ -13,6 +13,7 @@ import {
   MusicalNoteIcon,
   TrashIcon,
   ArrowUpTrayIcon,
+  ArrowLeftIcon,
 } from '@heroicons/vue/24/outline';
 
 const props = defineProps({
@@ -222,7 +223,10 @@ const doDelete = () => {
               <ArrowUpTrayIcon class="h-4 w-4" />
               Upload
             </button>
-            <Link class="btn btn-ghost btn-sm" :href="route('erp.hr')">Back</Link>
+            <Link class="btn btn-ghost btn-sm gap-1.5" :href="route('erp.hr')">
+              <ArrowLeftIcon class="h-4 w-4" />
+              Back
+            </Link>
           </div>
         </div>
         <input

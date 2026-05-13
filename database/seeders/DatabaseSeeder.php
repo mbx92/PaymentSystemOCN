@@ -298,5 +298,6 @@ class DatabaseSeeder extends Seeder
         $this->call(UomSeeder::class);
         $this->call(WarehouseSeeder::class);
         $this->call(LabelProfileSeeder::class);
+        $this->call(ProjectFlowSeeder::class);
     }
 }

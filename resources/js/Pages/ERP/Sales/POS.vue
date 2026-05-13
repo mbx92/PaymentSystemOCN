@@ -2,18 +2,25 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import ProductPickerModal from '@/Components/ProductPickerModal.vue';
 import { Head, Link } from '@inertiajs/vue3';
+import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { useCurrency } from '@/composables/useCurrency';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const props = defineProps({
   products: Array,
+  price_channels: Array,
   payment_methods: Array,
   fullscreen: Boolean,
 });
 
 const { format, parse, formatInput } = useCurrency();
 const showProductModal = ref(false);
-const productCatalog = ref((props.products ?? []).map((item) => ({ ...item })));
+const selectedSalesChannel = ref(props.price_channels?.[0]?.key ?? 'retail');
+const priceForChannel = (item, channel) => Number(item.channel_prices?.[channel] ?? item.price ?? item.selling_price ?? 0);
+const productCatalog = ref((props.products ?? []).map((item) => ({
+  ...item,
+  price: priceForChannel(item, selectedSalesChannel.value),
+})));
 const cart = ref([]);
 const cashPaidInput = ref('0');
 const defaultPaymentMethodId = props.payment_methods?.[0]?.id ?? null;
@@ -35,6 +42,25 @@ const chargeForm = ref({
   name: '',
   amount: '0',
 });
+const selectedSalesChannelOption = computed(() => props.price_channels?.find((channel) => channel.key === selectedSalesChannel.value) ?? props.price_channels?.[0] ?? { key: 'retail', label: 'Retail' });
+const selectedSalesChannelLabel = computed(() => selectedSalesChannelOption.value?.label ?? 'Retail');
+
+const applySalesChannelPricesToCatalog = () => {
+  productCatalog.value = productCatalog.value.map((item) => ({
+    ...item,
+    price: priceForChannel(item, selectedSalesChannel.value),
+  }));
+};
+
+const repriceCartForSelectedChannel = () => {
+  cart.value.forEach((line) => {
+    const catalogItem = productCatalog.value.find((item) => item.id === line.productId);
+    if (!catalogItem) return;
+    line.price = Number(catalogItem.price);
+    line.salesChannel = selectedSalesChannel.value;
+    line.salesChannelLabel = selectedSalesChannelLabel.value;
+  });
+};
 
 const openProductModal = () => {
   showProductModal.value = true;
@@ -63,7 +89,9 @@ const addProductToCart = (selected) => {
       priceOperation: selected.price_operation ?? 'multiply',
       multiplier: Number(selected.multiplier ?? 1),
       availableStock: Number(selected.stock ?? 0),
-      price: Number(selected.price),
+      price: priceForChannel(selected, selectedSalesChannel.value),
+      salesChannel: selectedSalesChannel.value,
+      salesChannelLabel: selectedSalesChannelLabel.value,
       qty: 1,
       discountPercent: 0,
     });
@@ -225,6 +253,7 @@ const processPayment = async () => {
       },
       credentials: 'same-origin',
       body: JSON.stringify({
+        sales_channel: selectedSalesChannel.value,
         payment_method_id: paymentMethodId.value,
         cash_paid: isCashPayment.value ? cashPaidValue.value : grandTotal.value,
         additional_charges: additionalCharges.value.map((charge) => ({
@@ -253,6 +282,7 @@ const processPayment = async () => {
     lastReceipt.value = {
       number: payload.transaction_number,
       paymentMethodName: payload.payment_method_name,
+      salesChannelLabel: payload.sales_channel_label || selectedSalesChannelLabel.value,
       grandTotal: payload.grand_total,
       cashPaid: payload.cash_paid,
       change: payload.change,
@@ -399,7 +429,13 @@ const handleCashierShortcuts = (event) => {
   if (isInput) return;
 };
 
+watch(selectedSalesChannel, () => {
+  applySalesChannelPricesToCatalog();
+  repriceCartForSelectedChannel();
+});
+
 onMounted(() => {
+  applySalesChannelPricesToCatalog();
   window.addEventListener('keydown', handleCashierShortcuts);
 });
 
@@ -426,7 +462,10 @@ onBeforeUnmount(() => {
             <p class="mt-1 text-sm text-base-content/70">Kasir profesional untuk produk kemasan plastik dan makanan.</p>
           </div>
           <div class="flex items-center gap-2">
-            <Link class="btn btn-ghost btn-sm" :href="route('erp.sales')">Back</Link>
+            <Link class="btn btn-ghost btn-sm gap-1.5" :href="route('erp.sales')">
+              <ArrowLeftIcon class="h-4 w-4" />
+              Back
+            </Link>
             <button class="btn btn-primary" @click="openProductModal">+ Tambah Produk</button>
           </div>
         </div>
@@ -501,6 +540,12 @@ onBeforeUnmount(() => {
             </div>
             <div class="mt-4 space-y-3">
               <div>
+                <label class="label py-1"><span class="label-text text-xs uppercase tracking-wide">Sales Channel</span></label>
+                <select v-model="selectedSalesChannel" class="select select-bordered w-full">
+                  <option v-for="channel in price_channels" :key="channel.key" :value="channel.key">{{ channel.label }}</option>
+                </select>
+              </div>
+              <div>
                 <label class="label py-1"><span class="label-text text-xs uppercase tracking-wide">Metode Pembayaran</span></label>
                 <select v-model="paymentMethodId" class="select select-bordered w-full">
                   <option v-for="method in payment_methods" :key="method.id" :value="method.id">{{ method.name }}</option>
@@ -561,6 +606,7 @@ onBeforeUnmount(() => {
         <div class="mt-4 space-y-2 text-sm">
           <div class="flex justify-between"><span>No. Transaksi</span><span>{{ lastReceipt?.number || '-' }}</span></div>
           <div class="flex justify-between"><span>Total Item</span><span>{{ receiptLines.length }}</span></div>
+          <div class="flex justify-between"><span>Sales Channel</span><span>{{ lastReceipt?.salesChannelLabel || selectedSalesChannelLabel }}</span></div>
           <div class="flex justify-between"><span>Metode Bayar</span><span class="uppercase">{{ lastReceipt?.paymentMethodName || selectedPaymentMethod?.name || '-' }}</span></div>
           <div class="flex justify-between"><span>Biaya Tambahan</span><span>{{ format(lastReceipt?.additionalFee ?? additionalFeeValue) }}</span></div>
           <div v-if="(lastReceipt?.additionalCharges?.length || additionalCharges.length)" class="rounded-lg bg-base-200/60 px-3 py-2 text-xs">
@@ -634,7 +680,10 @@ onBeforeUnmount(() => {
             <p class="mt-1 text-sm text-base-content/70">Kasir profesional untuk produk kemasan plastik dan makanan.</p>
           </div>
           <div class="flex items-center gap-2">
-            <a class="btn btn-ghost btn-sm" :href="route('erp.sales')">Back</a>
+            <a class="btn btn-ghost btn-sm gap-1.5" :href="route('erp.sales')">
+              <ArrowLeftIcon class="h-4 w-4" />
+              Back
+            </a>
             <button class="btn btn-primary" @click="openProductModal">+ Tambah Produk</button>
           </div>
         </div>
@@ -703,6 +752,12 @@ onBeforeUnmount(() => {
             </div>
             <div class="mt-4 space-y-3">
               <div>
+                <label class="label py-1"><span class="label-text text-xs uppercase tracking-wide">Sales Channel</span></label>
+                <select v-model="selectedSalesChannel" class="select select-bordered w-full">
+                  <option v-for="channel in price_channels" :key="channel.key" :value="channel.key">{{ channel.label }}</option>
+                </select>
+              </div>
+              <div>
                 <label class="label py-1"><span class="label-text text-xs uppercase tracking-wide">Metode Pembayaran</span></label>
                 <select v-model="paymentMethodId" class="select select-bordered w-full">
                   <option v-for="method in payment_methods" :key="method.id" :value="method.id">{{ method.name }}</option>
@@ -763,6 +818,7 @@ onBeforeUnmount(() => {
         <div class="mt-4 space-y-2 text-sm">
           <div class="flex justify-between"><span>No. Transaksi</span><span>{{ lastReceipt?.number || '-' }}</span></div>
           <div class="flex justify-between"><span>Total Item</span><span>{{ receiptLines.length }}</span></div>
+          <div class="flex justify-between"><span>Sales Channel</span><span>{{ lastReceipt?.salesChannelLabel || selectedSalesChannelLabel }}</span></div>
           <div class="flex justify-between"><span>Metode Bayar</span><span class="uppercase">{{ lastReceipt?.paymentMethodName || selectedPaymentMethod?.name || '-' }}</span></div>
           <div class="flex justify-between"><span>Biaya Tambahan</span><span>{{ format(lastReceipt?.additionalFee ?? additionalFeeValue) }}</span></div>
           <div v-if="(lastReceipt?.additionalCharges?.length || additionalCharges.length)" class="rounded-lg bg-base-200/60 px-3 py-2 text-xs">

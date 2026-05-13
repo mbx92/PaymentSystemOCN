@@ -1,13 +1,17 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { usePage } from '@inertiajs/vue3';
 import { CheckCircleIcon, ExclamationCircleIcon, XMarkIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ flash: Object });
+const page = usePage();
 const visible = ref(false);
 const localAlert = ref(null);
 let hideTimer = null;
+let lastErrorKey = '';
 
 const currentAlert = computed(() => localAlert.value ?? props.flash);
+const validationErrors = computed(() => page.props.errors ?? {});
 
 const hideWithDelay = () => {
     clearTimeout(hideTimer);
@@ -27,6 +31,26 @@ watch(() => props.flash, (val) => {
         hideWithDelay();
     }
 }, { immediate: true });
+
+watch(validationErrors, (errors) => {
+    const entries = Object.entries(errors ?? {});
+    if (!entries.length) {
+        lastErrorKey = '';
+        return;
+    }
+
+    const [field, value] = entries[0];
+    const message = Array.isArray(value) ? value[0] : value;
+    const errorKey = `${field}:${message}`;
+
+    if (!message || errorKey === lastErrorKey) return;
+
+    lastErrorKey = errorKey;
+    showAlert({
+        type: 'error',
+        message,
+    });
+}, { deep: true });
 
 const onGlobalAlert = (event) => {
     const detail = event?.detail ?? {};
