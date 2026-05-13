@@ -5,7 +5,7 @@ import CurrencyInput from '@/Components/CurrencyInput.vue';
 import ConfirmModal from '@/Components/ConfirmModal.vue';
 import { Link, useForm, router } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 
 const props = defineProps({
@@ -48,15 +48,61 @@ const materialForm = useForm({
 });
 
 const materialWarehouseFilter = ref('');
+const materialSearch = ref('');
+const modalMaterialProducts = ref(props.material_products ?? []);
+const materialProductsLoading = ref(false);
+let materialSearchTimer;
+let materialSearchRequestId = 0;
 
 const filteredMaterialProducts = computed(() => {
     if (!materialWarehouseFilter.value) return [];
     const whStocks = props.warehouse_stocks?.[materialWarehouseFilter.value] ?? {};
-    return props.material_products
+    const keyword = materialSearch.value.trim().toLowerCase();
+    return modalMaterialProducts.value
         .map((p) => {
             const stock = whStocks[p.id];
-            return { ...p, available: stock ? stock.available : 0 };
+            return { ...p, available: p.available ?? (stock ? stock.available : 0) };
+        })
+        .filter((p) => {
+            if (!keyword) return true;
+            return [p.sku, p.name, p.category, p.uom]
+                .filter(Boolean)
+                .some((value) => String(value).toLowerCase().includes(keyword));
         });
+});
+
+const loadMaterialProducts = async () => {
+    if (!materialWarehouseFilter.value) {
+        modalMaterialProducts.value = props.material_products ?? [];
+        return;
+    }
+
+    const requestId = ++materialSearchRequestId;
+    const params = new URLSearchParams({ warehouse_id: materialWarehouseFilter.value });
+    const keyword = materialSearch.value.trim();
+    if (keyword) params.set('q', keyword);
+
+    materialProductsLoading.value = true;
+    try {
+        const response = await fetch(`${route('projects.material-products.search', props.project.id)}?${params.toString()}`, {
+            headers: { Accept: 'application/json' },
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (requestId === materialSearchRequestId) {
+            modalMaterialProducts.value = data.products ?? [];
+        }
+    } finally {
+        if (requestId === materialSearchRequestId) {
+            materialProductsLoading.value = false;
+        }
+    }
+};
+
+watch([materialWarehouseFilter, materialSearch], () => {
+    materialForm.master_product_id = '';
+    clearTimeout(materialSearchTimer);
+    materialSearchTimer = setTimeout(loadMaterialProducts, 250);
 });
 
 const selectMaterialProduct = (product) => {
@@ -66,7 +112,8 @@ const selectMaterialProduct = (product) => {
 };
 
 const selectedMaterialProduct = computed(() =>
-    props.material_products.find((p) => p.id === materialForm.master_product_id),
+    modalMaterialProducts.value.find((p) => p.id === materialForm.master_product_id)
+        ?? props.material_products.find((p) => p.id === materialForm.master_product_id),
 );
 
 const selectedProductAvailable = computed(() => {
@@ -97,6 +144,7 @@ const submitMaterial = () => {
         preserveScroll: true,
         onSuccess: () => {
             materialForm.reset('master_product_id', 'warehouse_id', 'planned_qty', 'notes');
+            materialSearch.value = '';
             document.getElementById('modal-add-material')?.close();
         },
     });
@@ -1089,14 +1137,29 @@ const deleteProject = () => {
 
                 <div class="mt-4">
                     <label class="label"><span class="label-text font-semibold">Pilih Warehouse</span></label>
-                    <select v-model="materialWarehouseFilter" class="select select-bordered w-full" @change="materialForm.master_product_id = ''">
+                    <select v-model="materialWarehouseFilter" class="select select-bordered w-full" @change="materialSearch = ''">
                         <option value="">-- Pilih warehouse dulu --</option>
                         <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }} — {{ w.name }}</option>
                     </select>
                 </div>
 
                 <div v-if="materialWarehouseFilter" class="mt-4">
-                    <p class="text-sm text-base-content/60 mb-2">Klik produk untuk memilih:</p>
+                    <div class="mb-3">
+                        <label class="label"><span class="label-text font-semibold">Cari Material</span></label>
+                        <input
+                            v-model="materialSearch"
+                            type="search"
+                            class="input input-bordered w-full"
+                            placeholder="Cari SKU, nama material, kategori, atau UoM..."
+                            @input="materialForm.master_product_id = ''"
+                        />
+                    </div>
+                    <div class="mb-2 flex items-center justify-between">
+                        <p class="text-sm text-base-content/60">Klik produk untuk memilih:</p>
+                        <span class="text-xs text-base-content/50">
+                            {{ materialProductsLoading ? 'Memuat...' : `${filteredMaterialProducts.length} item` }}
+                        </span>
+                    </div>
                     <div class="overflow-x-auto max-h-[40vh] overflow-y-auto border rounded-lg">
                         <table class="table table-sm table-zebra">
                             <thead class="sticky top-0 bg-base-200 z-10">
@@ -1116,7 +1179,9 @@ const deleteProject = () => {
                                     <td class="text-right tabular-nums font-medium text-success">{{ p.available }}</td>
                                 </tr>
                                 <tr v-if="filteredMaterialProducts.length === 0">
-                                    <td colspan="4" class="text-center py-6 text-base-content/50">Tidak ada material project aktif.</td>
+                                    <td colspan="4" class="text-center py-6 text-base-content/50">
+                                        Tidak ada material project aktif yang cocok dengan pencarian.
+                                    </td>
                                 </tr>
                             </tbody>
                         </table>

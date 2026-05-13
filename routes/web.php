@@ -188,6 +188,7 @@ Route::middleware('auth')->group(function () {
         Route::post('erp/projects/budgets/{budget}/convert', [ProjectBudgetController::class, 'convert'])->name('erp.projects.budgets.convert');
         Route::get('erp/projects/budgets/{budget}/pdf', [ProjectBudgetController::class, 'pdf'])->name('erp.projects.budgets.pdf');
         Route::post('projects/{project}/materials', [ProjectController::class, 'storeMaterial'])->name('projects.materials.store');
+        Route::get('projects/{project}/material-products/search', [ProjectController::class, 'materialProductSearch'])->name('projects.material-products.search');
         Route::delete('projects/{project}/materials/{material}', [ProjectController::class, 'destroyMaterial'])->name('projects.materials.destroy');
         Route::post('projects/{project}/legal-folder', [ProjectController::class, 'createLegalFolder'])->name('projects.legal-folder.create');
         Route::patch('projects/{project}/status', [ProjectController::class, 'updateStatus'])->name('projects.status.update');

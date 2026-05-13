@@ -224,7 +224,7 @@ class ProjectController extends Controller
                 ->where('product_type', 'project_material')
                 ->whereIn('sales_channel', ['project', 'both'])
                 ->orderBy('name')
-                ->get(['id', 'sku', 'name', 'uom', 'sales_channel', 'product_type']),
+                ->get(['id', 'sku', 'name', 'category', 'uom', 'sales_channel', 'product_type']),
             'warehouses' => Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']),
             'warehouse_stocks' => MasterProductWarehouseStock::query()
                 ->get(['master_product_id', 'warehouse_id', 'qty', 'reserved_qty'])
@@ -572,6 +572,54 @@ class ProjectController extends Controller
         });
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Kebutuhan material project berhasil ditambahkan. Stok tersedia otomatis di-reserve, kekurangan masuk perencanaan PO.']);
+    }
+
+    public function materialProductSearch(Request $request, Project $project)
+    {
+        $validated = $request->validate([
+            'warehouse_id' => ['required', 'exists:warehouses,id'],
+            'q' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $keyword = trim((string) ($validated['q'] ?? ''));
+        $warehouseId = (int) $validated['warehouse_id'];
+        $stocks = MasterProductWarehouseStock::query()
+            ->where('warehouse_id', $warehouseId)
+            ->get(['master_product_id', 'qty', 'reserved_qty'])
+            ->keyBy('master_product_id');
+
+        $products = MasterProduct::query()
+            ->where('status', 'active')
+            ->where('product_type', 'project_material')
+            ->whereIn('sales_channel', ['project', 'both'])
+            ->when($keyword !== '', function ($query) use ($keyword) {
+                $query->where(function ($nested) use ($keyword) {
+                    $nested
+                        ->where('sku', 'ilike', "%{$keyword}%")
+                        ->orWhere('name', 'ilike', "%{$keyword}%")
+                        ->orWhere('category', 'ilike', "%{$keyword}%")
+                        ->orWhere('uom', 'ilike', "%{$keyword}%");
+                });
+            })
+            ->orderBy('name')
+            ->get(['id', 'sku', 'name', 'category', 'uom', 'sales_channel', 'product_type'])
+            ->map(function (MasterProduct $product) use ($stocks): array {
+                $stock = $stocks->get($product->id);
+
+                return [
+                    'id' => $product->id,
+                    'sku' => $product->sku,
+                    'name' => $product->name,
+                    'category' => $product->category,
+                    'uom' => $product->uom,
+                    'sales_channel' => $product->sales_channel,
+                    'product_type' => $product->product_type,
+                    'available' => $stock ? max((float) $stock->qty - (float) $stock->reserved_qty, 0) : 0,
+                ];
+            })
+            ->values();
+
+        return response()->json(['products' => $products]);
     }
 
     public function destroyMaterial(Project $project, ProjectMaterial $material)
