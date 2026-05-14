@@ -6,6 +6,7 @@ use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Accounting\Services\CoaSettingService;
 use App\ERP\Accounting\Services\GlPostingService;
+use App\ERP\Core\Services\ErpCompanyResolver;
 use App\ERP\Inventory\Models\Warehouse;
 use App\ERP\Shared\Enums\DocumentStatus;
 use App\ERP\Shared\Services\DocumentNumberService;
@@ -283,6 +284,7 @@ class ERPSalesController extends Controller
             );
 
             $this->glPostingService->post(
+                ErpCompanyResolver::resolveForGlPosting(request()),
                 sourceModule: 'pos_sale_refund',
                 sourceReference: $posSale->number,
                 description: 'Refund POS '.$posSale->number,
@@ -372,6 +374,7 @@ class ERPSalesController extends Controller
             );
 
             $this->glPostingService->post(
+                ErpCompanyResolver::resolveForGlPosting(request()),
                 sourceModule: 'pos_sale_reopen',
                 sourceReference: $posSale->number,
                 description: 'Reopen POS '.$posSale->number,
@@ -452,7 +455,7 @@ class ERPSalesController extends Controller
             ]);
         }
 
-        $checkoutResult = DB::transaction(function () use ($items, $grossTotal, $discountTotal, $additionalCharges, $additionalFeeAdd, $adminFee, $grandTotal, $cashPaid, $paymentMethod, $salesChannel): array {
+        $checkoutResult = DB::transaction(function () use ($items, $grossTotal, $discountTotal, $additionalCharges, $additionalFeeAdd, $adminFee, $grandTotal, $cashPaid, $paymentMethod, $salesChannel, $request): array {
             $transactionNumber = $this->documentNumberService->next('sales', 'pos_sale', [
                 'prefix' => 'POS',
                 'padding_length' => 6,
@@ -564,6 +567,7 @@ class ERPSalesController extends Controller
                 channelAdminPayableAccount: $channelAdminPayableAccount,
             );
             $this->glPostingService->post(
+                ErpCompanyResolver::resolveForGlPosting($request),
                 sourceModule: 'pos_sale',
                 sourceReference: $transactionNumber,
                 description: 'Penjualan POS '.$transactionNumber,
@@ -1028,6 +1032,7 @@ class ERPSalesController extends Controller
         $revenueAccount = $coa->resolveAccountByKey('project_invoice_revenue_account', '4003');
 
         $entry = $this->glPostingService->post(
+            ErpCompanyResolver::resolveForGlPosting($request),
             sourceModule: 'project_invoice_payment',
             sourceReference: (string) $cashIn->id,
             description: 'Pembayaran invoice project '.$project->name,

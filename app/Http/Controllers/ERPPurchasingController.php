@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\Payable;
 use App\ERP\Accounting\Services\GlPostingService;
+use App\ERP\Core\Services\ErpCompanyResolver;
 use App\ERP\Inventory\Models\Warehouse;
 use App\ERP\Purchasing\Models\GoodsReceipt;
 use App\ERP\Purchasing\Models\PurchaseOrder;
@@ -698,7 +699,7 @@ class ERPPurchasingController extends Controller
                 'warehouse_id' => 'nullable|exists:warehouses,id',
             ]);
 
-            DB::transaction(function () use ($receipt, $validated): void {
+            DB::transaction(function () use ($receipt, $validated, $request): void {
                 if (! empty($validated['warehouse_id'])) {
                     $warehouse = Warehouse::query()->find((int) $validated['warehouse_id']);
                     $receipt->update([
@@ -768,6 +769,7 @@ class ERPPurchasingController extends Controller
                 $amount = (float) $receipt->purchaseOrder->total_amount;
 
                 $entry = $this->glPostingService->post(
+                    ErpCompanyResolver::resolveForGlPosting($request),
                     sourceModule: 'purchasing',
                     sourceReference: $receipt->number,
                     description: 'Posting penerimaan barang '.$receipt->number,

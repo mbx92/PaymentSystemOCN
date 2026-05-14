@@ -134,6 +134,7 @@ class ERPInventoryController extends Controller
                     ->values(),
             ],
             'reserved_breakdown_by_product' => $reservedBreakdownByProduct,
+            'batch_low_stock_alerts' => $this->stockProductsLowStockAlertBatchState(),
         ]);
     }
 
@@ -499,5 +500,27 @@ class ERPInventoryController extends Controller
                 'transfer_out',
             ],
         ]);
+    }
+
+    /**
+     * @return 'all_on'|'all_off'|'mixed'
+     */
+    private function stockProductsLowStockAlertBatchState(): string
+    {
+        $base = MasterProduct::query()->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE);
+        $total = (clone $base)->count();
+        if ($total === 0) {
+            return 'all_off';
+        }
+
+        $enabledCount = (clone $base)->where('low_stock_alert_enabled', true)->count();
+        if ($enabledCount === $total) {
+            return 'all_on';
+        }
+        if ($enabledCount === 0) {
+            return 'all_off';
+        }
+
+        return 'mixed';
     }
 }

@@ -1,14 +1,9 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { ArrowLeftIcon, PlusIcon, TrashIcon } from '@heroicons/vue/24/outline';
 import { computed } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
-
-const props = defineProps({
-  accounts: Array,
-  openingEntries: Array,
-});
 
 const { format } = useCurrency();
 
@@ -19,7 +14,34 @@ const blankLine = () => ({
   description: '',
 });
 
+const props = defineProps({
+  accounts: Array,
+  openingEntries: Array,
+  companies: Array,
+  selected_company_id: [Number, null],
+});
+
+const page = usePage();
+
+const isAdmin = computed(() => page.props.auth?.user?.role === 'admin');
+
+const selectedCompany = computed(() => {
+  const id = form.company_id;
+  if (id === '' || id == null) return null;
+  return props.companies?.find((c) => Number(c.id) === Number(id)) ?? null;
+});
+
+const companyIdForForm = () => {
+  const fromProps = props.selected_company_id ?? null;
+  if (fromProps != null && fromProps !== '') return Number(fromProps);
+  const ctx = page.props.erpCompanyContext;
+  if (ctx?.current_company_id) return Number(ctx.current_company_id);
+  const first = props.companies?.[0]?.id;
+  return first != null ? Number(first) : '';
+};
+
 const form = useForm({
+  company_id: companyIdForForm(),
   entry_date: new Date().toISOString().slice(0, 10),
   description: '',
   lines: [
@@ -50,6 +72,7 @@ const submit = () => {
     preserveScroll: true,
     onSuccess: () => {
       form.reset();
+      form.company_id = companyIdForForm();
       form.entry_date = new Date().toISOString().slice(0, 10);
       form.lines = [blankLine(), blankLine()];
     },
@@ -102,16 +125,51 @@ const submit = () => {
         </div>
 
         <div class="card-body space-y-4">
-          <div class="grid gap-3 md:grid-cols-3">
-            <div>
-              <label class="label"><span class="label-text text-xs uppercase tracking-wide">Tanggal</span></label>
-              <input v-model="form.entry_date" type="date" class="input input-bordered input-sm w-full" />
-              <p v-if="form.errors.entry_date" class="mt-1 text-xs text-error">{{ form.errors.entry_date }}</p>
+          <div v-if="!companies?.length" class="rounded-xl border border-warning/40 bg-warning/10 p-4 text-sm">
+            <p class="font-medium text-base-content">Belum ada perusahaan aktif.</p>
+            <p class="mt-1 text-base-content/70">Tambahkan perusahaan di master administrasi agar saldo awal bisa dipilih dan diposting.</p>
+            <Link
+              v-if="isAdmin"
+              class="btn btn-warning btn-sm mt-3"
+              :href="route('erp.admin.companies')"
+            >
+              Buka master perusahaan
+            </Link>
+          </div>
+
+          <div v-else class="rounded-xl border border-base-300 bg-base-200/25 p-4 sm:p-5">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-base-content/60">Konteks jurnal</p>
+                <p class="mt-0.5 text-sm text-base-content/70">Perusahaan, tanggal, dan keterangan mengikat satu batch posting saldo awal ke GL.</p>
+              </div>
+              <Link
+                v-if="isAdmin"
+                class="btn btn-ghost btn-xs shrink-0 gap-1 normal-case"
+                :href="route('erp.admin.companies')"
+              >
+                Kelola perusahaan
+              </Link>
             </div>
-            <div class="md:col-span-2">
-              <label class="label"><span class="label-text text-xs uppercase tracking-wide">Keterangan</span></label>
-              <input v-model="form.description" type="text" class="input input-bordered input-sm w-full" placeholder="Saldo awal per awal periode" />
-              <p v-if="form.errors.description" class="mt-1 text-xs text-error">{{ form.errors.description }}</p>
+
+            <div class="mt-4 grid gap-4 md:grid-cols-12 md:items-end">
+              <div class="md:col-span-5">
+                <label class="label py-1"><span class="label-text text-xs font-semibold uppercase tracking-wide text-base-content/80">Perusahaan</span></label>
+                <select v-model.number="form.company_id" class="select select-bordered w-full" required>
+                  <option v-for="c in companies" :key="c.id" :value="c.id">{{ c.name }}</option>
+                </select>
+                <p v-if="form.errors.company_id" class="mt-1 text-xs text-error">{{ form.errors.company_id }}</p>
+              </div>
+              <div class="md:col-span-3">
+                <label class="label py-1"><span class="label-text text-xs font-semibold uppercase tracking-wide text-base-content/80">Tanggal</span></label>
+                <input v-model="form.entry_date" type="date" class="input input-bordered w-full" />
+                <p v-if="form.errors.entry_date" class="mt-1 text-xs text-error">{{ form.errors.entry_date }}</p>
+              </div>
+              <div class="md:col-span-4">
+                <label class="label py-1"><span class="label-text text-xs font-semibold uppercase tracking-wide text-base-content/80">Keterangan</span></label>
+                <input v-model="form.description" type="text" class="input input-bordered w-full" placeholder="Contoh: Saldo awal 1 Januari" />
+                <p v-if="form.errors.description" class="mt-1 text-xs text-error">{{ form.errors.description }}</p>
+              </div>
             </div>
           </div>
 
@@ -166,7 +224,7 @@ const submit = () => {
               <PlusIcon class="h-4 w-4" />
               Tambah baris
             </button>
-            <button type="submit" class="btn btn-primary btn-sm" :disabled="form.processing || !isBalanced || !accounts?.length">
+            <button type="submit" class="btn btn-primary btn-sm" :disabled="form.processing || !isBalanced || !accounts?.length || !form.company_id">
               Posting saldo awal
             </button>
           </div>
@@ -181,6 +239,7 @@ const submit = () => {
           <table class="table table-zebra">
             <thead>
               <tr>
+                <th>Perusahaan</th>
                 <th>Tanggal</th>
                 <th>No. Jurnal</th>
                 <th>Keterangan</th>
@@ -190,6 +249,7 @@ const submit = () => {
             </thead>
             <tbody>
               <tr v-for="entry in openingEntries" :key="entry.id">
+                <td class="text-sm">{{ entry.company_name ?? '-' }}</td>
                 <td>{{ entry.entry_date }}</td>
                 <td class="font-mono text-xs">{{ entry.entry_no }}</td>
                 <td>
@@ -200,7 +260,7 @@ const submit = () => {
                 <td class="text-right">{{ format(entry.total_credit) }}</td>
               </tr>
               <tr v-if="!openingEntries?.length">
-                <td colspan="5" class="py-6 text-center text-sm text-base-content/60">Belum ada saldo awal yang diposting.</td>
+                <td colspan="6" class="py-6 text-center text-sm text-base-content/60">Belum ada saldo awal yang diposting.</td>
               </tr>
             </tbody>
           </table>

@@ -4,8 +4,8 @@ namespace App\ERP\Accounting\Services;
 
 use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Accounting\Models\JournalLine;
-use App\ERP\Shared\Services\DocumentNumberService;
 use App\ERP\Shared\Enums\DocumentStatus;
+use App\ERP\Shared\Services\DocumentNumberService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -16,12 +16,13 @@ class GlPostingService
     /**
      * @param  array<int, array{account_id:int, description?:string, debit:float|int|string, credit:float|int|string}>  $lines
      */
-    public function post(string $sourceModule, string $sourceReference, string $description, string $entryDate, array $lines): JournalEntry
+    public function post(int $companyId, string $sourceModule, string $sourceReference, string $description, string $entryDate, array $lines): JournalEntry
     {
-        return DB::transaction(function () use ($sourceModule, $sourceReference, $description, $entryDate, $lines): JournalEntry {
+        return DB::transaction(function () use ($companyId, $sourceModule, $sourceReference, $description, $entryDate, $lines): JournalEntry {
             $entryNo = $this->nextUniqueEntryNo();
 
             $journalEntry = JournalEntry::query()->create([
+                'company_id' => $companyId,
                 'entry_no' => $entryNo,
                 'entry_date' => $entryDate,
                 'description' => $description,

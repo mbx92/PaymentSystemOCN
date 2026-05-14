@@ -1,7 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import DataTablePagination from '@/Components/DataTablePagination.vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
@@ -14,10 +14,14 @@ const props = defineProps({
 
 const { format } = useCurrency();
 
+const page = usePage();
+const erpCompanyContext = () => page.props.erpCompanyContext ?? null;
+
 const filters = ref({
   date_from: props.filters?.date_from ?? '',
   date_to: props.filters?.date_to ?? '',
   q: props.filters?.q ?? '',
+  company_id: props.filters?.company_id ?? erpCompanyContext()?.current_company_id ?? '',
   per_page: props.filters?.per_page ?? props.entries?.per_page ?? 25,
 });
 
@@ -86,6 +90,12 @@ const formatDate = (dateStr) => {
         </div>
         <div class="card-body">
           <div class="grid gap-3 md:grid-cols-3">
+            <div v-if="erpCompanyContext()?.companies?.length" class="md:col-span-3 flex flex-col gap-1">
+              <label class="text-xs font-medium uppercase tracking-wide text-base-content/60">Perusahaan</label>
+              <select v-model="filters.company_id" class="select select-bordered select-sm w-full max-w-md">
+                <option v-for="c in erpCompanyContext().companies" :key="c.id" :value="c.id">{{ c.name }}</option>
+              </select>
+            </div>
             <input v-model="filters.date_from" type="date" class="input input-bordered input-sm w-full" />
             <input v-model="filters.date_to" type="date" class="input input-bordered input-sm w-full" />
             <input v-model="filters.q" type="text" class="input input-bordered input-sm w-full" placeholder="Cari no. jurnal / deskripsi..." />

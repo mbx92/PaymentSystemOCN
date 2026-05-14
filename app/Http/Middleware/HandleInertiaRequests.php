@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\ERP\Core\Models\Company;
+use App\ERP\Core\Services\ErpCompanyResolver;
 use App\Models\ErpSetting;
 use App\Models\MasterProduct;
 use Illuminate\Http\Request;
@@ -71,12 +73,37 @@ class HandleInertiaRequests extends Middleware
                 'app_logo_url' => $erpSetting?->app_logo_path ? Storage::url($erpSetting->app_logo_path) : null,
                 'module_menu_layout' => $erpSetting?->resolvedModuleMenuLayout() ?? ErpSetting::MODULE_MENU_LAYOUT_GRID,
             ],
+            'erpCompanyContext' => fn () => $this->erpCompanyContextProps($request),
             'maintenance' => fn () => [
                 'global' => (bool) ($erpSetting?->maintenance_global_enabled ?? false),
                 'modules' => $erpSetting !== null
                     ? $erpSetting->mergedMaintenanceModules()
                     : ErpSetting::defaultMaintenanceModules(),
             ],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function erpCompanyContextProps(Request $request): ?array
+    {
+        if (! $request->user()) {
+            return null;
+        }
+
+        $companies = Company::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'legal_name']);
+
+        if ($companies->isEmpty()) {
+            return null;
+        }
+
+        return [
+            'companies' => $companies,
+            'current_company_id' => ErpCompanyResolver::currentCompanyIdForSession($request),
         ];
     }
 }

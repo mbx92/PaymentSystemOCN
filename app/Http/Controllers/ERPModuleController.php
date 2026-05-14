@@ -10,6 +10,7 @@ class ERPModuleController extends Controller
     public function accounting(): Response
     {
         return $this->renderModule('Accounting', [
+            ['title' => 'Master perusahaan', 'description' => 'Kelola entitas usaha (nama legal, NPWP) untuk jurnal dan laporan per perusahaan.', 'route' => 'erp.admin.companies', 'icon' => 'building-office-2'],
             ['title' => 'CoA / Chart Of Account', 'description' => 'Daftar akun chart of accounts untuk semua posting akuntansi.', 'route' => 'erp.accounting.coa', 'icon' => 'book-open'],
             ['title' => 'Pengaturan COA', 'description' => 'Atur mapping akun untuk posting otomatis POS, invoice project, dan kategori cashflow.', 'route' => 'erp.accounting.coa-settings', 'icon' => 'cog-6-tooth'],
             ['title' => 'Cashflow', 'description' => 'Submenu kas masuk dan kas keluar dalam satu tempat.', 'route' => 'erp.accounting.cashflow', 'icon' => 'arrows-right-left'],
@@ -105,6 +106,7 @@ class ERPModuleController extends Controller
     public function administration(): Response
     {
         return $this->renderModule('Administration', [
+            ['title' => 'Master perusahaan', 'description' => 'Tambah dan ubah entitas usaha untuk multi-buku besar, saldo awal, dan pemilih perusahaan aktif.', 'route' => 'erp.admin.companies', 'icon' => 'building-office-2'],
             ['title' => 'Maintenance mode', 'description' => 'Matikan seluruh area ERP atau per modul. Role admin tetap bisa mengakses semua halaman.', 'route' => 'erp.admin.maintenance-mode', 'icon' => 'clipboard-check'],
             ['title' => 'ERP Setting', 'description' => 'Atur identitas aplikasi ERP seperti logo, nama aplikasi, dan tagline.', 'route' => 'erp.admin.erp-settings', 'icon' => 'document-text'],
             ['title' => 'Setting Nomor Dokumen', 'description' => 'Atur prefix dan sequence nomor dokumen agar konsisten lintas modul.', 'route' => 'erp.admin.document-sequences', 'icon' => 'document-text'],

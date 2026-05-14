@@ -7,6 +7,7 @@ use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Accounting\Models\PayablePayment;
 use App\ERP\Accounting\Services\CoaSettingService;
 use App\ERP\Accounting\Services\GlPostingService;
+use App\ERP\Core\Services\ErpCompanyResolver;
 use App\ERP\Shared\Enums\DocumentStatus;
 use App\Models\CashCategory;
 use App\Models\CashIn;
@@ -92,12 +93,12 @@ class CashflowController extends Controller
         $validated['project_id'] = null;
 
         if ($validated['type'] === 'in') {
-            $this->storeCashInEntry($validated);
+            $this->storeCashInEntry($request, $validated);
 
             return back()->with('flash', ['type' => 'success', 'message' => 'Kas masuk berhasil ditambahkan.']);
         }
 
-        $this->storeCashOutEntry($validated);
+        $this->storeCashOutEntry($request, $validated);
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Kas keluar berhasil ditambahkan.']);
     }
@@ -161,11 +162,13 @@ class CashflowController extends Controller
     private function buildEntries(Request $request): Collection
     {
         $source = $this->sourceFilter($request);
+        $companyId = ErpCompanyResolver::resolveForReporting($request);
 
         $cashIns = in_array($source, ['pos', 'supplier_payment'], true)
             ? collect()
             : CashIn::query()
                 ->with(['project:id,name', 'creator:id,name', 'paymentMethod:id,name', 'cashAccount:id,code,name'])
+                ->when($companyId, fn ($q) => $q->whereHas('journalEntry', fn ($jq) => $jq->where('company_id', $companyId)))
                 ->when($source === 'project', fn ($q) => $q->whereNotNull('project_id'))
                 ->when($source === 'manual', fn ($q) => $q->whereNull('project_id'))
                 ->when($request->filled('project_id') && Str::isUuid($request->string('project_id')->toString()), fn ($q) => $q->where('project_id', $request->string('project_id')->toString()))
@@ -203,6 +206,7 @@ class CashflowController extends Controller
             ? collect()
             : CashOut::query()
                 ->with(['project:id,name', 'creator:id,name', 'cashAccount:id,code,name'])
+                ->when($companyId, fn ($q) => $q->whereHas('journalEntry', fn ($jq) => $jq->where('company_id', $companyId)))
                 ->when($source === 'project', fn ($q) => $q->whereNotNull('project_id'))
                 ->when($source === 'manual', fn ($q) => $q->whereNull('project_id'))
                 ->when($request->filled('project_id') && Str::isUuid($request->string('project_id')->toString()), fn ($q) => $q->where('project_id', $request->string('project_id')->toString()))
@@ -238,6 +242,7 @@ class CashflowController extends Controller
             ? collect()
             : PayablePayment::query()
                 ->with(['payable.vendor:id,name', 'cashAccount:id,code,name', 'payer:id,name'])
+                ->when($companyId, fn ($q) => $q->whereHas('journalEntry', fn ($jq) => $jq->where('company_id', $companyId)))
                 ->when($request->filled('date_from'), fn ($q) => $q->whereDate('payment_date', '>=', $request->date('date_from')))
                 ->when($request->filled('date_to'), fn ($q) => $q->whereDate('payment_date', '<=', $request->date('date_to')))
                 ->get()
@@ -318,6 +323,8 @@ class CashflowController extends Controller
             return collect();
         }
 
+        $companyId = ErpCompanyResolver::resolveForReporting($request);
+
         $sales = PosSale::query()
             ->with(['paymentMethod:id,name', 'soldBy:id,name'])
             ->when($request->filled('date_from'), fn ($q) => $q->whereDate('sold_at', '>=', $request->date('date_from')))
@@ -330,6 +337,7 @@ class CashflowController extends Controller
 
         $journalMap = JournalEntry::query()
             ->whereIn('source_module', ['pos_sale', 'pos_sale_refund', 'pos_sale_reopen'])
+            ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
             ->whereIn('source_reference', $sales->pluck('number')->all())
             ->get(['id', 'source_module', 'source_reference'])
             ->keyBy(fn (JournalEntry $entry) => $entry->source_module.'|'.$entry->source_reference);
@@ -403,7 +411,7 @@ class CashflowController extends Controller
         return in_array($source, ['project', 'pos', 'manual', 'supplier_payment'], true) ? $source : '';
     }
 
-    private function storeCashInEntry(array $validated): void
+    private function storeCashInEntry(Request $request, array $validated): void
     {
         $this->assertCategoryExists('cash_in', $validated['category']);
         $revenueAccountId = $this->resolveMappedAccountId('cash_in', $validated['category']);
@@ -428,6 +436,7 @@ class CashflowController extends Controller
         $cashAccount = Account::query()->findOrFail((int) $validated['cash_account_id']);
         $revenueAccount = Account::query()->findOrFail($revenueAccountId);
         $entry = $this->glPostingService->post(
+            ErpCompanyResolver::resolveForGlPosting($request),
             sourceModule: 'cash_in',
             sourceReference: (string) $cashIn->id,
             description: 'Kas masuk proyek '.$cashIn->project_id,
@@ -441,7 +450,7 @@ class CashflowController extends Controller
         $cashIn->update(['journal_entry_id' => $entry->id]);
     }
 
-    private function storeCashOutEntry(array $validated): void
+    private function storeCashOutEntry(Request $request, array $validated): void
     {
         $this->assertCategoryExists('cash_out', $validated['category']);
         $expenseAccountId = $this->resolveMappedAccountId('cash_out', $validated['category']);
@@ -466,6 +475,7 @@ class CashflowController extends Controller
         $expenseAccount = Account::query()->findOrFail($expenseAccountId);
         $cashAccount = Account::query()->findOrFail((int) $validated['cash_account_id']);
         $entry = $this->glPostingService->post(
+            ErpCompanyResolver::resolveForGlPosting($request),
             sourceModule: 'cash_out',
             sourceReference: (string) $cashOut->id,
             description: 'Kas keluar proyek '.$cashOut->project_id,

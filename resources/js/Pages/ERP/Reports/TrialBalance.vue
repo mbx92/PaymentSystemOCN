@@ -1,7 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import DataTablePagination from '@/Components/DataTablePagination.vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
@@ -14,13 +14,18 @@ const props = defineProps({
 });
 
 const { format } = useCurrency();
+const page = usePage();
+const erpCompanyContext = () => page.props.erpCompanyContext ?? null;
+
 const filters = ref({
   source: props.filters?.source ?? '',
+  company_id: props.filters?.company_id ?? erpCompanyContext()?.current_company_id ?? '',
 });
 
 watch(filters, (val) => {
   router.get(route('reports.trial-balance'), {
     source: val.source,
+    company_id: val.company_id || undefined,
     per_page: props.balances?.per_page ?? 25,
   }, { preserveState: true, replace: true });
 }, { deep: true });
@@ -99,6 +104,12 @@ const typeBadgeClass = (type) => {
             <p class="ocn-panel__desc mt-1">Gunakan sumber untuk memisahkan saldo dari Project, POS, atau transaksi manual.</p>
           </div>
           <div class="flex flex-wrap items-center justify-end gap-2">
+            <div v-if="erpCompanyContext()?.companies?.length" class="flex items-center gap-2">
+              <span class="text-xs text-base-content/60 whitespace-nowrap">Perusahaan</span>
+              <select v-model="filters.company_id" class="select select-bordered select-sm w-48">
+                <option v-for="c in erpCompanyContext().companies" :key="c.id" :value="c.id">{{ c.name }}</option>
+              </select>
+            </div>
             <select v-model="filters.source" class="select select-bordered select-sm w-44">
               <option v-for="opt in sourceOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
@@ -163,7 +174,7 @@ const typeBadgeClass = (type) => {
         </div>
         <DataTablePagination
           :paginator="balances"
-          @update:per-page="(n) => router.get(route('reports.trial-balance'), { source: filters.source, per_page: n }, { preserveState: true, replace: true })"
+          @update:per-page="(n) => router.get(route('reports.trial-balance'), { source: filters.source, company_id: filters.company_id || undefined, per_page: n }, { preserveState: true, replace: true })"
         />
       </div>
     </div>

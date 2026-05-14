@@ -37,6 +37,15 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
+        Company::query()->firstOrCreate(
+            ['name' => 'OCN Retail'],
+            [
+                'legal_name' => 'PT OCN Retail Indonesia',
+                'tax_id' => null,
+                'is_active' => true,
+            ]
+        );
+
         Currency::query()->firstOrCreate(
             ['code' => 'IDR'],
             ['name' => 'Indonesian Rupiah', 'symbol' => 'Rp', 'is_base' => true]
@@ -294,6 +303,7 @@ class DatabaseSeeder extends Seeder
         $this->call(FillThermalPosReceiptTemplatesSeeder::class);
 
         $this->call(CoaSeeder::class);
+        $this->call(OpeningBalanceSeeder::class);
         $this->call(ProductCategorySeeder::class);
         $this->call(UomSeeder::class);
         $this->call(WarehouseSeeder::class);

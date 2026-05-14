@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Accounting\Services\GlPostingService;
+use App\ERP\Core\Models\Company;
 use App\ERP\Inventory\Models\Warehouse;
 use App\ERP\Shared\Enums\DocumentStatus;
 use App\Models\CashIn;
@@ -524,7 +525,13 @@ class ProjectFlowSeeder extends Seeder
             ->first();
 
         if (! $entry) {
+            $companyId = (int) (Company::query()->where('is_active', true)->orderBy('id')->value('id') ?? 0);
+            if (! $companyId) {
+                throw new \RuntimeException('ProjectFlowSeeder membutuhkan minimal satu perusahaan aktif.');
+            }
+
             $entry = $this->glPostingService->post(
+                $companyId,
                 sourceModule: $sourceModule,
                 sourceReference: (string) $cashflow->id,
                 description: $description,
@@ -537,7 +544,10 @@ class ProjectFlowSeeder extends Seeder
             return;
         }
 
+        $fallbackCompanyId = (int) (Company::query()->where('is_active', true)->orderBy('id')->value('id') ?? 0);
+
         $entry->update([
+            'company_id' => $entry->company_id ?? $fallbackCompanyId,
             'entry_date' => $cashflow->date,
             'description' => $description,
             'status' => DocumentStatus::Posted,

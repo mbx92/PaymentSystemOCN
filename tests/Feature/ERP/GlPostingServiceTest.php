@@ -4,6 +4,7 @@ namespace Tests\Feature\ERP;
 
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Services\GlPostingService;
+use App\ERP\Core\Models\Company;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -34,7 +35,8 @@ class GlPostingServiceTest extends TestCase
         ]);
 
         $service = app(GlPostingService::class);
-        $entry = $service->post('test', 'TXN-001', 'Testing entry', now()->toDateString(), [
+        $companyId = (int) Company::query()->value('id');
+        $entry = $service->post($companyId, 'test', 'TXN-001', 'Testing entry', now()->toDateString(), [
             ['account_id' => $cash->id, 'debit' => 100000, 'credit' => 0],
             ['account_id' => $revenue->id, 'debit' => 0, 'credit' => 100000],
         ]);
@@ -43,5 +45,6 @@ class GlPostingServiceTest extends TestCase
         $this->assertCount(2, $entry->lines);
         $this->assertEquals(100000, (float) $entry->lines->sum('debit'));
         $this->assertEquals(100000, (float) $entry->lines->sum('credit'));
+        $this->assertSame($companyId, (int) $entry->company_id);
     }
 }

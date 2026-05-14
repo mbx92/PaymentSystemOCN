@@ -6,6 +6,7 @@ use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\Payable;
 use App\ERP\Accounting\Models\PayablePayment;
 use App\ERP\Accounting\Services\GlPostingService;
+use App\ERP\Core\Services\ErpCompanyResolver;
 use App\ERP\Shared\Enums\DocumentStatus;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -92,7 +93,7 @@ class ERPAccountingPaymentController extends Controller
             'note' => 'nullable|string|max:1000',
         ]);
 
-        DB::transaction(function () use ($payable, $validated): void {
+        DB::transaction(function () use ($payable, $validated, $request): void {
             $lockedPayable = Payable::query()
                 ->with('vendor')
                 ->lockForUpdate()
@@ -110,6 +111,7 @@ class ERPAccountingPaymentController extends Controller
             $cashAccount = Account::query()->findOrFail((int) $validated['cash_account_id']);
 
             $entry = $this->glPostingService->post(
+                ErpCompanyResolver::resolveForGlPosting($request),
                 sourceModule: 'supplier_payment',
                 sourceReference: $lockedPayable->bill_no,
                 description: 'Pembayaran supplier '.$lockedPayable->bill_no.' - '.($lockedPayable->vendor?->name ?? 'Supplier'),

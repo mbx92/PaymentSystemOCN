@@ -4,10 +4,15 @@ namespace Tests\Feature;
 
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\JournalEntry;
+use App\ERP\Core\Models\Company;
 use App\ERP\Shared\Enums\DocumentStatus;
+use App\Http\Middleware\ErpMaintenanceMode;
+use App\Http\Middleware\LogErpActivity;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
+use Spatie\Permission\Middleware\RoleMiddleware;
+use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
 use Tests\TestCase;
 
 class OpeningBalanceTest extends TestCase
@@ -22,8 +27,10 @@ class OpeningBalanceTest extends TestCase
         $cash = $this->createAccount('1001', 'Kas', 'asset');
         $this->createAccount('9999', 'Akun Nonaktif', 'asset', false);
         $capital = $this->createAccount('3001', 'Modal Pemilik', 'equity');
+        $companyId = (int) Company::query()->value('id');
 
         $entry = JournalEntry::query()->create([
+            'company_id' => $companyId,
             'entry_no' => 'JE-OPENING',
             'entry_date' => '2026-05-01',
             'description' => 'Saldo awal Mei',
@@ -57,10 +64,12 @@ class OpeningBalanceTest extends TestCase
         $cash = $this->createAccount('1001', 'Kas', 'asset');
         $equipment = $this->createAccount('1201', 'Peralatan', 'asset');
         $capital = $this->createAccount('3001', 'Modal Pemilik', 'equity');
+        $companyId = (int) Company::query()->value('id');
 
         $this
             ->actingAs($user)
             ->post(route('erp.accounting.opening-balance.store'), [
+                'company_id' => $companyId,
                 'entry_date' => '2026-05-01',
                 'description' => 'Saldo awal periode Mei',
                 'lines' => [
@@ -78,6 +87,7 @@ class OpeningBalanceTest extends TestCase
         $this->assertSame('2026-05-01', $entry->entry_date->toDateString());
         $this->assertSame(DocumentStatus::Posted, $entry->status);
         $this->assertSame($user->id, $entry->posted_by);
+        $this->assertSame($companyId, (int) $entry->company_id);
         $this->assertStringStartsWith('OPENING-20260501-', (string) $entry->source_reference);
         $this->assertSame(500000.0, (float) $entry->lines->sum('debit'));
         $this->assertSame(500000.0, (float) $entry->lines->sum('credit'));
@@ -107,6 +117,7 @@ class OpeningBalanceTest extends TestCase
         $this
             ->actingAs($user)
             ->post(route('erp.accounting.opening-balance.store'), [
+                'company_id' => (int) Company::query()->value('id'),
                 'entry_date' => '2026-05-01',
                 'lines' => [
                     ['account_id' => $cash->id, 'debit' => 150000, 'credit' => 0],
@@ -130,6 +141,7 @@ class OpeningBalanceTest extends TestCase
         $this
             ->actingAs($user)
             ->post(route('erp.accounting.opening-balance.store'), [
+                'company_id' => (int) Company::query()->value('id'),
                 'entry_date' => '2026-05-01',
                 'lines' => [
                     ['account_id' => $cash->id, 'debit' => 150000, 'credit' => 0],
@@ -155,10 +167,10 @@ class OpeningBalanceTest extends TestCase
     private function disableErpMiddleware(): void
     {
         $this->withoutMiddleware([
-            \App\Http\Middleware\ErpMaintenanceMode::class,
-            \App\Http\Middleware\LogErpActivity::class,
-            \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
-            \Spatie\Permission\Middleware\RoleMiddleware::class,
+            ErpMaintenanceMode::class,
+            LogErpActivity::class,
+            RoleOrPermissionMiddleware::class,
+            RoleMiddleware::class,
         ]);
     }
 }

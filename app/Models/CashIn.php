@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\ERP\Accounting\Models\Account;
+use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Shared\Concerns\Auditable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -59,6 +61,11 @@ class CashIn extends Model
 
     public function cashAccount()
     {
-        return $this->belongsTo(\App\ERP\Accounting\Models\Account::class, 'cash_account_id');
+        return $this->belongsTo(Account::class, 'cash_account_id');
+    }
+
+    public function journalEntry()
+    {
+        return $this->belongsTo(JournalEntry::class);
     }
 }

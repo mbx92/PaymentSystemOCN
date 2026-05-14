@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Accounting\Models\JournalLine;
+use App\ERP\Core\Services\ErpCompanyResolver;
 use App\Models\CashIn;
 use App\Models\CashOut;
 use Illuminate\Http\RedirectResponse;
@@ -58,7 +59,13 @@ class ERPReportingController extends Controller
 
     public function generalLedger(Request $request): Response
     {
+        $companyId = ErpCompanyResolver::resolveForReporting($request);
+
         $query = JournalEntry::query()->with('lines.account');
+
+        if ($companyId) {
+            $query->where('company_id', $companyId);
+        }
 
         if ($request->filled('date_from')) {
             $query->where('entry_date', '>=', $request->string('date_from')->toString());
@@ -78,17 +85,22 @@ class ERPReportingController extends Controller
 
         $entries = $query->latest('entry_date')->latest('id')->paginate($this->resolvedPerPage($request))->withQueryString();
 
-        $totalsQuery = JournalLine::query();
-        if ($request->filled('date_from') || $request->filled('date_to')) {
-            $totalsQuery->whereHas('journalEntry', function ($q) use ($request): void {
-                if ($request->filled('date_from')) {
-                    $q->where('entry_date', '>=', $request->string('date_from')->toString());
-                }
-                if ($request->filled('date_to')) {
-                    $q->where('entry_date', '<=', $request->string('date_to')->toString());
-                }
-            });
+        $filterProps = $this->filtersWithPerPage($request, ['date_from', 'date_to', 'q', 'company_id']);
+        if ($companyId && ! $request->filled('company_id')) {
+            $filterProps['company_id'] = $companyId;
         }
+
+        $totalsQuery = JournalLine::query()->whereHas('journalEntry', function ($q) use ($request, $companyId): void {
+            if ($companyId) {
+                $q->where('company_id', $companyId);
+            }
+            if ($request->filled('date_from')) {
+                $q->where('entry_date', '>=', $request->string('date_from')->toString());
+            }
+            if ($request->filled('date_to')) {
+                $q->where('entry_date', '<=', $request->string('date_to')->toString());
+            }
+        });
 
         $totals = $totalsQuery->select([
             DB::raw('SUM(debit) as total_debit'),
@@ -102,15 +114,21 @@ class ERPReportingController extends Controller
                 'total_credit' => (float) ($totals->total_credit ?? 0),
                 'entry_count' => $entries->total(),
             ],
-            'filters' => $this->filtersWithPerPage($request, ['date_from', 'date_to', 'q']),
+            'filters' => $filterProps,
         ]);
     }
 
     public function trialBalance(Request $request): Response
     {
+        $companyId = ErpCompanyResolver::resolveForReporting($request);
+
         $query = JournalLine::query()
             ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id');
+
+        if ($companyId) {
+            $query->where('journal_entries.company_id', $companyId);
+        }
 
         $this->applyJournalSourceFilter($query, $this->sourceFilter($request));
 
@@ -140,6 +158,11 @@ class ERPReportingController extends Controller
         );
         $paginatedBalances->withQueryString();
 
+        $filterProps = $this->filtersWithPerPage($request, ['source', 'company_id']);
+        if ($companyId && ! $request->filled('company_id')) {
+            $filterProps['company_id'] = $companyId;
+        }
+
         return Inertia::render('ERP/Reports/TrialBalance', [
             'balances' => $paginatedBalances,
             'totals' => [
@@ -147,7 +170,7 @@ class ERPReportingController extends Controller
                 'credit' => (float) $totalCredit,
                 'balanced' => abs($totalDebit - $totalCredit) < 0.01,
             ],
-            'filters' => $this->filtersWithPerPage($request, ['source']),
+            'filters' => $filterProps,
             'sourceOptions' => $this->sourceOptions(),
         ]);
     }

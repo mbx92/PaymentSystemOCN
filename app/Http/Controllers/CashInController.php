@@ -4,9 +4,10 @@ namespace App\Http\Controllers;
 
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Services\GlPostingService;
+use App\ERP\Core\Services\ErpCompanyResolver;
 use App\ERP\Shared\Enums\DocumentStatus;
-use App\Models\CashIn;
 use App\Models\CashCategory;
+use App\Models\CashIn;
 use App\Models\CategoryCoaMapping;
 use App\Models\PaymentMethod;
 use App\Models\Project;
@@ -97,6 +98,7 @@ class CashInController extends Controller
         $revenueAccount = Account::query()->findOrFail($revenueAccountId);
 
         $entry = $this->glPostingService->post(
+            ErpCompanyResolver::resolveForGlPosting($request),
             sourceModule: 'cash_in',
             sourceReference: (string) $cashIn->id,
             description: 'Kas masuk proyek '.$cashIn->project_id,

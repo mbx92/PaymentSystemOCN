@@ -4,7 +4,7 @@ import StatusBadge from '@/Components/StatusBadge.vue';
 import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, useForm, router } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
 
 const props = defineProps({
   products: Object,
@@ -12,6 +12,7 @@ const props = defineProps({
   filters: Object,
   reserved_alert: Object,
   reserved_breakdown_by_product: Object,
+  batch_low_stock_alerts: { type: String, default: 'all_off' },
 });
 
 const filters = reactive({
@@ -28,7 +29,21 @@ const selectedReservedProduct = ref(null);
 const batchAlertForm = useForm({
   enabled: true,
 });
+const batchLowStockToggleRef = ref(null);
 let filterTimer;
+
+watch(
+  () => props.batch_low_stock_alerts,
+  (v) => {
+    nextTick(() => {
+      const el = batchLowStockToggleRef.value;
+      if (el) {
+        el.indeterminate = v === 'mixed';
+      }
+    });
+  },
+  { immediate: true },
+);
 
 const stockManagementParams = () => ({
   warehouse_id: filters.warehouse_id,
@@ -64,6 +79,21 @@ const getForm = (product) => {
   }
   return forms[product.id];
 };
+
+/** Simpan draft catatan; min_stock & notifikasi disamakan dengan server setelah Inertia refresh. */
+watch(
+  () => props.products?.data,
+  (rows) => {
+    if (!rows?.length) return;
+    for (const product of rows) {
+      const f = forms[product.id];
+      if (!f || f.processing) continue;
+      f.min_stock = product.min_stock;
+      f.low_stock_alert_enabled = product.low_stock_alert_enabled;
+    }
+  },
+  { deep: true },
+);
 
 const saveRow = (product) => {
   const form = getForm(product);
@@ -166,22 +196,20 @@ const openReservedModal = (product) => {
               <input v-model="filters.low_stock_only" type="checkbox" class="toggle toggle-warning toggle-sm" />
               <span>Hanya stok rendah</span>
             </label>
-            <div class="ml-auto flex flex-wrap gap-2">
-              <button
-                class="btn btn-outline btn-sm"
+            <label
+              class="flex min-h-8 items-center gap-2 rounded-lg border border-base-300 px-3 py-2 text-sm"
+              title="Berlaku untuk semua produk stok (bukan jasa). Saat campuran, tampilan toggle netral sampai Anda pilih aktif atau nonaktif."
+            >
+              <span class="text-xs font-medium text-base-content/80 whitespace-nowrap">Notif semua produk</span>
+              <input
+                ref="batchLowStockToggleRef"
+                type="checkbox"
+                class="toggle toggle-warning toggle-sm"
+                :checked="props.batch_low_stock_alerts === 'all_on'"
                 :disabled="batchAlertForm.processing"
-                @click="submitBatchAlert(true)"
-              >
-                Aktifkan Notif Semua
-              </button>
-              <button
-                class="btn btn-outline btn-warning btn-sm"
-                :disabled="batchAlertForm.processing"
-                @click="submitBatchAlert(false)"
-              >
-                Nonaktifkan Notif Semua
-              </button>
-            </div>
+                @change="submitBatchAlert($event.target.checked)"
+              />
+            </label>
             <div class="text-sm text-base-content/60">
               Stok yang ditampilkan adalah stok per warehouse terpilih.
             </div>
@@ -226,9 +254,11 @@ const openReservedModal = (product) => {
                   />
                 </td>
                 <td @click.stop>
-                  <label class="flex items-center gap-2">
+                  <label
+                    class="inline-flex cursor-pointer items-center"
+                    :title="getForm(product).low_stock_alert_enabled ? 'Notifikasi stok rendah aktif' : 'Notifikasi stok rendah nonaktif'"
+                  >
                     <input v-model="getForm(product).low_stock_alert_enabled" type="checkbox" class="toggle toggle-warning toggle-sm" />
-                    <span class="text-xs">{{ getForm(product).low_stock_alert_enabled ? 'Aktif' : 'Nonaktif' }}</span>
                   </label>
                 </td>
                 <td><span class="badge badge-sm badge-ghost">{{ product.total_sold }}</span></td>

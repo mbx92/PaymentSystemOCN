@@ -4,9 +4,10 @@ namespace App\Http\Controllers;
 
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Services\GlPostingService;
+use App\ERP\Core\Services\ErpCompanyResolver;
 use App\ERP\Shared\Enums\DocumentStatus;
-use App\Models\CashOut;
 use App\Models\CashCategory;
+use App\Models\CashOut;
 use App\Models\CategoryCoaMapping;
 use App\Models\Project;
 use Illuminate\Http\Request;
@@ -89,6 +90,7 @@ class CashOutController extends Controller
         $cashAccount = Account::query()->findOrFail((int) $validated['cash_account_id']);
 
         $entry = $this->glPostingService->post(
+            ErpCompanyResolver::resolveForGlPosting($request),
             sourceModule: 'cash_out',
             sourceReference: (string) $cashOut->id,
             description: 'Kas keluar proyek '.$cashOut->project_id,

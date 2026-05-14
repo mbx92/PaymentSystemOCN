@@ -4,13 +4,13 @@ namespace App\Http\Controllers;
 
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Services\GlPostingService;
+use App\ERP\Core\Services\ErpCompanyResolver;
 use App\ERP\Shared\Enums\DocumentStatus;
-use App\Models\CategoryCoaMapping;
 use App\Models\CashOut;
+use App\Models\CategoryCoaMapping;
 use App\Models\Project;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -24,9 +24,12 @@ class OperationalController extends Controller
 
     public function index(Request $request): Response
     {
+        $companyId = ErpCompanyResolver::resolveForReporting($request);
+
         $query = CashOut::query()
             ->with(['project:id,name', 'creator:id,name'])
             ->where('category', 'operasional')
+            ->when($companyId, fn ($q) => $q->whereHas('journalEntry', fn ($jq) => $jq->where('company_id', $companyId)))
             ->when(
                 $request->filled('project_id') && Str::isUuid($request->string('project_id')->toString()),
                 fn ($q) => $q->where('project_id', $request->string('project_id')->toString())
@@ -84,7 +87,7 @@ class OperationalController extends Controller
             'recipient_name' => 'nullable|string|max:255',
         ]);
 
-        DB::transaction(function () use ($validated): void {
+        DB::transaction(function () use ($validated, $request): void {
             $expenseAccountId = $this->resolveExpenseAccountId();
             $payload = [
                 'project_id' => $validated['project_id'] ?? null,
@@ -106,6 +109,7 @@ class OperationalController extends Controller
             $expenseAccount = Account::query()->findOrFail($expenseAccountId);
             $cashAccount = Account::query()->findOrFail((int) $validated['cash_account_id']);
             $entry = $this->glPostingService->post(
+                ErpCompanyResolver::resolveForGlPosting($request),
                 sourceModule: 'operational_cash_out',
                 sourceReference: (string) $cashOut->id,
                 description: 'Biaya operasional'.($cashOut->project_id ? ' proyek '.$cashOut->project_id : ''),
@@ -137,6 +141,7 @@ class OperationalController extends Controller
         ]);
 
         $cashOut->update(array_merge($validated, ['category' => 'operasional']));
+
         return back()->with('flash', ['type' => 'success', 'message' => 'Biaya operasional berhasil diperbarui.']);
     }
 
@@ -145,6 +150,7 @@ class OperationalController extends Controller
         abort_unless($cashOut->category === 'operasional', 404);
         $this->authorizeMutation($cashOut->created_by);
         $cashOut->delete();
+
         return back()->with('flash', ['type' => 'success', 'message' => 'Biaya operasional berhasil dihapus.']);
     }
 
@@ -176,4 +182,3 @@ class OperationalController extends Controller
         abort(403, 'Anda tidak memiliki izin untuk mengubah transaksi ini.');
     }
 }
-

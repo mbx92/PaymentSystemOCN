@@ -2,9 +2,11 @@
 
 namespace App\ERP\Accounting\Models;
 
+use App\ERP\Core\Models\Company;
 use App\ERP\Shared\Concerns\Auditable;
 use App\ERP\Shared\Enums\DocumentStatus;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class JournalEntry extends Model
@@ -12,6 +14,7 @@ class JournalEntry extends Model
     use Auditable;
 
     protected $fillable = [
+        'company_id',
         'entry_no',
         'entry_date',
         'description',
@@ -35,5 +38,10 @@ class JournalEntry extends Model
     public function lines(): HasMany
     {
         return $this->hasMany(JournalLine::class);
+    }
+
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class);
     }
 }

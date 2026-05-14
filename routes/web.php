@@ -15,6 +15,8 @@ use App\Http\Controllers\ERPAccountingPaymentController;
 use App\Http\Controllers\ERPAdministrationMasterDataController;
 use App\Http\Controllers\ErpCalendarController;
 use App\Http\Controllers\ErpChatbotController;
+use App\Http\Controllers\ErpCompanyContextController;
+use App\Http\Controllers\ERPCompanyMasterController;
 use App\Http\Controllers\ERPInventoryController;
 use App\Http\Controllers\ERPInventoryMasterDataController;
 use App\Http\Controllers\ERPMasterProductController;
@@ -62,6 +64,7 @@ Route::middleware('auth')->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     Route::post('erp/chatbot/ask', [ErpChatbotController::class, 'ask'])->name('erp.chatbot.ask');
+    Route::post('erp/context/company', [ErpCompanyContextController::class, 'update'])->name('erp.context.company');
 
     Route::middleware('role_or_permission:admin|manajer|finance|menu.erp.accounting|erp.accounting.post-journal|erp.reporting.view')->group(function () {
         Route::get('erp/accounting', [ERPModuleController::class, 'accounting'])->name('erp.accounting');
@@ -294,6 +297,9 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/admin/payment-methods', [ERPAdministrationMasterDataController::class, 'paymentMethods'])->name('erp.admin.payment-methods');
         Route::post('erp/admin/payment-methods', [ERPAdministrationMasterDataController::class, 'storePaymentMethod'])->name('erp.admin.payment-methods.store');
         Route::patch('erp/admin/payment-methods/{paymentMethod}', [ERPAdministrationMasterDataController::class, 'updatePaymentMethod'])->name('erp.admin.payment-methods.update');
+        Route::get('erp/admin/companies', [ERPCompanyMasterController::class, 'index'])->name('erp.admin.companies');
+        Route::post('erp/admin/companies', [ERPCompanyMasterController::class, 'store'])->name('erp.admin.companies.store');
+        Route::patch('erp/admin/companies/{company}', [ERPCompanyMasterController::class, 'update'])->name('erp.admin.companies.update');
         Route::get('erp/admin/landing-sites', [ERPAdministrationMasterDataController::class, 'landingSites'])->name('erp.admin.landing-sites');
         Route::post('erp/admin/landing-sites', [ERPAdministrationMasterDataController::class, 'storeLandingSite'])->name('erp.admin.landing-sites.store');
         Route::patch('erp/admin/landing-sites/{landingSite}', [ERPAdministrationMasterDataController::class, 'updateLandingSite'])->name('erp.admin.landing-sites.update');

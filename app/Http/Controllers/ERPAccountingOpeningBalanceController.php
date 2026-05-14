@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Accounting\Services\GlPostingService;
+use App\ERP\Core\Models\Company;
+use App\ERP\Core\Services\ErpCompanyResolver;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -16,16 +18,24 @@ class ERPAccountingOpeningBalanceController extends Controller
 {
     public function __construct(private readonly GlPostingService $glPostingService) {}
 
-    public function index(): Response
+    public function index(Request $request): Response
     {
+        $companyId = ErpCompanyResolver::resolveForReporting($request);
+
         $accounts = Account::query()
             ->where('is_active', true)
             ->orderBy('code')
             ->get(['id', 'code', 'name', 'type', 'normal_balance']);
 
-        $openingEntries = JournalEntry::query()
-            ->with(['lines.account'])
-            ->where('source_module', 'opening_balance')
+        $openingQuery = JournalEntry::query()
+            ->with(['lines.account', 'company:id,name'])
+            ->where('source_module', 'opening_balance');
+
+        if ($companyId) {
+            $openingQuery->where('company_id', $companyId);
+        }
+
+        $openingEntries = $openingQuery
             ->latest('entry_date')
             ->latest('id')
             ->limit(20)
@@ -36,6 +46,7 @@ class ERPAccountingOpeningBalanceController extends Controller
                 'entry_date' => $entry->entry_date?->toDateString(),
                 'description' => $entry->description,
                 'source_reference' => $entry->source_reference,
+                'company_name' => $entry->company?->name,
                 'total_debit' => (float) $entry->lines->sum('debit'),
                 'total_credit' => (float) $entry->lines->sum('credit'),
                 'lines' => $entry->lines->map(fn ($line) => [
@@ -46,15 +57,23 @@ class ERPAccountingOpeningBalanceController extends Controller
                 ])->values(),
             ]);
 
+        $companies = Company::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'legal_name', 'tax_id']);
+
         return Inertia::render('ERP/Accounting/OpeningBalance', [
             'accounts' => $accounts,
             'openingEntries' => $openingEntries,
+            'companies' => $companies,
+            'selected_company_id' => $companyId,
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
+            'company_id' => ['required', 'integer', Rule::exists('companies', 'id')->where('is_active', true)],
             'entry_date' => ['required', 'date'],
             'description' => ['nullable', 'string', 'max:255'],
             'lines' => ['required', 'array', 'min:2'],
@@ -101,10 +120,12 @@ class ERPAccountingOpeningBalanceController extends Controller
         }
 
         $entryDate = $validated['entry_date'];
+        $companyId = (int) $validated['company_id'];
         $description = trim((string) ($validated['description'] ?? '')) ?: 'Saldo awal per '.$entryDate;
         $sourceReference = 'OPENING-'.str_replace('-', '', $entryDate).'-'.now()->format('His');
 
         $this->glPostingService->post(
+            $companyId,
             sourceModule: 'opening_balance',
             sourceReference: $sourceReference,
             description: $description,
