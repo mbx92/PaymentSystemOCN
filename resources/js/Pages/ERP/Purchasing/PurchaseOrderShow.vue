@@ -3,6 +3,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
 import ProductPickerModal from '@/Components/ProductPickerModal.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { computed, reactive } from 'vue';
 
 const props = defineProps({

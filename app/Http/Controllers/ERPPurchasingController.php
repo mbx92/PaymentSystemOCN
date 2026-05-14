@@ -498,12 +498,18 @@ class ERPPurchasingController extends Controller
 
     public function reorderPlanning(Request $request): Response
     {
+        $validated = $request->validate([
+            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
+        ]);
+        $warehouseId = $validated['warehouse_id'] ?? null;
+
         $projectShortages = ProjectMaterial::query()
             ->select('master_product_id')
             ->selectRaw('SUM(CASE WHEN planned_qty > reserved_qty THEN planned_qty - reserved_qty ELSE 0 END) as shortage_qty')
             ->whereHas('product', fn ($q) => $q->whereIn('product_type', $this->reorderStockProductTypes()))
             ->whereHas('project', fn ($q) => $q->whereIn('status', ['negosiasi', 'berjalan']))
             ->whereRaw('planned_qty > reserved_qty')
+            ->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId))
             ->groupBy('master_product_id')
             ->pluck('shortage_qty', 'master_product_id');
 
@@ -521,6 +527,12 @@ class ERPPurchasingController extends Controller
 
         $products = MasterProduct::query()
             ->whereIn('product_type', $this->reorderStockProductTypes())
+            ->when($warehouseId, function ($q) use ($warehouseId): void {
+                $q->where(function ($inner) use ($warehouseId): void {
+                    $inner->whereHas('warehouseStocks', fn ($stock) => $stock->where('warehouse_id', $warehouseId))
+                        ->orWhereHas('projectMaterials', fn ($material) => $material->where('warehouse_id', $warehouseId));
+                });
+            })
             ->when($request->filled('q'), function ($q) use ($request): void {
                 $term = $request->string('q')->toString();
                 $q->where(function ($inner) use ($term): void {
@@ -531,7 +543,7 @@ class ERPPurchasingController extends Controller
             ->orderBy('name')
             ->get();
 
-        $onHandById = $this->onHandByProductIdForReorder($products);
+        $onHandById = $this->onHandByProductIdForReorder($products, $warehouseId);
 
         $reorderSuggestions = $products
             ->map(function (MasterProduct $item) use ($projectShortages, $onOrderQty, $onHandById) {
@@ -566,8 +578,9 @@ class ERPPurchasingController extends Controller
 
         return Inertia::render('ERP/Purchasing/ReorderPlanning', [
             'reorderSuggestions' => $reorderSuggestions,
-            'filters' => $request->only(['q']),
+            'filters' => $request->only(['q', 'warehouse_id']),
             'suppliers' => Vendor::query()->where('is_active', true)->orderBy('name')->get(['code', 'name']),
+            'warehouses' => Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']),
         ]);
     }
 
@@ -864,7 +877,7 @@ class ERPPurchasingController extends Controller
      * @param  Collection<int, MasterProduct>  $products
      * @return array<int, float>
      */
-    private function onHandByProductIdForReorder(Collection $products): array
+    private function onHandByProductIdForReorder(Collection $products, ?int $warehouseId = null): array
     {
         if ($products->isEmpty()) {
             return [];
@@ -872,10 +885,22 @@ class ERPPurchasingController extends Controller
 
         $ids = $products->pluck('id')->unique()->values()->all();
 
+        if ($warehouseId) {
+            return MasterProductWarehouseStock::query()
+                ->whereIn('master_product_id', $ids)
+                ->where('warehouse_id', $warehouseId)
+                ->select('master_product_id')
+                ->selectRaw('SUM(CASE WHEN qty > reserved_qty THEN qty - reserved_qty ELSE 0 END) as available')
+                ->groupBy('master_product_id')
+                ->pluck('available', 'master_product_id')
+                ->map(fn ($value) => (float) $value)
+                ->all();
+        }
+
         $sums = MasterProductWarehouseStock::query()
             ->whereIn('master_product_id', $ids)
             ->select('master_product_id')
-            ->selectRaw('SUM(GREATEST(qty - reserved_qty, 0)) as available')
+            ->selectRaw('SUM(CASE WHEN qty > reserved_qty THEN qty - reserved_qty ELSE 0 END) as available')
             ->groupBy('master_product_id')
             ->pluck('available', 'master_product_id');
 

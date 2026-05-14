@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use App\ERP\Core\Models\Company;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 
@@ -19,6 +21,7 @@ class User extends Authenticatable
     public const ASSIGNABLE_ROLE_NAMES = ['admin', 'manajer', 'anggota'];
 
     protected $fillable = [
+        'company_id',
         'name',
         'email',
         'password',
@@ -40,6 +43,11 @@ class User extends Authenticatable
     public function teamDistributions()
     {
         return $this->hasMany(TeamDistribution::class);
+    }
+
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class);
     }
 
     public function cashInsCreated()

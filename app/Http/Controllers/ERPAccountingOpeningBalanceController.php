@@ -73,7 +73,7 @@ class ERPAccountingOpeningBalanceController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'company_id' => ['required', 'integer', Rule::exists('companies', 'id')->where('is_active', true)],
+            'company_id' => ['nullable', 'integer', Rule::exists('companies', 'id')->where('is_active', true)],
             'entry_date' => ['required', 'date'],
             'description' => ['nullable', 'string', 'max:255'],
             'lines' => ['required', 'array', 'min:2'],
@@ -120,7 +120,7 @@ class ERPAccountingOpeningBalanceController extends Controller
         }
 
         $entryDate = $validated['entry_date'];
-        $companyId = (int) $validated['company_id'];
+        $companyId = ErpCompanyResolver::resolveForGlPosting($request);
         $description = trim((string) ($validated['description'] ?? '')) ?: 'Saldo awal per '.$entryDate;
         $sourceReference = 'OPENING-'.str_replace('-', '', $entryDate).'-'.now()->format('His');
 

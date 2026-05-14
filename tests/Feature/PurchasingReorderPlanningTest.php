@@ -9,8 +9,11 @@ use App\Http\Middleware\ErpMaintenanceMode;
 use App\Http\Middleware\LogErpActivity;
 use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
+use App\Models\Project;
+use App\Models\ProjectMaterial;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Spatie\Permission\Middleware\RoleMiddleware;
 use Tests\TestCase;
@@ -99,6 +102,81 @@ class PurchasingReorderPlanningTest extends TestCase
             'unit_price' => '25000.00',
             'line_total' => '100000.00',
         ]);
+    }
+
+    public function test_reorder_planning_can_filter_suggestions_by_warehouse(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $mainWarehouse = Warehouse::query()->create([
+            'code' => 'WH-MAIN',
+            'name' => 'Main Warehouse',
+            'is_active' => true,
+        ]);
+        $otherWarehouse = Warehouse::query()->create([
+            'code' => 'WH-OTH',
+            'name' => 'Other Warehouse',
+            'is_active' => true,
+        ]);
+        $mainProduct = $this->createProduct([
+            'sku' => 'MAT-WH-001',
+            'name' => 'Material Main Warehouse',
+            'stock' => 99,
+            'min_stock' => 10,
+        ]);
+        $otherProduct = $this->createProduct([
+            'sku' => 'MAT-WH-002',
+            'name' => 'Material Other Warehouse',
+            'stock' => 99,
+            'min_stock' => 10,
+        ]);
+
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $mainProduct->id,
+            'warehouse_id' => $mainWarehouse->id,
+            'qty' => 2,
+            'reserved_qty' => 0,
+        ]);
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $otherProduct->id,
+            'warehouse_id' => $otherWarehouse->id,
+            'qty' => 0,
+            'reserved_qty' => 0,
+        ]);
+
+        $project = new Project([
+            'name' => 'P1',
+            'client_name' => 'Client',
+            'total_value' => 1000000,
+            'status' => 'berjalan',
+        ]);
+        $project->id = (string) Str::uuid();
+        $project->save();
+        ProjectMaterial::query()->create([
+            'project_id' => $project->id,
+            'master_product_id' => $mainProduct->id,
+            'warehouse_id' => $mainWarehouse->id,
+            'planned_qty' => 5,
+            'reserved_qty' => 3,
+            'issued_qty' => 0,
+            'status' => 'planned',
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.purchasing.reorder-planning', ['warehouse_id' => $mainWarehouse->id]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Purchasing/ReorderPlanning')
+                ->where('filters.warehouse_id', (string) $mainWarehouse->id)
+                ->where('warehouses.0.code', 'WH-MAIN')
+                ->where('reorderSuggestions.0.id', $mainProduct->id)
+                ->where('reorderSuggestions.0.stock', 2)
+                ->where('reorderSuggestions.0.project_shortage_qty', 2)
+                ->where('reorderSuggestions.0.suggested_qty', 10)
+                ->missing('reorderSuggestions.1')
+                ->etc());
     }
 
     public function test_service_product_cannot_be_added_to_purchase_order(): void
@@ -206,9 +284,9 @@ class PurchasingReorderPlanningTest extends TestCase
         ]);
     }
 
-    private function createProduct(): MasterProduct
+    private function createProduct(array $overrides = []): MasterProduct
     {
-        return MasterProduct::query()->create([
+        return MasterProduct::query()->create(array_merge([
             'sku' => 'MAT-PO-001',
             'name' => 'Material PO',
             'category' => 'Material',
@@ -221,6 +299,6 @@ class PurchasingReorderPlanningTest extends TestCase
             'total_sold' => 0,
             'lead_time_days' => 7,
             'selling_price' => 25000,
-        ]);
+        ], $overrides));
     }
 }

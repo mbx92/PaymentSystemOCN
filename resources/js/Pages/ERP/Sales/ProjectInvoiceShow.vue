@@ -98,6 +98,7 @@ const openPaymentModal = () => {
 };
 
 const downloadInvoice = () => window.open(route('erp.sales.project-invoices.download', props.invoice.id), '_blank');
+const downloadSalesNote = () => window.open(route('erp.sales.project-invoices.sales-note', props.invoice.id), '_blank');
 const downloadReceipt = (payment) => window.open(route('erp.sales.project-invoices.receipt', {
   project: props.invoice.id,
   cashIn: payment.id,
@@ -120,6 +121,7 @@ const downloadReceipt = (payment) => window.open(route('erp.sales.project-invoic
               <div class="flex flex-wrap items-center gap-2">
             <StatusBadge :status="invoice.status" />
             <button class="btn btn-outline btn-sm" @click="downloadInvoice">Download Invoice</button>
+            <button class="btn btn-outline btn-sm" @click="downloadSalesNote">Download Nota Penjualan</button>
             <button class="btn btn-primary btn-sm" :disabled="invoice.remaining_amount <= 0" @click="openPaymentModal">Tambah Pembayaran</button>
             <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.sales.project-invoices')">
             <ArrowLeftIcon class="h-4 w-4" />

@@ -7,7 +7,7 @@ import { Head, useForm, router, Link } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { computed, ref } from 'vue';
 
-const props = defineProps({ users: Object, roles: Array, filters: Object });
+const props = defineProps({ users: Object, roles: Array, companies: Array, filters: Object });
 
 const roleOptions = computed(() => {
     if (Array.isArray(props.roles) && props.roles.length) {
@@ -21,9 +21,11 @@ const roleOptions = computed(() => {
     ];
 });
 
-const form = useForm({ name: '', email: '', password: '', password_confirmation: '', role: 'anggota' });
+const defaultCompanyId = computed(() => props.companies?.[0]?.id ?? '');
+
+const form = useForm({ name: '', email: '', password: '', password_confirmation: '', role: 'anggota', company_id: defaultCompanyId.value });
 const editingId = ref(null);
-const editForm = useForm({ name: '', email: '', password: '', password_confirmation: '', role: 'anggota' });
+const editForm = useForm({ name: '', email: '', password: '', password_confirmation: '', role: 'anggota', company_id: '' });
 
 const openAddUser = () => {
     form.clearErrors();
@@ -34,6 +36,7 @@ const submitAdd = () => form.post(route('users.store'), {
     onSuccess: () => {
         form.reset();
         form.role = 'anggota';
+        form.company_id = defaultCompanyId.value;
         document.getElementById('modal-add-user')?.close();
     },
 });
@@ -43,6 +46,7 @@ const openEdit = (u) => {
     editForm.name  = u.name;
     editForm.email = u.email;
     editForm.role  = u.role;
+    editForm.company_id = u.company_id ?? defaultCompanyId.value;
     editForm.password = '';
     editForm.password_confirmation = '';
     document.getElementById('modal-edit-user')?.showModal();
@@ -101,6 +105,7 @@ const doDelete = () => { router.delete(route('users.destroy', deletingId.value))
                             <tr>
                                 <th>Nama</th>
                                 <th>Email</th>
+                                <th>Usaha</th>
                                 <th>Role</th>
                                 <th class="text-right">Aksi</th>
                             </tr>
@@ -109,6 +114,7 @@ const doDelete = () => { router.delete(route('users.destroy', deletingId.value))
                             <tr v-for="u in users.data" :key="u.id">
                                 <td class="font-medium">{{ u.name }}</td>
                                 <td>{{ u.email }}</td>
+                                <td>{{ u.company_name || '-' }}</td>
                                 <td><StatusBadge :status="u.role" /></td>
                                 <td class="text-right">
                                     <div class="flex justify-end gap-1">
@@ -118,7 +124,7 @@ const doDelete = () => { router.delete(route('users.destroy', deletingId.value))
                                 </td>
                             </tr>
                             <tr v-if="!users.data.length">
-                                <td colspan="4" class="py-10 text-center text-base-content/50">Belum ada akun pengguna.</td>
+                                <td colspan="5" class="py-10 text-center text-base-content/50">Belum ada akun pengguna.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -161,6 +167,16 @@ const doDelete = () => { router.delete(route('users.destroy', deletingId.value))
                             </option>
                         </select>
                     </div>
+                    <div>
+                        <label class="label"><span class="label-text">Usaha Default</span></label>
+                        <select v-model="form.company_id" class="select select-bordered w-full">
+                            <option value="">Default sistem</option>
+                            <option v-for="company in companies" :key="company.id" :value="company.id">
+                                {{ company.name }}
+                            </option>
+                        </select>
+                        <p class="text-xs text-base-content/60 mt-1">Transaksi accounting dari user ini otomatis masuk ke usaha ini.</p>
+                    </div>
                 </div>
                 <div class="modal-action">
                     <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
@@ -198,6 +214,16 @@ const doDelete = () => { router.delete(route('users.destroy', deletingId.value))
                                 {{ role.name }}
                             </option>
                         </select>
+                    </div>
+                    <div>
+                        <label class="label"><span class="label-text">Usaha Default</span></label>
+                        <select v-model="editForm.company_id" class="select select-bordered w-full">
+                            <option value="">Default sistem</option>
+                            <option v-for="company in companies" :key="company.id" :value="company.id">
+                                {{ company.name }}
+                            </option>
+                        </select>
+                        <p class="text-xs text-base-content/60 mt-1">Jurnal baru yang diposting user ini mengikuti usaha default ini.</p>
                     </div>
                 </div>
                 <div class="modal-action">

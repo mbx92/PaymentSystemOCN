@@ -60,6 +60,11 @@ class MasterProduct extends Model
         return $this->hasMany(MasterProductWarehouseStock::class);
     }
 
+    public function projectMaterials(): HasMany
+    {
+        return $this->hasMany(ProjectMaterial::class);
+    }
+
     public function warehouses(): BelongsToMany
     {
         return $this->belongsToMany(Warehouse::class, 'master_product_warehouse_stocks')

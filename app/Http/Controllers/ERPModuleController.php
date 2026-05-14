@@ -13,6 +13,7 @@ class ERPModuleController extends Controller
             ['title' => 'Master perusahaan', 'description' => 'Kelola entitas usaha (nama legal, NPWP) untuk jurnal dan laporan per perusahaan.', 'route' => 'erp.admin.companies', 'icon' => 'building-office-2'],
             ['title' => 'CoA / Chart Of Account', 'description' => 'Daftar akun chart of accounts untuk semua posting akuntansi.', 'route' => 'erp.accounting.coa', 'icon' => 'book-open'],
             ['title' => 'Pengaturan COA', 'description' => 'Atur mapping akun untuk posting otomatis POS, invoice project, dan kategori cashflow.', 'route' => 'erp.accounting.coa-settings', 'icon' => 'cog-6-tooth'],
+            ['title' => 'Utilitas Accounting', 'description' => 'Pindahkan transaksi jurnal accounting dari satu usaha ke usaha lain.', 'route' => 'erp.accounting.utilities', 'icon' => 'wrench'],
             ['title' => 'Cashflow', 'description' => 'Submenu kas masuk dan kas keluar dalam satu tempat.', 'route' => 'erp.accounting.cashflow', 'icon' => 'arrows-right-left'],
             ['title' => 'Operational', 'description' => 'Pencatatan biaya operasional umum (non-project) atau per project.', 'route' => 'erp.accounting.operational', 'icon' => 'arrow-up-circle'],
             ['title' => 'Kategori Pengeluaran', 'description' => 'Mapping lama kategori kas keluar ke akun CoA.', 'route' => 'erp.accounting.expense-categories', 'icon' => 'book-open'],

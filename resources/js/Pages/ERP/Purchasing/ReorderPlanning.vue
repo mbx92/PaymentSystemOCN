@@ -8,6 +8,7 @@ const props = defineProps({
   reorderSuggestions: Array,
   filters: Object,
   suppliers: Array,
+  warehouses: Array,
 });
 
 const openRow = (id) => {
@@ -18,6 +19,7 @@ const rowClass = () => 'cursor-pointer transition-colors hover:bg-primary/5';
 
 const filters = reactive({
   q: props.filters?.q ?? '',
+  warehouse_id: props.filters?.warehouse_id ?? '',
 });
 
 let timer;
@@ -182,6 +184,15 @@ const canSubmitPlan = computed(
             <div class="min-w-[260px] flex-1">
               <label class="label"><span class="label-text text-xs uppercase tracking-wide">Search</span></label>
               <input v-model="filters.q" type="text" class="input input-sm input-bordered w-full" placeholder="SKU / nama produk" />
+            </div>
+            <div class="min-w-[240px] flex-1">
+              <label class="label"><span class="label-text text-xs uppercase tracking-wide">Warehouse</span></label>
+              <select v-model="filters.warehouse_id" class="select select-sm select-bordered w-full">
+                <option value="">Semua warehouse</option>
+                <option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">
+                  {{ warehouse.code }} - {{ warehouse.name }}
+                </option>
+              </select>
             </div>
             <Link class="btn btn-primary btn-sm ml-auto" :href="route('erp.purchasing.purchase-orders')">+ Add PO</Link>
           </div>

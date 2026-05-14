@@ -18,6 +18,7 @@ use App\Models\PaymentMethod;
 use App\Models\PosSale;
 use App\Models\ProductStockMovement;
 use App\Models\Project;
+use App\Models\ProjectBudget;
 use App\Models\User;
 use App\Services\LanEscPosPrinter;
 use App\Services\ThermalPosReceiptData;
@@ -29,6 +30,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -1108,10 +1110,34 @@ class ERPSalesController extends Controller
         $pdf = Pdf::loadView('pdf.project-invoice', [
             'project' => $project,
             'invoice' => $this->mapProjectInvoice($project),
+            'brand' => $this->pdfBrand(),
             'generatedAt' => now(),
         ])->setPaper('a4');
 
         return $pdf->download($this->invoiceNumber($project).'.pdf');
+    }
+
+    public function downloadProjectSalesNote(Project $project)
+    {
+        abort_unless($project->status === 'selesai', 404);
+
+        $project->invoice_number = $this->ensureProjectInvoiceNumber($project);
+        $project->load(['materials.product']);
+        $project->loadSum('cashIns as paid_amount', 'amount');
+
+        $invoice = $this->mapProjectInvoice($project);
+        $items = $this->projectSalesNoteItems($project);
+
+        $pdf = Pdf::loadView('pdf.project-sales-note', [
+            'project' => $project,
+            'invoice' => $invoice,
+            'items' => $items,
+            'itemsSubtotal' => $items->sum('subtotal'),
+            'brand' => $this->pdfBrand(),
+            'generatedAt' => now(),
+        ])->setPaper('a4');
+
+        return $pdf->download('NOTA-'.$this->invoiceNumber($project).'.pdf');
     }
 
     public function downloadProjectReceipt(Project $project, CashIn $cashIn)
@@ -1132,6 +1158,24 @@ class ERPSalesController extends Controller
         return $pdf->download('KW-'.$this->invoiceNumber($project).'-'.($cashIn->date?->format('Ymd') ?? now()->format('Ymd')).'.pdf');
     }
 
+    private function pdfBrand(): array
+    {
+        $setting = ErpSetting::query()->first();
+        $logoDataUri = null;
+
+        if ($setting?->app_logo_path && Storage::disk('public')->exists($setting->app_logo_path)) {
+            $path = Storage::disk('public')->path($setting->app_logo_path);
+            $mime = function_exists('mime_content_type') ? mime_content_type($path) : 'image/png';
+            $logoDataUri = 'data:'.$mime.';base64,'.base64_encode((string) file_get_contents($path));
+        }
+
+        return [
+            'name' => (string) ($setting?->app_name ?: 'OCN ERP Suite'),
+            'tagline' => (string) ($setting?->app_tagline ?: 'Integrated Business Platform'),
+            'logo_data_uri' => $logoDataUri,
+        ];
+    }
+
     private function mapProjectInvoice(Project $project): array
     {
         $paidAmount = (float) ($project->paid_amount ?? $project->cashIns()->sum('amount'));
@@ -1150,6 +1194,67 @@ class ERPSalesController extends Controller
             'finished_at' => $project->finished_at?->format('Y-m-d'),
             'created_at' => $project->created_at?->format('Y-m-d'),
         ];
+    }
+
+    private function projectSalesNoteItems(Project $project)
+    {
+        $budget = ProjectBudget::query()
+            ->where('converted_project_id', $project->id)
+            ->first();
+
+        $budgetItems = collect($budget?->cctv_items ?? [])
+            ->filter(fn ($item) => is_array($item) && trim((string) ($item['name'] ?? '')) !== '')
+            ->map(function (array $item): array {
+                $qty = (float) ($item['qty'] ?? 0);
+                $unitPrice = (float) ($item['unit_price'] ?? 0);
+
+                return [
+                    'name' => (string) $item['name'],
+                    'description' => 'Item dari budget project',
+                    'qty' => $qty,
+                    'uom' => 'unit',
+                    'unit_price' => $unitPrice,
+                    'subtotal' => $qty * $unitPrice,
+                ];
+            })
+            ->values();
+
+        if ($budgetItems->isNotEmpty()) {
+            return $budgetItems;
+        }
+
+        $materialItems = $project->materials
+            ->filter(fn ($material) => $material->product !== null)
+            ->map(function ($material): array {
+                $qty = (float) $material->planned_qty;
+                $unitPrice = (float) ($material->product?->selling_price ?? 0);
+
+                return [
+                    'name' => (string) ($material->product?->name ?? 'Material project'),
+                    'description' => trim(implode(' · ', array_filter([
+                        $material->product?->sku,
+                        $material->notes,
+                    ]))) ?: 'Material project',
+                    'qty' => $qty,
+                    'uom' => (string) ($material->product?->uom ?? 'unit'),
+                    'unit_price' => $unitPrice,
+                    'subtotal' => $qty * $unitPrice,
+                ];
+            })
+            ->values();
+
+        if ($materialItems->isNotEmpty()) {
+            return $materialItems;
+        }
+
+        return collect([[
+            'name' => 'Nilai project '.$project->name,
+            'description' => $project->description ?: 'Pekerjaan project sesuai kesepakatan.',
+            'qty' => 1,
+            'uom' => 'project',
+            'unit_price' => (float) $project->total_value,
+            'subtotal' => (float) $project->total_value,
+        ]]);
     }
 
     private function invoiceNumber(Project $project): string

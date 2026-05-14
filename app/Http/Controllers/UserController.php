@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\ERP\Core\Models\Company;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -18,9 +19,11 @@ class UserController extends Controller
 
     public function index(Request $request)
     {
-        $users = User::with('roles')->orderBy('name')->paginate($this->resolvedPerPage($request))->withQueryString()
+        $users = User::with(['roles', 'company:id,name'])->orderBy('name')->paginate($this->resolvedPerPage($request))->withQueryString()
             ->through(fn ($u) => [
                 'id' => $u->id,
+                'company_id' => $u->company_id,
+                'company_name' => $u->company?->name,
                 'name' => $u->name,
                 'email' => $u->email,
                 'role' => $u->roles->first()?->name ?? '-',
@@ -37,6 +40,10 @@ class UserController extends Controller
         return Inertia::render('Users/Index', [
             'users' => $users,
             'roles' => $roles,
+            'companies' => Company::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name']),
             'filters' => $this->filtersWithPerPage($request, []),
         ]);
     }
@@ -48,9 +55,11 @@ class UserController extends Controller
             'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:8|confirmed',
             'role' => ['required', Rule::in(User::ASSIGNABLE_ROLE_NAMES)],
+            'company_id' => ['nullable', 'integer', 'exists:companies,id'],
         ]);
 
         $user = User::create([
+            'company_id' => $validated['company_id'] ?? $this->defaultCompanyId(),
             'name' => $validated['name'],
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
@@ -67,9 +76,11 @@ class UserController extends Controller
             'email' => "required|email|unique:users,email,{$user->id}",
             'password' => 'nullable|string|min:8|confirmed',
             'role' => ['required', Rule::in(User::ASSIGNABLE_ROLE_NAMES)],
+            'company_id' => ['nullable', 'integer', 'exists:companies,id'],
         ]);
 
         $user->update([
+            'company_id' => $validated['company_id'] ?? null,
             'name' => $validated['name'],
             'email' => $validated['email'],
         ]);
@@ -91,5 +102,13 @@ class UserController extends Controller
         $user->delete();
 
         return back()->with('flash', ['type' => 'success', 'message' => 'User berhasil dihapus.']);
+    }
+
+    private function defaultCompanyId(): ?int
+    {
+        return Company::query()
+            ->where('is_active', true)
+            ->orderBy('id')
+            ->value('id');
     }
 }

@@ -32,6 +32,7 @@ import {
   PrinterIcon,
   ShareIcon,
   Cog6ToothIcon,
+  WrenchScrewdriverIcon,
 } from '@heroicons/vue/24/outline';
 import { computed } from 'vue';
 
@@ -70,6 +71,7 @@ const iconMap = {
   printer: PrinterIcon,
   share: ShareIcon,
   'cog-6-tooth': Cog6ToothIcon,
+  wrench: WrenchScrewdriverIcon,
 };
 
 const iconFor = (menu) => iconMap[menu.icon] ?? Squares2X2Icon;

@@ -12,6 +12,7 @@ use App\Http\Controllers\CrmPipelineController;
 use App\Http\Controllers\ERPAccountingCoaSettingsController;
 use App\Http\Controllers\ERPAccountingOpeningBalanceController;
 use App\Http\Controllers\ERPAccountingPaymentController;
+use App\Http\Controllers\ERPAccountingUtilityController;
 use App\Http\Controllers\ERPAdministrationMasterDataController;
 use App\Http\Controllers\ErpCalendarController;
 use App\Http\Controllers\ErpChatbotController;
@@ -71,6 +72,7 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/accounting/cashflow', [CashflowController::class, 'index'])->name('erp.accounting.cashflow');
         Route::get('erp/accounting/cash-flow', fn () => redirect()->route('erp.accounting.cashflow', request()->query()))->name('erp.accounting.cashflow.redirect-legacy');
         Route::get('erp/accounting/opening-balance', [ERPAccountingOpeningBalanceController::class, 'index'])->name('erp.accounting.opening-balance');
+        Route::get('erp/accounting/utilities', [ERPAccountingUtilityController::class, 'index'])->name('erp.accounting.utilities');
     });
 
     Route::middleware('role_or_permission:admin|manajer|finance|erp.accounting.post-journal')->group(function () {
@@ -80,6 +82,7 @@ Route::middleware('auth')->group(function () {
         Route::patch('erp/accounting/cashflow/cash-out/{cashOut}', [CashflowController::class, 'updateCashOut'])->name('erp.accounting.cashflow.cash-out.update');
         Route::delete('erp/accounting/cashflow/cash-out/{cashOut}', [CashflowController::class, 'destroyCashOut'])->name('erp.accounting.cashflow.cash-out.destroy');
         Route::post('erp/accounting/opening-balance', [ERPAccountingOpeningBalanceController::class, 'store'])->name('erp.accounting.opening-balance.store');
+        Route::post('erp/accounting/utilities/move-journals', [ERPAccountingUtilityController::class, 'moveJournalEntries'])->name('erp.accounting.utilities.move-journals');
     });
 
     // Projects (Admin + Manajer)
@@ -196,6 +199,7 @@ Route::middleware('auth')->group(function () {
         Route::post('erp/sales/project-invoices/{project}/payments', [ERPSalesController::class, 'storeProjectInvoicePayment'])->name('erp.sales.project-invoices.payments.store');
         Route::patch('erp/sales/project-invoices/{project}/payments/{cashIn}', [ERPSalesController::class, 'updateProjectInvoicePayment'])->name('erp.sales.project-invoices.payments.update');
         Route::get('erp/sales/project-invoices/{project}/download', [ERPSalesController::class, 'downloadProjectInvoice'])->name('erp.sales.project-invoices.download');
+        Route::get('erp/sales/project-invoices/{project}/sales-note', [ERPSalesController::class, 'downloadProjectSalesNote'])->name('erp.sales.project-invoices.sales-note');
         Route::get('erp/sales/project-invoices/{project}/payments/{cashIn}/receipt', [ERPSalesController::class, 'downloadProjectReceipt'])->name('erp.sales.project-invoices.receipt');
 
         Route::resource('projects', ProjectController::class);

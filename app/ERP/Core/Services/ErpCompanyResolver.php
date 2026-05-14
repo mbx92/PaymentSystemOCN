@@ -4,6 +4,7 @@ namespace App\ERP\Core\Services;
 
 use App\ERP\Core\Models\Company;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 
 class ErpCompanyResolver
@@ -25,6 +26,11 @@ class ErpCompanyResolver
         $sessionId = (int) ($request->session()->get(self::SESSION_KEY) ?? 0);
         if ($sessionId > 0 && self::isActiveCompany($sessionId)) {
             return $sessionId;
+        }
+
+        $userCompanyId = (int) (Auth::user()?->company_id ?? 0);
+        if ($userCompanyId > 0 && self::isActiveCompany($userCompanyId)) {
+            return $userCompanyId;
         }
 
         return self::defaultCompanyId();
@@ -64,6 +70,11 @@ class ErpCompanyResolver
         $sessionId = (int) ($request->session()->get(self::SESSION_KEY) ?? 0);
         if ($sessionId > 0 && self::isActiveCompany($sessionId)) {
             return $sessionId;
+        }
+
+        $userCompanyId = (int) (Auth::user()?->company_id ?? 0);
+        if ($userCompanyId > 0 && self::isActiveCompany($userCompanyId)) {
+            return $userCompanyId;
         }
 
         $default = self::defaultCompanyId();
