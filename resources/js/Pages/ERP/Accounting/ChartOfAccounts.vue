@@ -3,13 +3,16 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
-import { computed, reactive, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
+import { useCurrency } from '@/composables/useCurrency';
 
 const props = defineProps({
   accounts: Array,
   filters: Object,
   types: Array,
 });
+
+const { format } = useCurrency();
 
 const filters = reactive({
   q: props.filters?.q ?? '',
@@ -68,6 +71,47 @@ const submitAdd = () => {
     onSuccess: () => document.getElementById('modal-add-coa')?.close(),
   });
 };
+
+const selectedAccount = ref(null);
+
+const editForm = useForm({
+  code: '',
+  name: '',
+  type: 'asset',
+  normal_balance: 'debit',
+  is_active: true,
+});
+
+const openEditModal = (account) => {
+  selectedAccount.value = account;
+  editForm.clearErrors();
+  editForm.code = account.code;
+  editForm.name = account.name;
+  editForm.type = account.type;
+  editForm.normal_balance = account.normal_balance;
+  editForm.is_active = account.status === 'active';
+  document.getElementById('modal-edit-coa')?.showModal();
+};
+
+const submitEdit = () => {
+  if (!selectedAccount.value) return;
+  editForm.patch(route('erp.accounting.coa.update', selectedAccount.value.id), {
+    preserveScroll: true,
+    onSuccess: () => document.getElementById('modal-edit-coa')?.close(),
+  });
+};
+
+const confirmDeleteCoa = () => {
+  if (!selectedAccount.value?.can_delete) return;
+  if (!window.confirm('Hapus akun CoA ini secara permanen? Tindakan ini tidak dapat dibatalkan.')) return;
+  router.delete(route('erp.accounting.coa.destroy', selectedAccount.value.id), {
+    preserveScroll: true,
+    onSuccess: () => {
+      document.getElementById('modal-edit-coa')?.close();
+      selectedAccount.value = null;
+    },
+  });
+};
 </script>
 
 <template>
@@ -80,16 +124,16 @@ const submitAdd = () => {
             <div>
               <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Accounting Workspace</p>
               <h1 class="ocn-panel__title mt-1">CoA / Chart Of Account</h1>
-              <p class="ocn-panel__desc mt-1">Daftar chart of accounts untuk kebutuhan posting jurnal seluruh modul ERP.</p>
+              <p class="ocn-panel__desc mt-1">Daftar chart of accounts untuk kebutuhan posting jurnal seluruh modul ERP. Klik baris untuk mengubah atau menghapus.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
               <div class="flex items-center gap-2">
-            <button class="btn btn-primary btn-sm" @click="openAddModal">+ Tambah CoA</button>
-            <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.accounting')">
-            <ArrowLeftIcon class="h-4 w-4" />
-            Back
-          </Link>
-          </div>
+                <button class="btn btn-primary btn-sm" @click="openAddModal">+ Tambah CoA</button>
+                <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.accounting')">
+                  <ArrowLeftIcon class="h-4 w-4" />
+                  Back
+                </Link>
+              </div>
             </div>
           </div>
         </div>
@@ -149,7 +193,15 @@ const submitAdd = () => {
                     </div>
                   </td>
                 </tr>
-                <tr v-for="account in group.rows" :key="account.id">
+                <tr
+                  v-for="account in group.rows"
+                  :key="account.id"
+                  class="cursor-pointer transition-colors hover:bg-primary/5"
+                  role="button"
+                  tabindex="0"
+                  @click="openEditModal(account)"
+                  @keydown.enter.prevent="openEditModal(account)"
+                >
                   <td class="font-mono text-xs">{{ account.code }}</td>
                   <td class="font-semibold">{{ account.name }}</td>
                   <td class="uppercase text-xs">{{ account.type }}</td>
@@ -208,6 +260,71 @@ const submitAdd = () => {
         </div>
       </div>
     </dialog>
+
+    <dialog id="modal-edit-coa" class="modal">
+      <div class="modal-box max-w-xl">
+        <h3 class="font-bold text-lg">Ubah Akun CoA</h3>
+        <p v-if="selectedAccount" class="mt-1 text-sm text-base-content/60 font-mono">{{ selectedAccount.code }} — {{ selectedAccount.name }}</p>
+
+        <div v-if="selectedAccount?.has_posting_value" class="alert alert-warning mt-4 text-sm">
+          <div>
+            <p class="font-semibold">Akun memiliki nilai di jurnal</p>
+            <p class="mt-1 opacity-90">
+              Terdapat {{ selectedAccount.journal_line_count }} baris jurnal dengan total debit {{ format(selectedAccount.total_debit) }} dan kredit {{ format(selectedAccount.total_credit) }}.
+              Penghapusan akun dinonaktifkan agar integritas buku besar tetap terjaga.
+            </p>
+          </div>
+        </div>
+
+        <div v-if="selectedAccount && !selectedAccount.can_delete && selectedAccount.delete_blocked_summary" class="alert alert-error mt-3 text-sm">
+          <div>
+            <p class="font-semibold">Akun tidak dapat dihapus</p>
+            <p class="mt-1">{{ selectedAccount.delete_blocked_summary }}</p>
+          </div>
+        </div>
+
+        <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div>
+            <label class="label"><span class="label-text">Kode Akun</span></label>
+            <input v-model="editForm.code" class="input input-bordered w-full" />
+            <p v-if="editForm.errors.code" class="text-error text-xs mt-1">{{ editForm.errors.code }}</p>
+          </div>
+          <div>
+            <label class="label"><span class="label-text">Nama Akun</span></label>
+            <input v-model="editForm.name" class="input input-bordered w-full" />
+            <p v-if="editForm.errors.name" class="text-error text-xs mt-1">{{ editForm.errors.name }}</p>
+          </div>
+          <div>
+            <label class="label"><span class="label-text">Type</span></label>
+            <select v-model="editForm.type" class="select select-bordered w-full">
+              <option v-for="type in types" :key="type" :value="type">{{ type }}</option>
+            </select>
+            <p v-if="editForm.errors.type" class="text-error text-xs mt-1">{{ editForm.errors.type }}</p>
+          </div>
+          <div>
+            <label class="label"><span class="label-text">Normal Balance</span></label>
+            <select v-model="editForm.normal_balance" class="select select-bordered w-full">
+              <option value="debit">debit</option>
+              <option value="credit">credit</option>
+            </select>
+            <p v-if="editForm.errors.normal_balance" class="text-error text-xs mt-1">{{ editForm.errors.normal_balance }}</p>
+          </div>
+          <div class="md:col-span-2">
+            <label class="flex items-center gap-2 text-sm">
+              <input v-model="editForm.is_active" type="checkbox" class="toggle toggle-primary toggle-sm" />
+              <span>Aktif</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="modal-action flex-wrap gap-2">
+          <form method="dialog"><button class="btn btn-ghost">Tutup</button></form>
+          <button type="button" class="btn btn-error btn-outline" :disabled="!selectedAccount?.can_delete || editForm.processing" @click="confirmDeleteCoa">
+            Hapus CoA
+          </button>
+          <button type="button" class="btn btn-primary" :disabled="editForm.processing" @click="submitEdit">Simpan perubahan</button>
+        </div>
+      </div>
+    </dialog>
   </AppLayout>
 </template>
-

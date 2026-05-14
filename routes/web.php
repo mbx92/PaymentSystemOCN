@@ -251,6 +251,8 @@ Route::middleware('auth')->group(function () {
         Route::get('laporan/anggota', [ReportController::class, 'memberPayments'])->name('reports.member-payments');
         Route::get('erp/accounting/chart-of-accounts', [ERPReportingController::class, 'chartOfAccounts'])->name('erp.accounting.coa');
         Route::post('erp/accounting/chart-of-accounts', [ERPReportingController::class, 'storeChartOfAccount'])->name('erp.accounting.coa.store');
+        Route::patch('erp/accounting/chart-of-accounts/{account}', [ERPReportingController::class, 'updateChartOfAccount'])->name('erp.accounting.coa.update');
+        Route::delete('erp/accounting/chart-of-accounts/{account}', [ERPReportingController::class, 'destroyChartOfAccount'])->name('erp.accounting.coa.destroy');
         Route::get('laporan/general-ledger', [ERPReportingController::class, 'generalLedger'])->name('reports.general-ledger');
         Route::get('laporan/neraca-saldo', [ERPReportingController::class, 'trialBalance'])->name('reports.trial-balance');
 
