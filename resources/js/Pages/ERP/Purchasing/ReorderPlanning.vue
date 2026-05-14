@@ -2,7 +2,7 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
-import { reactive, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 
 const props = defineProps({
   reorderSuggestions: Array,
@@ -32,6 +32,50 @@ watch(
   { deep: true },
 );
 
+/** @type {import('vue').Ref<number[]>} */
+const selectedIds = ref([]);
+
+const selectedRows = computed(() => {
+  const list = props.reorderSuggestions ?? [];
+  const set = new Set(selectedIds.value);
+  return list.filter((r) => set.has(r.id));
+});
+
+const allSelected = computed(() => {
+  const list = props.reorderSuggestions ?? [];
+  return list.length > 0 && list.every((r) => selectedIds.value.includes(r.id));
+});
+
+const toggleSelectAll = () => {
+  const list = props.reorderSuggestions ?? [];
+  if (list.length === 0) return;
+  if (allSelected.value) {
+    selectedIds.value = [];
+  } else {
+    selectedIds.value = list.map((r) => r.id);
+  }
+};
+
+const toggleSelect = (row) => {
+  const id = row.id;
+  if (selectedIds.value.includes(id)) {
+    selectedIds.value = selectedIds.value.filter((x) => x !== id);
+  } else {
+    selectedIds.value = [...selectedIds.value, id];
+  }
+};
+
+const isSelected = (row) => selectedIds.value.includes(row.id);
+
+watch(
+  () => props.reorderSuggestions,
+  (list) => {
+    const ids = new Set((list ?? []).map((r) => r.id));
+    selectedIds.value = selectedIds.value.filter((id) => ids.has(id));
+  },
+  { deep: true },
+);
+
 const addPlanForm = useForm({
   vendor_code: '',
   order_date: new Date().toISOString().slice(0, 10),
@@ -41,12 +85,20 @@ const addPlanForm = useForm({
     {
       product_id: '',
       qty: 1,
-      unit_price: 0,
+      unit_price: 0.01,
     },
   ],
 });
 
+const lineMeta = (productId) => {
+  const r = (props.reorderSuggestions ?? []).find((x) => x.id === productId);
+  return r ? { sku: r.sku, name: r.name } : { sku: '', name: '' };
+};
+
+const defaultUnitPrice = (row) => Math.max(Number(row.selling_price ?? 0), 0.01);
+
 const openAddPlan = (row) => {
+  selectedIds.value = [];
   addPlanForm.vendor_code = '';
   addPlanForm.order_date = new Date().toISOString().slice(0, 10);
   addPlanForm.eta_date = '';
@@ -55,9 +107,24 @@ const openAddPlan = (row) => {
     {
       product_id: row.id,
       qty: Number(row.suggested_qty || 1),
-      unit_price: Number(row.selling_price || 0),
+      unit_price: defaultUnitPrice(row),
     },
   ];
+  document.getElementById('modal-add-plan-po')?.showModal();
+};
+
+const openAddPlanFromSelection = () => {
+  const rows = selectedRows.value;
+  if (rows.length === 0) return;
+  addPlanForm.vendor_code = '';
+  addPlanForm.order_date = new Date().toISOString().slice(0, 10);
+  addPlanForm.eta_date = '';
+  addPlanForm.notes = `Generated from reorder planning (${rows.length} item)`;
+  addPlanForm.lines = rows.map((row) => ({
+    product_id: row.id,
+    qty: Number(row.suggested_qty || 1),
+    unit_price: defaultUnitPrice(row),
+  }));
   document.getElementById('modal-add-plan-po')?.showModal();
 };
 
@@ -66,12 +133,22 @@ const submitPlan = () => {
     preserveScroll: true,
     onSuccess: () => {
       addPlanForm.reset();
-      addPlanForm.lines = [{ product_id: '', qty: 1, unit_price: 0 }];
+      addPlanForm.lines = [{ product_id: '', qty: 1, unit_price: 0.01 }];
+      selectedIds.value = [];
       document.getElementById('modal-add-plan-po')?.close();
       router.visit(route('erp.purchasing.purchase-orders'));
     },
   });
 };
+
+const canSubmitPlan = computed(
+  () =>
+    !!addPlanForm.vendor_code
+    && (addPlanForm.lines?.length ?? 0) > 0
+    && addPlanForm.lines.every(
+      (l) => l.product_id && Number(l.qty) >= 0.01 && Number(l.unit_price) >= 0.01,
+    ),
+);
 </script>
 
 <template>
@@ -88,9 +165,9 @@ const submitPlan = () => {
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
               <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.purchasing')">
-              <ArrowLeftIcon class="h-4 w-4" />
-              Back
-            </Link>
+                <ArrowLeftIcon class="h-4 w-4" />
+                Back
+              </Link>
             </div>
           </div>
         </div>
@@ -113,13 +190,33 @@ const submitPlan = () => {
 
       <div class="ocn-panel">
         <div class="ocn-panel__head">
-          <h2 class="ocn-panel__title">Saran reorder</h2>
-          <p class="ocn-panel__desc">Produk di bawah minimum, masih kurang untuk project (material project atau finished_goods), atau mendekati lead time.</p>
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 class="ocn-panel__title">Saran reorder</h2>
+              <p class="ocn-panel__desc">Produk di bawah minimum, masih kurang untuk project (material project atau finished_goods), atau mendekati lead time.</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" class="btn btn-outline btn-xs" :disabled="!(reorderSuggestions?.length)" @click="toggleSelectAll">
+                {{ allSelected ? 'Batal pilih semua' : 'Pilih semua' }}
+              </button>
+              <button
+                type="button"
+                class="btn btn-primary btn-sm"
+                :disabled="selectedRows.length === 0"
+                @click="openAddPlanFromSelection"
+              >
+                Buat PO dari pilihan ({{ selectedRows.length }})
+              </button>
+            </div>
+          </div>
         </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra">
             <thead>
               <tr>
+                <th class="w-12">
+                  <span class="sr-only">Pilih</span>
+                </th>
                 <th>SKU</th>
                 <th>Produk</th>
                 <th>Stok</th>
@@ -140,6 +237,15 @@ const submitPlan = () => {
                 @click="openRow(row.id)"
                 @keydown.enter.prevent="openRow(row.id)"
               >
+                <td @click.stop>
+                  <input
+                    type="checkbox"
+                    class="checkbox checkbox-sm checkbox-primary"
+                    :checked="isSelected(row)"
+                    :aria-label="`Pilih ${row.sku}`"
+                    @change="toggleSelect(row)"
+                  />
+                </td>
                 <td class="font-mono text-xs">{{ row.sku }}</td>
                 <td class="font-medium">{{ row.name }}</td>
                 <td>{{ row.stock }}</td>
@@ -148,7 +254,7 @@ const submitPlan = () => {
                 <td>{{ row.project_shortage_qty }}</td>
                 <td>{{ row.on_order_qty }}</td>
                 <td @click.stop>
-                  <button class="badge badge-primary badge-lg font-mono" @click.stop="openAddPlan(row)">
+                  <button type="button" class="badge badge-primary badge-lg font-mono" @click.stop="openAddPlan(row)">
                     {{ row.suggested_qty }}
                   </button>
                 </td>
@@ -162,8 +268,9 @@ const submitPlan = () => {
       </p>
 
       <dialog id="modal-add-plan-po" class="modal">
-        <div class="modal-box max-w-xl">
-          <h3 class="font-bold text-lg">Buat PO dari Planning</h3>
+        <div class="modal-box max-w-3xl">
+          <h3 class="font-bold text-lg">Buat PO dari planning</h3>
+          <p class="mt-1 text-sm text-base-content/70">Satu supplier untuk semua baris di bawah. Sesuaikan qty dan harga satuan bila perlu.</p>
           <div class="mt-4 grid grid-cols-1 gap-3">
             <div>
               <label class="label"><span class="label-text">Supplier</span></label>
@@ -184,20 +291,35 @@ const submitPlan = () => {
                 <input v-model="addPlanForm.eta_date" type="date" class="input input-bordered w-full" />
               </div>
             </div>
-            <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div>
-                <label class="label"><span class="label-text">Qty</span></label>
-                <input v-model.number="addPlanForm.lines[0].qty" type="number" min="0.01" step="0.01" class="input input-bordered w-full" />
-              </div>
-              <div>
-                <label class="label"><span class="label-text">Harga Satuan</span></label>
-                <input v-model.number="addPlanForm.lines[0].unit_price" type="number" min="0.01" step="0.01" class="input input-bordered w-full" />
-              </div>
+            <div class="overflow-x-auto rounded-lg border border-base-300 max-h-[min(50vh,22rem)] overflow-y-auto">
+              <table class="table table-sm">
+                <thead class="sticky top-0 z-1 bg-base-200">
+                  <tr>
+                    <th>Produk</th>
+                    <th class="w-28 text-right">Qty</th>
+                    <th class="w-36 text-right">Harga satuan</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(line, idx) in addPlanForm.lines" :key="`${line.product_id}-${idx}`">
+                    <td>
+                      <p class="font-mono text-xs text-base-content/70">{{ lineMeta(line.product_id).sku }}</p>
+                      <p class="text-sm font-medium">{{ lineMeta(line.product_id).name }}</p>
+                    </td>
+                    <td>
+                      <input v-model.number="line.qty" type="number" min="0.01" step="0.01" class="input input-bordered input-sm w-full text-right" />
+                    </td>
+                    <td>
+                      <input v-model.number="line.unit_price" type="number" min="0.01" step="0.01" class="input input-bordered input-sm w-full text-right" />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
           <div class="modal-action">
             <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
-            <button class="btn btn-primary" :disabled="addPlanForm.processing" @click="submitPlan">Buat PO</button>
+            <button type="button" class="btn btn-primary" :disabled="addPlanForm.processing || !canSubmitPlan" @click="submitPlan">Buat PO</button>
           </div>
         </div>
       </dialog>
