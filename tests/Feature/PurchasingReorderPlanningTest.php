@@ -96,6 +96,51 @@ class PurchasingReorderPlanningTest extends TestCase
         ]);
     }
 
+    public function test_service_product_cannot_be_added_to_purchase_order(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $service = MasterProduct::query()->create([
+            'sku' => 'SRV-PO-001',
+            'name' => 'Jasa Instalasi',
+            'category' => 'Jasa',
+            'uom' => 'paket',
+            'sales_channel' => 'project',
+            'product_type' => 'service',
+            'status' => 'active',
+            'stock' => 0,
+            'min_stock' => 0,
+            'total_sold' => 0,
+            'lead_time_days' => 1,
+            'selling_price' => 250000,
+        ]);
+        $vendor = Vendor::query()->create([
+            'code' => 'SUP-001',
+            'name' => 'Supplier Aktif',
+            'lead_time_days' => 7,
+            'is_active' => true,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->post(route('erp.purchasing.purchase-orders.store'), [
+                'vendor_code' => $vendor->code,
+                'order_date' => '2026-05-13',
+                'eta_date' => '2026-05-20',
+                'lines' => [
+                    [
+                        'product_id' => $service->id,
+                        'qty' => 1,
+                        'unit_price' => 250000,
+                    ],
+                ],
+            ])
+            ->assertSessionHasErrors('lines.0.product_id');
+
+        $this->assertDatabaseCount('purchase_orders', 0);
+    }
+
     private function disableErpMiddleware(): void
     {
         $this->withoutMiddleware([

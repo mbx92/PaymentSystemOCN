@@ -85,7 +85,18 @@ const channelLabel = (value) => {
   return value;
 };
 
-const typeLabel = (value) => (value === 'project_material' ? 'Material Project' : 'Barang Jual');
+const typeLabel = (value) => {
+  if (value === 'project_material') return 'Material Project';
+  if (value === 'service') return 'Jasa / Non Stok';
+  return 'Barang Jual';
+};
+
+watch(() => form.product_type, (type) => {
+  if (type === 'service') {
+    form.stock = 0;
+    form.lead_time_days = 1;
+  }
+});
 
 const fetchPreviewCodes = async () => {
   loadingPreview.value = true;
@@ -185,6 +196,7 @@ const goToDetail = (id) => {
               <option value="">Semua Tipe</option>
               <option value="finished_goods">Barang Jual</option>
               <option value="project_material">Material Project</option>
+              <option value="service">Jasa / Non Stok</option>
               </select>
               <select v-model="filters.warehouse_id" class="select select-bordered select-sm w-48">
               <option value="">Semua Warehouse</option>
@@ -364,6 +376,7 @@ const goToDetail = (id) => {
             <select v-model="form.product_type" class="select select-bordered w-full">
               <option value="finished_goods">Barang Jual</option>
               <option value="project_material">Material Project</option>
+              <option value="service">Jasa / Non Stok</option>
             </select>
           </div>
           <div>
@@ -378,11 +391,11 @@ const goToDetail = (id) => {
           </div>
           <div>
             <label class="label"><span class="label-text">Stock <span class="text-error">*</span></span></label>
-            <input v-model.number="form.stock" type="number" min="0" class="input input-bordered w-full" />
+            <input v-model.number="form.stock" type="number" min="0" class="input input-bordered w-full" :disabled="form.product_type === 'service'" />
           </div>
           <div>
             <label class="label"><span class="label-text">Lead Time (hari) <span class="text-error">*</span></span></label>
-            <input v-model.number="form.lead_time_days" type="number" min="1" class="input input-bordered w-full" />
+            <input v-model.number="form.lead_time_days" type="number" min="1" class="input input-bordered w-full" :disabled="form.product_type === 'service'" />
           </div>
           <div class="md:col-span-2">
             <label class="label"><span class="label-text">Deskripsi</span></label>

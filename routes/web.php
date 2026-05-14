@@ -10,6 +10,8 @@ use App\Http\Controllers\CrmCustomerController;
 use App\Http\Controllers\CrmLeadController;
 use App\Http\Controllers\CrmPipelineController;
 use App\Http\Controllers\ERPAccountingCoaSettingsController;
+use App\Http\Controllers\ERPAccountingOpeningBalanceController;
+use App\Http\Controllers\ERPAccountingPaymentController;
 use App\Http\Controllers\ERPAdministrationMasterDataController;
 use App\Http\Controllers\ErpCalendarController;
 use App\Http\Controllers\ErpChatbotController;
@@ -65,6 +67,7 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/accounting', [ERPModuleController::class, 'accounting'])->name('erp.accounting');
         Route::get('erp/accounting/cashflow', [CashflowController::class, 'index'])->name('erp.accounting.cashflow');
         Route::get('erp/accounting/cash-flow', fn () => redirect()->route('erp.accounting.cashflow', request()->query()))->name('erp.accounting.cashflow.redirect-legacy');
+        Route::get('erp/accounting/opening-balance', [ERPAccountingOpeningBalanceController::class, 'index'])->name('erp.accounting.opening-balance');
     });
 
     Route::middleware('role_or_permission:admin|manajer|finance|erp.accounting.post-journal')->group(function () {
@@ -73,6 +76,7 @@ Route::middleware('auth')->group(function () {
         Route::delete('erp/accounting/cashflow/cash-in/{cashIn}', [CashflowController::class, 'destroyCashIn'])->name('erp.accounting.cashflow.cash-in.destroy');
         Route::patch('erp/accounting/cashflow/cash-out/{cashOut}', [CashflowController::class, 'updateCashOut'])->name('erp.accounting.cashflow.cash-out.update');
         Route::delete('erp/accounting/cashflow/cash-out/{cashOut}', [CashflowController::class, 'destroyCashOut'])->name('erp.accounting.cashflow.cash-out.destroy');
+        Route::post('erp/accounting/opening-balance', [ERPAccountingOpeningBalanceController::class, 'store'])->name('erp.accounting.opening-balance.store');
     });
 
     // Projects (Admin + Manajer)
@@ -90,7 +94,8 @@ Route::middleware('auth')->group(function () {
         Route::post('erp/accounting/coa-settings/category-mappings', [ERPAccountingCoaSettingsController::class, 'upsertCategoryMapping'])->name('erp.accounting.coa-settings.category-mappings.upsert');
         Route::post('erp/accounting/coa-settings/categories', [ERPAccountingCoaSettingsController::class, 'storeCategory'])->name('erp.accounting.coa-settings.categories.store');
         Route::post('erp/accounting/coa-settings/apply-defaults', [ERPAccountingCoaSettingsController::class, 'applyDefaults'])->name('erp.accounting.coa-settings.apply-defaults');
-        Route::get('erp/accounting/payments', [ERPModuleController::class, 'payments'])->name('erp.accounting.payments');
+        Route::get('erp/accounting/payments', [ERPAccountingPaymentController::class, 'index'])->name('erp.accounting.payments');
+        Route::post('erp/accounting/payments/supplier/{payable}', [ERPAccountingPaymentController::class, 'storeSupplierPayment'])->name('erp.accounting.payments.supplier.store');
         Route::get('erp/accounting/reconciliation', [ReconciliationController::class, 'index'])->name('erp.accounting.reconciliation');
         Route::get('erp/sales', [ERPModuleController::class, 'sales'])->name('erp.sales');
         Route::get('erp/purchasing', [ERPModuleController::class, 'purchasing'])->name('erp.purchasing');
@@ -154,6 +159,7 @@ Route::middleware('auth')->group(function () {
         Route::delete('erp/inventory/uom-conversions/{uomConversion}', [ERPInventoryMasterDataController::class, 'destroyConversion'])->name('erp.inventory.uom-conversions.destroy');
         Route::get('erp/inventory/stock-management', [ERPInventoryController::class, 'stockManagement'])->name('erp.inventory.stock-management');
         Route::put('erp/inventory/stock-management/{masterProduct}', [ERPInventoryController::class, 'updateStock'])->name('erp.inventory.stock-management.update');
+        Route::patch('erp/inventory/stock-management/low-stock-alerts/batch', [ERPInventoryController::class, 'batchUpdateLowStockAlerts'])->name('erp.inventory.stock-management.low-stock-alerts.batch');
         Route::get('erp/inventory/stock-opname', [ERPInventoryController::class, 'stockOpname'])->name('erp.inventory.stock-opname');
         Route::post('erp/inventory/stock-opname', [ERPInventoryController::class, 'storeStockOpname'])->name('erp.inventory.stock-opname.store');
         Route::get('erp/inventory/stock-transfer', [ERPInventoryController::class, 'stockTransfer'])->name('erp.inventory.stock-transfer');

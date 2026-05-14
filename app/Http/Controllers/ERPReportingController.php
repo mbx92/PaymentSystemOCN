@@ -166,6 +166,12 @@ class ERPReportingController extends Controller
             return;
         }
 
+        if ($source === 'opening_balance') {
+            $query->where('journal_entries.source_module', 'opening_balance');
+
+            return;
+        }
+
         $cashInIds = CashIn::query()
             ->when($source === 'project', fn ($q) => $q->whereNotNull('project_id'))
             ->when($source === 'manual', fn ($q) => $q->whereNull('project_id'))
@@ -215,6 +221,7 @@ class ERPReportingController extends Controller
             ['value' => 'project', 'label' => 'Project'],
             ['value' => 'pos', 'label' => 'POS'],
             ['value' => 'manual', 'label' => 'Manual / Umum'],
+            ['value' => 'opening_balance', 'label' => 'Saldo Awal'],
         ];
     }
 
@@ -222,7 +229,7 @@ class ERPReportingController extends Controller
     {
         $source = $request->string('source')->toString();
 
-        return in_array($source, ['project', 'pos', 'manual'], true) ? $source : '';
+        return in_array($source, ['project', 'pos', 'manual', 'opening_balance'], true) ? $source : '';
     }
 
     public function storeChartOfAccount(Request $request): RedirectResponse

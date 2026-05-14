@@ -9,6 +9,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class MasterProduct extends Model
 {
+    public const PRODUCT_TYPE_FINISHED_GOODS = 'finished_goods';
+
+    public const PRODUCT_TYPE_PROJECT_MATERIAL = 'project_material';
+
+    public const PRODUCT_TYPE_SERVICE = 'service';
+
     protected $fillable = [
         'sku',
         'barcode',
@@ -22,6 +28,7 @@ class MasterProduct extends Model
         'selling_price',
         'stock',
         'min_stock',
+        'low_stock_alert_enabled',
         'total_sold',
         'lead_time_days',
     ];
@@ -32,6 +39,7 @@ class MasterProduct extends Model
             'selling_price' => 'decimal:2',
             'stock' => 'int',
             'min_stock' => 'int',
+            'low_stock_alert_enabled' => 'bool',
             'total_sold' => 'int',
             'lead_time_days' => 'int',
         ];
@@ -56,6 +64,11 @@ class MasterProduct extends Model
     {
         return $this->belongsToMany(Warehouse::class, 'master_product_warehouse_stocks')
             ->withPivot('qty', 'reserved_qty');
+    }
+
+    public function isStockTracked(): bool
+    {
+        return $this->product_type !== self::PRODUCT_TYPE_SERVICE;
     }
 
     /**

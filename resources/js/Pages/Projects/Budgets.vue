@@ -64,10 +64,18 @@ const submit = () => {
         <div class="space-y-5">
             <div class="ocn-panel">
         <div class="ocn-panel__head">
-          <div>
-            <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Projects Workspace</p>
-            <h1 class="ocn-panel__title mt-1">Budgeting Project</h1>
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Projects Workspace</p>
+              <h1 class="ocn-panel__title mt-1">Budgeting Project</h1>
               <p class="ocn-panel__desc mt-1">Klik baris untuk lihat detail budget, edit, dan aksi deal/convert.</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 shrink-0">
+              <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.projects')">
+                <ArrowLeftIcon class="h-4 w-4" />
+                Back
+              </Link>
+            </div>
           </div>
         </div>
       </div>
@@ -175,4 +183,3 @@ const submit = () => {
         </dialog>
     </AppLayout>
 </template>
-

@@ -155,6 +155,64 @@ class ProjectMaterialChannelTest extends TestCase
         ]);
     }
 
+    public function test_project_service_is_recorded_without_stock_reserve_or_reorder_planning(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $project = $this->createProject();
+        $warehouse = Warehouse::create([
+            'code' => 'WH-01',
+            'name' => 'Main',
+            'is_active' => true,
+        ]);
+        $serviceProduct = MasterProduct::create([
+            'sku' => 'SRV-00001',
+            'name' => 'Jasa Instalasi',
+            'category' => 'General',
+            'uom' => 'paket',
+            'sales_channel' => 'project',
+            'product_type' => 'service',
+            'status' => 'active',
+            'stock' => 0,
+            'min_stock' => 0,
+            'lead_time_days' => 1,
+        ]);
+
+        $response = $this
+            ->actingAs($user)
+            ->post(route('projects.materials.store', $project), [
+                'master_product_id' => $serviceProduct->id,
+                'warehouse_id' => $warehouse->id,
+                'planned_qty' => 1,
+            ]);
+
+        $response
+            ->assertSessionHasNoErrors()
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('project_materials', [
+            'project_id' => $project->id,
+            'master_product_id' => $serviceProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'planned_qty' => 1,
+            'reserved_qty' => 0,
+            'status' => 'ready',
+        ]);
+        $this->assertDatabaseMissing('master_product_warehouse_stocks', [
+            'master_product_id' => $serviceProduct->id,
+            'warehouse_id' => $warehouse->id,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.purchasing.reorder-planning'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Purchasing/ReorderPlanning')
+                ->where('reorderSuggestions', []));
+    }
+
     public function test_goods_receipt_allocates_project_material_shortage_to_ready(): void
     {
         $this->disableErpMiddleware();
@@ -297,7 +355,7 @@ class ProjectMaterialChannelTest extends TestCase
             ->count());
         $projectShortages = ProjectMaterial::query()
             ->select('master_product_id')
-            ->selectRaw('SUM(GREATEST(planned_qty - reserved_qty, 0)) as shortage_qty')
+            ->selectRaw('SUM(CASE WHEN planned_qty > reserved_qty THEN planned_qty - reserved_qty ELSE 0 END) as shortage_qty')
             ->whereHas('project', fn ($q) => $q->whereIn('status', ['negosiasi', 'berjalan']))
             ->whereRaw('planned_qty > reserved_qty')
             ->groupBy('master_product_id')

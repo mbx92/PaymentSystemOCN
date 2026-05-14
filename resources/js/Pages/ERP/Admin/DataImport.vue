@@ -243,8 +243,9 @@ async function runAllSeeders() {
           <ul class="list-disc space-y-1 pl-5 text-sm text-base-content/80">
             <li><strong>sku</strong>, <strong>name</strong>, <strong>category</strong>, <strong>uom</strong> wajib (kategori &amp; UOM harus sudah ada di master).</li>
             <li><strong>sales_channel</strong>: pos, project, both (default both).</li>
-            <li><strong>product_type</strong>: finished_goods, project_material.</li>
+            <li><strong>product_type</strong>: finished_goods, project_material, service.</li>
             <li><strong>status</strong>: active, inactive.</li>
+            <li><strong>low_stock_alert_enabled</strong>: 1/0 untuk aktif/nonaktif notifikasi stok rendah.</li>
             <li><strong>warehouse_code</strong>: kode gudang (mis. TOKO). Kosong = gudang aktif pertama.</li>
           </ul>
 

@@ -15,6 +15,7 @@ class ERPModuleController extends Controller
             ['title' => 'Cashflow', 'description' => 'Submenu kas masuk dan kas keluar dalam satu tempat.', 'route' => 'erp.accounting.cashflow', 'icon' => 'arrows-right-left'],
             ['title' => 'Operational', 'description' => 'Pencatatan biaya operasional umum (non-project) atau per project.', 'route' => 'erp.accounting.operational', 'icon' => 'arrow-up-circle'],
             ['title' => 'Kategori Pengeluaran', 'description' => 'Mapping lama kategori kas keluar ke akun CoA.', 'route' => 'erp.accounting.expense-categories', 'icon' => 'book-open'],
+            ['title' => 'Saldo Awal', 'description' => 'Input jurnal pembuka awal periode langsung ke General Ledger.', 'route' => 'erp.accounting.opening-balance', 'icon' => 'scale'],
             ['title' => 'Pembayaran', 'description' => 'Pusat proses pembayaran project dan tim.', 'route' => 'erp.accounting.payments', 'icon' => 'credit-card'],
             ['title' => 'Rekonsiliasi Kas', 'description' => 'Rekap mutasi kas/bank harian dan mingguan per sumber dana.', 'route' => 'erp.accounting.reconciliation', 'icon' => 'calendar-days'],
             ['title' => 'General Ledger', 'description' => 'Lihat jurnal umum yang sudah diposting.', 'route' => 'reports.general-ledger', 'icon' => 'book-open'],

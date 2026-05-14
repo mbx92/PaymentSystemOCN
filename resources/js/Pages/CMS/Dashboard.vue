@@ -169,7 +169,10 @@ const barOptions = {
               <p class="ocn-panel__desc mt-1">Landing publik, halaman per domain, dan perpustakaan media.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
-              <Link class="btn btn-ghost btn-sm" :href="route('erp.administration')">Administration</Link>
+              <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.administration')">
+                <ArrowLeftIcon class="h-4 w-4" />
+                Back
+              </Link>
             </div>
           </div>
         </div>

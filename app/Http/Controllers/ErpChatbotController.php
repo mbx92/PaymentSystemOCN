@@ -648,10 +648,12 @@ class ErpChatbotController extends Controller
     {
         $low = MasterProduct::query()
             ->where('status', 'active')
+            ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
+            ->where('low_stock_alert_enabled', true)
             ->whereColumn('stock', '<=', 'min_stock')
             ->orderBy('stock')
             ->limit(10)
-            ->get(['id', 'name', 'sku', 'stock', 'min_stock', 'uom']);
+            ->get(['id', 'name', 'sku', 'stock', 'min_stock', 'uom', 'low_stock_alert_enabled']);
 
         if ($low->isEmpty()) {
             return '✅ Semua produk aktif memiliki stok di atas minimum.';

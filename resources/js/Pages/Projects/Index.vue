@@ -5,7 +5,7 @@ import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Link, router } from '@inertiajs/vue3';
 import { ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
-import { MagnifyingGlassIcon, PlusIcon } from '@heroicons/vue/24/outline';
+import { ArrowLeftIcon, MagnifyingGlassIcon, PlusIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ projects: Object, filters: Object });
 const { format } = useCurrency();

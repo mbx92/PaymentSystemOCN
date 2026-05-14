@@ -1,10 +1,10 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
-import { router } from '@inertiajs/vue3';
+import { Link, router } from '@inertiajs/vue3';
 import { ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
-import { ArrowDownTrayIcon } from '@heroicons/vue/24/outline';
+import { ArrowDownTrayIcon, ArrowLeftIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ projects: Array, filters: Object });
 const { format } = useCurrency();
@@ -30,9 +30,15 @@ const exportExcel = () => window.location.href = route('export.project-profit', 
         <div class="space-y-5">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <h1 class="text-2xl font-bold">Laporan Laba per Project</h1>
-                <button class="btn btn-success btn-sm gap-2" @click="exportExcel">
-                    <ArrowDownTrayIcon class="w-4 h-4" /> Export Excel
-                </button>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button class="btn btn-success btn-sm gap-2" @click="exportExcel">
+                        <ArrowDownTrayIcon class="w-4 h-4" /> Export Excel
+                    </button>
+                    <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.reporting')">
+                        <ArrowLeftIcon class="h-4 w-4" />
+                        Back
+                    </Link>
+                </div>
             </div>
 
             <input v-model="search" type="text" placeholder="Cari project…" class="input input-bordered input-sm max-w-xs" />

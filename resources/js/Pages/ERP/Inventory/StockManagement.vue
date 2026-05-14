@@ -4,7 +4,7 @@ import StatusBadge from '@/Components/StatusBadge.vue';
 import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, useForm, router } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 
 const props = defineProps({
   products: Object,
@@ -15,12 +15,42 @@ const props = defineProps({
 });
 
 const filters = reactive({
+  warehouse_id: props.filters?.warehouse_id ?? '',
+  q: props.filters?.q ?? '',
+  status: props.filters?.status ?? '',
+  low_stock_only: props.filters?.low_stock_only === true || props.filters?.low_stock_only === '1' || props.filters?.low_stock_only === 1,
   per_page: props.filters?.per_page ?? props.products?.per_page ?? 25,
 });
 
-const selectedWarehouseId = computed(() => props.filters?.warehouse_id ?? '');
+const selectedWarehouseId = computed(() => filters.warehouse_id || props.filters?.warehouse_id || '');
 const hasReservedStock = computed(() => (props.reserved_alert?.count ?? 0) > 0);
 const selectedReservedProduct = ref(null);
+const batchAlertForm = useForm({
+  enabled: true,
+});
+let filterTimer;
+
+const stockManagementParams = () => ({
+  warehouse_id: filters.warehouse_id,
+  q: filters.q,
+  status: filters.status,
+  low_stock_only: filters.low_stock_only ? 1 : undefined,
+  per_page: filters.per_page,
+});
+
+watch(
+  filters,
+  () => {
+    clearTimeout(filterTimer);
+    filterTimer = setTimeout(() => {
+      router.get(route('erp.inventory.stock-management'), stockManagementParams(), {
+        preserveState: true,
+        replace: true,
+      });
+    }, 250);
+  },
+  { deep: true },
+);
 
 const forms = reactive({});
 
@@ -28,6 +58,7 @@ const getForm = (product) => {
   if (!forms[product.id]) {
     forms[product.id] = useForm({
       min_stock: product.min_stock,
+      low_stock_alert_enabled: product.low_stock_alert_enabled,
       note: '',
     });
   }
@@ -37,6 +68,13 @@ const getForm = (product) => {
 const saveRow = (product) => {
   const form = getForm(product);
   form.put(route('erp.inventory.stock-management.update', product.id), {
+    preserveScroll: true,
+  });
+};
+
+const submitBatchAlert = (enabled) => {
+  batchAlertForm.enabled = enabled;
+  batchAlertForm.patch(route('erp.inventory.stock-management.low-stock-alerts.batch'), {
     preserveScroll: true,
   });
 };
@@ -101,12 +139,48 @@ const openReservedModal = (product) => {
             <div class="min-w-[240px]">
               <label class="label"><span class="label-text text-xs uppercase tracking-wide">Warehouse</span></label>
               <select
+                v-model="filters.warehouse_id"
                 class="select select-sm select-bordered w-full"
-                :value="selectedWarehouseId"
-                @change="router.get(route('erp.inventory.stock-management'), { warehouse_id: $event.target.value, per_page: filters.per_page }, { preserveState: true, replace: true })"
               >
                 <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }} - {{ w.name }}</option>
               </select>
+            </div>
+            <div class="min-w-[260px] flex-1">
+              <label class="label"><span class="label-text text-xs uppercase tracking-wide">Cari Produk</span></label>
+              <input
+                v-model="filters.q"
+                type="search"
+                class="input input-sm input-bordered w-full"
+                placeholder="Cari SKU atau nama produk"
+              />
+            </div>
+            <div class="min-w-[180px]">
+              <label class="label"><span class="label-text text-xs uppercase tracking-wide">Status</span></label>
+              <select v-model="filters.status" class="select select-sm select-bordered w-full">
+                <option value="">Semua status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+            <label class="flex min-h-8 items-center gap-3 rounded-lg border border-base-300 px-3 py-2 text-sm">
+              <input v-model="filters.low_stock_only" type="checkbox" class="toggle toggle-warning toggle-sm" />
+              <span>Hanya stok rendah</span>
+            </label>
+            <div class="ml-auto flex flex-wrap gap-2">
+              <button
+                class="btn btn-outline btn-sm"
+                :disabled="batchAlertForm.processing"
+                @click="submitBatchAlert(true)"
+              >
+                Aktifkan Notif Semua
+              </button>
+              <button
+                class="btn btn-outline btn-warning btn-sm"
+                :disabled="batchAlertForm.processing"
+                @click="submitBatchAlert(false)"
+              >
+                Nonaktifkan Notif Semua
+              </button>
             </div>
             <div class="text-sm text-base-content/60">
               Stok yang ditampilkan adalah stok per warehouse terpilih.
@@ -123,6 +197,7 @@ const openReservedModal = (product) => {
                 <th>Reserved</th>
                 <th>Available</th>
                 <th>Min Stok</th>
+                <th>Notif Rendah</th>
                 <th>Total Terjual</th>
                 <th>Catatan</th>
                 <th>Status</th>
@@ -141,16 +216,35 @@ const openReservedModal = (product) => {
                 <td><span class="badge badge-sm badge-ghost">{{ product.stock }}</span></td>
                 <td><span class="badge badge-sm" :class="product.reserved_qty > 0 ? 'badge-warning' : 'badge-ghost'">{{ product.reserved_qty }}</span></td>
                 <td><span class="badge badge-sm text-white" :class="availabilityBadgeClass(product)">{{ product.available_qty }}</span></td>
-                <td><input v-model.number="getForm(product).min_stock" type="number" min="0" class="input input-bordered input-sm w-24" /></td>
+                <td>
+                  <input
+                    v-model.number="getForm(product).min_stock"
+                    type="number"
+                    min="0"
+                    class="input input-bordered input-sm w-24"
+                    @click.stop
+                  />
+                </td>
+                <td @click.stop>
+                  <label class="flex items-center gap-2">
+                    <input v-model="getForm(product).low_stock_alert_enabled" type="checkbox" class="toggle toggle-warning toggle-sm" />
+                    <span class="text-xs">{{ getForm(product).low_stock_alert_enabled ? 'Aktif' : 'Nonaktif' }}</span>
+                  </label>
+                </td>
                 <td><span class="badge badge-sm badge-ghost">{{ product.total_sold }}</span></td>
-                <td><input v-model="getForm(product).note" type="text" class="input input-bordered input-sm w-40" placeholder="Opsional" /></td>
+                <td><input v-model="getForm(product).note" type="text" class="input input-bordered input-sm w-40" placeholder="Opsional" @click.stop /></td>
                 <td><StatusBadge :status="product.status" /></td>
-                <td><button class="btn btn-primary btn-xs" :disabled="getForm(product).processing" @click="saveRow(product)">Simpan</button></td>
+                <td><button class="btn btn-primary btn-xs" :disabled="getForm(product).processing" @click.stop="saveRow(product)">Simpan</button></td>
+              </tr>
+              <tr v-if="(products?.data || []).length === 0">
+                <td colspan="11" class="py-8 text-center text-base-content/50">
+                  Tidak ada produk sesuai filter.
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
-        <DataTablePagination :paginator="products" @update:per-page="(n) => { filters.per_page = n; router.get(route('erp.inventory.stock-management'), { warehouse_id: selectedWarehouseId, per_page: n }, { preserveState: true, replace: true }); }" />
+        <DataTablePagination :paginator="products" @update:per-page="(n) => { filters.per_page = n; }" />
       </div>
 
       <dialog id="modal-reserved-projects" class="modal">

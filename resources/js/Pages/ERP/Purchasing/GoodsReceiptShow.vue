@@ -110,7 +110,8 @@ const goBack = () => {
                 <template v-else-if="detail.status === 'posted'">
                   <p class="text-sm text-base-content/60">Sudah diposting — cek stok &amp; movement di inventory.</p>
                 </template>
-                <Link class="btn btn-outline btn-sm" :href="route('erp.purchasing.purchase-orders.show', detail.po_number)">
+                <Link class="btn btn-outline btn-sm gap-1.5" :href="route('erp.purchasing.purchase-orders.show', detail.po_number)">
+                  <ArrowLeftIcon class="h-4 w-4" />
                   Kembali ke PO
                 </Link>
                 <Link class="btn btn-ghost btn-sm" :href="route('erp.inventory.stock-management')">Manajemen stok</Link>

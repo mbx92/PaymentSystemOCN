@@ -4,9 +4,10 @@ import CurrencyInput from '@/Components/CurrencyInput.vue';
 import ConfirmModal from '@/Components/ConfirmModal.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
 import DataTablePagination from '@/Components/DataTablePagination.vue';
-import { useForm, router } from '@inertiajs/vue3';
+import { Link, useForm, router } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
+import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ cashOuts: Object, total: Number, projects: Array, cashAccounts: Array, categoryOptions: Array, filters: Object });
 const { format } = useCurrency();
@@ -49,7 +50,13 @@ const doDelete = () => { router.delete(route('cash-out.destroy', deletingId.valu
         <div class="space-y-5">
             <div class="flex items-center justify-between">
                 <h1 class="text-2xl font-bold">Kas Keluar</h1>
-                <button class="btn btn-error btn-sm" onclick="document.getElementById('modal-add-cash-out').showModal()">+ Tambah</button>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button class="btn btn-error btn-sm" onclick="document.getElementById('modal-add-cash-out').showModal()">+ Tambah</button>
+                    <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.accounting.cashflow')">
+                        <ArrowLeftIcon class="h-4 w-4" />
+                        Back
+                    </Link>
+                </div>
             </div>
             <div class="flex flex-wrap gap-3">
                 <select v-model="filters.project_id" class="select select-bordered select-sm">

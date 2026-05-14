@@ -1,10 +1,10 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
-import { useForm, router } from '@inertiajs/vue3';
+import { Link, useForm, router } from '@inertiajs/vue3';
 import { ref, computed, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
-import { PlusIcon, TrashIcon, ExclamationTriangleIcon } from '@heroicons/vue/24/outline';
+import { ArrowLeftIcon, PlusIcon, TrashIcon, ExclamationTriangleIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({
     projects: Array,
@@ -71,7 +71,13 @@ const save = () => {
 <template>
     <AppLayout>
         <div class="space-y-5">
-            <h1 class="text-2xl font-bold">Kalkulator Pembagian Tim</h1>
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <h1 class="text-2xl font-bold">Kalkulator Pembagian Tim</h1>
+                <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.projects')">
+                    <ArrowLeftIcon class="h-4 w-4" />
+                    Back
+                </Link>
+            </div>
 
             <!-- Project Selector -->
             <div class="ocn-panel">

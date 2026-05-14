@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\JournalEntry;
+use App\ERP\Accounting\Models\PayablePayment;
 use App\ERP\Accounting\Services\CoaSettingService;
 use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Shared\Enums\DocumentStatus;
@@ -161,7 +162,7 @@ class CashflowController extends Controller
     {
         $source = $this->sourceFilter($request);
 
-        $cashIns = $source === 'pos'
+        $cashIns = in_array($source, ['pos', 'supplier_payment'], true)
             ? collect()
             : CashIn::query()
                 ->with(['project:id,name', 'creator:id,name', 'paymentMethod:id,name', 'cashAccount:id,code,name'])
@@ -198,7 +199,7 @@ class CashflowController extends Controller
                     'created_at' => optional($entry->created_at)->timestamp ?? 0,
                 ]);
 
-        $cashOuts = $source === 'pos'
+        $cashOuts = in_array($source, ['pos', 'supplier_payment'], true)
             ? collect()
             : CashOut::query()
                 ->with(['project:id,name', 'creator:id,name', 'cashAccount:id,code,name'])
@@ -233,10 +234,42 @@ class CashflowController extends Controller
                     'created_at' => optional($entry->created_at)->timestamp ?? 0,
                 ]);
 
+        $supplierPayments = $source !== '' && $source !== 'supplier_payment'
+            ? collect()
+            : PayablePayment::query()
+                ->with(['payable.vendor:id,name', 'cashAccount:id,code,name', 'payer:id,name'])
+                ->when($request->filled('date_from'), fn ($q) => $q->whereDate('payment_date', '>=', $request->date('date_from')))
+                ->when($request->filled('date_to'), fn ($q) => $q->whereDate('payment_date', '<=', $request->date('date_to')))
+                ->get()
+                ->map(fn (PayablePayment $payment) => [
+                    'id' => 'ap-'.$payment->id,
+                    'type' => 'out',
+                    'source' => 'supplier_payment',
+                    'source_name' => 'Pembayaran Supplier',
+                    'reference_no' => $payment->payable?->bill_no ?? (string) $payment->id,
+                    'date' => $payment->payment_date?->format('Y-m-d'),
+                    'project_name' => '-',
+                    'project_id' => null,
+                    'category' => 'pembayaran_hutang_supplier',
+                    'amount' => (float) $payment->amount,
+                    'payment_method_name' => null,
+                    'payment_method_id' => null,
+                    'cash_account_id' => $payment->cash_account_id,
+                    'cash_account_name' => $payment->cashAccount ? ($payment->cashAccount->code.' - '.$payment->cashAccount->name) : '-',
+                    'recipient_name' => $payment->payable?->vendor?->name,
+                    'note' => $payment->note,
+                    'creator_name' => $payment->payer?->name ?? '-',
+                    'document_status' => DocumentStatus::Posted->value,
+                    'journal_entry_id' => $payment->journal_entry_id,
+                    'mutable' => false,
+                    'created_at' => optional($payment->created_at)->timestamp ?? 0,
+                ]);
+
         $posCashAccount = app(CoaSettingService::class)->resolveAccountByKey('pos_sale_cash_account', '1001');
         $posSales = $this->buildPosEntries($request, $posCashAccount);
 
         $merged = collect($cashIns)->merge($cashOuts)
+            ->merge($supplierPayments)
             ->merge($posSales)
             ->sortByDesc(fn (array $row) => sprintf('%s-%d', $row['date'] ?? '0000-00-00', $row['created_at']));
 
@@ -359,6 +392,7 @@ class CashflowController extends Controller
             ['value' => 'project', 'label' => 'Project'],
             ['value' => 'pos', 'label' => 'POS'],
             ['value' => 'manual', 'label' => 'Manual / Umum'],
+            ['value' => 'supplier_payment', 'label' => 'Pembayaran Supplier'],
         ];
     }
 
@@ -366,7 +400,7 @@ class CashflowController extends Controller
     {
         $source = $request->string('source')->toString();
 
-        return in_array($source, ['project', 'pos', 'manual'], true) ? $source : '';
+        return in_array($source, ['project', 'pos', 'manual', 'supplier_payment'], true) ? $source : '';
     }
 
     private function storeCashInEntry(array $validated): void

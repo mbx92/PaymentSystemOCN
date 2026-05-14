@@ -59,7 +59,7 @@ class ERPMasterProductController extends Controller
             'category' => 'required|string|max:100|exists:product_categories,name',
             'uom' => 'required|string|max:20|exists:uoms,code',
             'sales_channel' => 'required|in:pos,project,both',
-            'product_type' => 'required|in:finished_goods,project_material',
+            'product_type' => 'required|in:finished_goods,project_material,service',
             'status' => 'required|in:active,inactive',
             'description' => 'nullable|string',
             'selling_price' => 'required|numeric|min:0',
@@ -68,6 +68,13 @@ class ERPMasterProductController extends Controller
         ]);
 
         $validated['lead_time_days'] = $validated['lead_time_days'] ?? 7;
+        if ($validated['product_type'] === MasterProduct::PRODUCT_TYPE_SERVICE) {
+            $validated['stock'] = 0;
+            $validated['min_stock'] = 0;
+            $validated['total_sold'] = 0;
+            $validated['lead_time_days'] = 1;
+            $validated['low_stock_alert_enabled'] = false;
+        }
 
         if (empty($validated['sku'])) {
             $validated['sku'] = MasterProduct::generateSku($validated['category']);
@@ -215,7 +222,7 @@ class ERPMasterProductController extends Controller
             'category' => 'required|string|max:100|exists:product_categories,name',
             'uom' => 'required|string|max:20|exists:uoms,code',
             'sales_channel' => 'required|in:pos,project,both',
-            'product_type' => 'required|in:finished_goods,project_material',
+            'product_type' => 'required|in:finished_goods,project_material,service',
             'status' => 'required|in:active,inactive',
             'description' => 'nullable|string',
             'selling_price' => 'required|numeric|min:0',
@@ -224,6 +231,13 @@ class ERPMasterProductController extends Controller
         ]);
 
         $validated['lead_time_days'] = $validated['lead_time_days'] ?? $masterProduct->lead_time_days ?? 7;
+        if ($validated['product_type'] === MasterProduct::PRODUCT_TYPE_SERVICE) {
+            $validated['stock'] = 0;
+            $validated['min_stock'] = 0;
+            $validated['total_sold'] = 0;
+            $validated['lead_time_days'] = 1;
+            $validated['low_stock_alert_enabled'] = false;
+        }
         $masterProduct->update($validated);
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Produk berhasil diperbarui.']);

@@ -15,6 +15,7 @@ const map = {
     posted: 'badge-success',
     void: 'badge-error',
     paid: 'badge-success',
+    partially_paid: 'badge-warning',
     refunded: 'badge-error',
     reopened: 'badge-info',
     partial: 'badge-warning',

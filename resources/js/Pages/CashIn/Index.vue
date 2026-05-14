@@ -4,9 +4,10 @@ import CurrencyInput from '@/Components/CurrencyInput.vue';
 import ConfirmModal from '@/Components/ConfirmModal.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
 import DataTablePagination from '@/Components/DataTablePagination.vue';
-import { useForm, router } from '@inertiajs/vue3';
+import { Link, useForm, router } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
+import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ cashIns: Object, total: Number, projects: Array, paymentMethods: Array, cashAccounts: Array, categoryOptions: Array, filters: Object });
 const { format } = useCurrency();
@@ -72,7 +73,13 @@ const doDelete = () => { router.delete(route('cash-in.destroy', deletingId.value
         <div class="space-y-5">
             <div class="flex items-center justify-between">
                 <h1 class="text-2xl font-bold">Kas Masuk</h1>
-                <button class="btn btn-success btn-sm" onclick="document.getElementById('modal-add-cash-in').showModal()">+ Tambah</button>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button class="btn btn-success btn-sm" onclick="document.getElementById('modal-add-cash-in').showModal()">+ Tambah</button>
+                    <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.accounting.cashflow')">
+                        <ArrowLeftIcon class="h-4 w-4" />
+                        Back
+                    </Link>
+                </div>
             </div>
 
             <!-- Filters -->

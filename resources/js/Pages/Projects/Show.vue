@@ -61,7 +61,7 @@ const filteredMaterialProducts = computed(() => {
     return modalMaterialProducts.value
         .map((p) => {
             const stock = whStocks[p.id];
-            return { ...p, available: p.available ?? (stock ? stock.available : 0) };
+            return { ...p, available: p.available !== undefined ? p.available : (stock ? stock.available : 0) };
         })
         .filter((p) => {
             if (!keyword) return true;
@@ -117,11 +117,14 @@ const selectedMaterialProduct = computed(() =>
 );
 
 const selectedProductAvailable = computed(() => {
+    if (selectedMaterialProduct.value?.product_type === 'service') return null;
     if (!materialForm.master_product_id || !materialForm.warehouse_id) return 0;
     const whStocks = props.warehouse_stocks?.[materialForm.warehouse_id] ?? {};
     const stock = whStocks[materialForm.master_product_id];
     return stock ? stock.available : 0;
 });
+
+const selectedProductIsService = computed(() => selectedMaterialProduct.value?.product_type === 'service');
 
 const materialStatusLabel = (status) => ({
     planned: 'Planned',
@@ -1176,7 +1179,7 @@ const deleteProject = () => {
                                     <td class="font-mono text-xs">{{ p.sku }}</td>
                                     <td class="font-semibold">{{ p.name }}</td>
                                     <td class="uppercase">{{ p.uom }}</td>
-                                    <td class="text-right tabular-nums font-medium text-success">{{ p.available }}</td>
+                                    <td class="text-right tabular-nums font-medium text-success">{{ p.product_type === 'service' ? '-' : p.available }}</td>
                                 </tr>
                                 <tr v-if="filteredMaterialProducts.length === 0">
                                     <td colspan="4" class="text-center py-6 text-base-content/50">
@@ -1194,7 +1197,9 @@ const deleteProject = () => {
                         <div>
                             <label class="label"><span class="label-text">Qty Kebutuhan <span class="text-error">*</span></span></label>
                             <input v-model.number="materialForm.planned_qty" type="number" min="1" step="1" class="input input-bordered w-full" />
-                            <p class="mt-1 text-xs text-base-content/60">Tersedia: {{ selectedProductAvailable }}. Kekurangan otomatis masuk perencanaan PO.</p>
+                            <p class="mt-1 text-xs text-base-content/60">
+                                {{ selectedProductIsService ? 'Jasa / non-stok tidak masuk perencanaan PO.' : `Tersedia: ${selectedProductAvailable}. Kekurangan otomatis masuk perencanaan PO.` }}
+                            </p>
                         </div>
                         <div>
                             <label class="label"><span class="label-text">Catatan</span></label>

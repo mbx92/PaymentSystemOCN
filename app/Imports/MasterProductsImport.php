@@ -85,8 +85,8 @@ class MasterProductsImport implements ToCollection, WithHeadingRow
             }
 
             $productType = strtolower(trim((string) ($data['product_type'] ?? 'finished_goods')));
-            if (! in_array($productType, ['finished_goods', 'project_material'], true)) {
-                $this->errors[] = ['row' => $line, 'message' => "SKU {$sku}: product_type harus finished_goods atau project_material."];
+            if (! in_array($productType, ['finished_goods', 'project_material', 'service'], true)) {
+                $this->errors[] = ['row' => $line, 'message' => "SKU {$sku}: product_type harus finished_goods, project_material, atau service."];
 
                 continue;
             }
@@ -121,6 +121,7 @@ class MasterProductsImport implements ToCollection, WithHeadingRow
             $sellingPrice = $this->toDecimal($data['selling_price'] ?? 0);
             $stock = max(0, $this->toInt($data['stock'] ?? 0));
             $minStock = max(0, $this->toInt($data['min_stock'] ?? 0));
+            $lowStockAlertEnabled = $this->toBool($data['low_stock_alert_enabled'] ?? true);
             $totalSold = max(0, $this->toInt($data['total_sold'] ?? 0));
             $leadTime = $this->toInt($data['lead_time_days'] ?? 7);
             if ($leadTime < 1) {
@@ -129,10 +130,19 @@ class MasterProductsImport implements ToCollection, WithHeadingRow
             if ($leadTime > 365) {
                 $leadTime = 365;
             }
+            if ($productType === MasterProduct::PRODUCT_TYPE_SERVICE) {
+                $stock = 0;
+                $minStock = 0;
+                $lowStockAlertEnabled = false;
+                $totalSold = 0;
+                $leadTime = 1;
+            }
 
             $warehouseCode = isset($data['warehouse_code']) ? strtoupper(trim((string) $data['warehouse_code'])) : '';
             $warehouseId = null;
-            if ($warehouseCode !== '') {
+            if ($productType === MasterProduct::PRODUCT_TYPE_SERVICE) {
+                $warehouseId = null;
+            } elseif ($warehouseCode !== '') {
                 $warehouseId = Warehouse::query()->where('code', $warehouseCode)->value('id');
                 if (! $warehouseId) {
                     $warehouse = Warehouse::query()->create([
@@ -167,6 +177,7 @@ class MasterProductsImport implements ToCollection, WithHeadingRow
                 'selling_price' => $sellingPrice,
                 'stock' => $stock,
                 'min_stock' => $minStock,
+                'low_stock_alert_enabled' => $lowStockAlertEnabled,
                 'total_sold' => $totalSold,
                 'lead_time_days' => $leadTime,
                 'barcode' => $barcode,
@@ -177,15 +188,17 @@ class MasterProductsImport implements ToCollection, WithHeadingRow
                 $payload,
             );
 
-            $whRow = MasterProductWarehouseStock::query()->firstOrNew([
-                'master_product_id' => $product->id,
-                'warehouse_id' => $warehouseId,
-            ]);
-            $whRow->qty = $stock;
-            if (! $whRow->exists) {
-                $whRow->reserved_qty = 0;
+            if ($warehouseId) {
+                $whRow = MasterProductWarehouseStock::query()->firstOrNew([
+                    'master_product_id' => $product->id,
+                    'warehouse_id' => $warehouseId,
+                ]);
+                $whRow->qty = $stock;
+                if (! $whRow->exists) {
+                    $whRow->reserved_qty = 0;
+                }
+                $whRow->save();
             }
-            $whRow->save();
 
             $this->imported++;
         }
@@ -234,6 +247,18 @@ class MasterProductsImport implements ToCollection, WithHeadingRow
         }
 
         return (int) preg_replace('/[^\d\-]/', '', (string) $v);
+    }
+
+    private function toBool(mixed $v): bool
+    {
+        if (is_bool($v)) {
+            return $v;
+        }
+        if (is_numeric($v)) {
+            return (int) $v === 1;
+        }
+
+        return in_array(strtolower(trim((string) $v)), ['1', 'true', 'yes', 'y', 'aktif', 'active'], true);
     }
 
     private function toDecimal(mixed $v): string

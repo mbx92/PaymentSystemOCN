@@ -20,8 +20,34 @@ class ERPInventoryController extends Controller
         $warehouses = Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']);
         $selectedWarehouseId = (int) $request->integer('warehouse_id', $warehouses->first()?->id ?? 0);
         $perPage = $this->resolvedPerPage($request);
+        $lowStockOnly = $request->boolean('low_stock_only');
 
-        $paginator = MasterProduct::query()
+        $query = MasterProduct::query()
+            ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
+            ->when($request->filled('q'), function ($query) use ($request): void {
+                $term = $request->string('q')->toString();
+                $query->where(function ($inner) use ($term): void {
+                    $inner->where('sku', 'like', '%'.$term.'%')
+                        ->orWhere('name', 'like', '%'.$term.'%');
+                });
+            })
+            ->when($request->filled('status'), fn ($query) => $query->where('status', $request->string('status')->toString()));
+
+        if ($lowStockOnly && $selectedWarehouseId) {
+            $query->where(function ($query) use ($selectedWarehouseId): void {
+                $query
+                    ->whereHas('warehouseStocks', function ($stock) use ($selectedWarehouseId): void {
+                        $stock
+                            ->where('warehouse_id', $selectedWarehouseId)
+                            ->whereRaw('(qty - reserved_qty) <= master_products.min_stock');
+                    })
+                    ->orWhereDoesntHave('warehouseStocks', function ($stock) use ($selectedWarehouseId): void {
+                        $stock->where('warehouse_id', $selectedWarehouseId);
+                    });
+            });
+        }
+
+        $paginator = $query
             ->orderBy('name')
             ->paginate($perPage)
             ->withQueryString();
@@ -49,6 +75,7 @@ class ERPInventoryController extends Controller
                 'reserved_qty' => $reservedQty,
                 'available_qty' => $availableQty,
                 'min_stock' => $product->min_stock,
+                'low_stock_alert_enabled' => (bool) $product->low_stock_alert_enabled,
                 'total_sold' => $product->total_sold,
                 'status' => $product->status,
             ];
@@ -88,8 +115,11 @@ class ERPInventoryController extends Controller
             'products' => $products,
             'warehouses' => $warehouses,
             'filters' => array_merge(
-                $this->filtersWithPerPage($request, ['warehouse_id']),
-                ['warehouse_id' => $selectedWarehouseId],
+                $this->filtersWithPerPage($request, ['warehouse_id', 'q', 'status', 'low_stock_only']),
+                [
+                    'warehouse_id' => $selectedWarehouseId,
+                    'low_stock_only' => $lowStockOnly,
+                ],
             ),
             'reserved_alert' => [
                 'count' => $reservedStocks->count(),
@@ -111,20 +141,43 @@ class ERPInventoryController extends Controller
     {
         $validated = $request->validate([
             'min_stock' => 'required|integer|min:0',
+            'low_stock_alert_enabled' => 'required|boolean',
             'note' => 'nullable|string|max:255',
         ]);
 
         $masterProduct->update([
             'min_stock' => $validated['min_stock'],
+            'low_stock_alert_enabled' => (bool) $validated['low_stock_alert_enabled'],
         ]);
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Minimum stok berhasil diperbarui.']);
     }
 
+    public function batchUpdateLowStockAlerts(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'enabled' => 'required|boolean',
+        ]);
+
+        MasterProduct::query()
+            ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
+            ->update(['low_stock_alert_enabled' => (bool) $validated['enabled']]);
+
+        return back()->with('flash', [
+            'type' => 'success',
+            'message' => (bool) $validated['enabled']
+                ? 'Notifikasi stok rendah semua produk berhasil diaktifkan.'
+                : 'Notifikasi stok rendah semua produk berhasil dinonaktifkan.',
+        ]);
+    }
+
     public function stockOpname(): Response
     {
         return Inertia::render('ERP/Inventory/StockOpname', [
-            'products' => MasterProduct::query()->orderBy('name')->get(['id', 'sku', 'name', 'stock', 'uom']),
+            'products' => MasterProduct::query()
+                ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
+                ->orderBy('name')
+                ->get(['id', 'sku', 'name', 'stock', 'uom']),
         ]);
     }
 
@@ -165,7 +218,10 @@ class ERPInventoryController extends Controller
         $selectedYear = (int) $request->integer('year', now()->year);
         $selectedProductId = $request->filled('product_id') ? (int) $request->integer('product_id') : null;
 
-        $products = MasterProduct::query()->orderBy('name')->get();
+        $products = MasterProduct::query()
+            ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
+            ->orderBy('name')
+            ->get();
 
         $stockChart = $products->take(10)->map(fn (MasterProduct $item) => [
             'label' => $item->sku,
@@ -173,7 +229,7 @@ class ERPInventoryController extends Controller
         ])->values();
 
         $lowStockAlerts = $products
-            ->filter(fn (MasterProduct $item) => $item->stock <= $item->min_stock)
+            ->filter(fn (MasterProduct $item) => $item->low_stock_alert_enabled && $item->stock <= $item->min_stock)
             ->values()
             ->map(fn (MasterProduct $item) => [
                 'id' => $item->id,
@@ -181,6 +237,7 @@ class ERPInventoryController extends Controller
                 'name' => $item->name,
                 'stock' => $item->stock,
                 'min_stock' => $item->min_stock,
+                'low_stock_alert_enabled' => (bool) $item->low_stock_alert_enabled,
             ]);
 
         $topSelling = $products

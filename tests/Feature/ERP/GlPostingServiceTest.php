@@ -18,7 +18,7 @@ class GlPostingServiceTest extends TestCase
         $this->actingAs($user);
 
         $cash = Account::query()->create([
-            'code' => '1001',
+            'code' => 'TST-1001',
             'name' => 'Kas',
             'type' => 'asset',
             'normal_balance' => 'debit',
@@ -26,7 +26,7 @@ class GlPostingServiceTest extends TestCase
         ]);
 
         $revenue = Account::query()->create([
-            'code' => '4001',
+            'code' => 'TST-4001',
             'name' => 'Pendapatan Jasa',
             'type' => 'revenue',
             'normal_balance' => 'credit',

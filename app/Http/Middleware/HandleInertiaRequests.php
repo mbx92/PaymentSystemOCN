@@ -52,12 +52,18 @@ class HandleInertiaRequests extends Middleware
             'flash' => fn () => $request->session()->get('flash'),
             'devLoginSeed' => fn () => $request->session()->get('devLoginSeed'),
             'inventoryAlerts' => fn () => [
-                'lowStockCount' => MasterProduct::query()->whereColumn('stock', '<=', 'min_stock')->count(),
+                'lowStockCount' => MasterProduct::query()
+                    ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
+                    ->where('low_stock_alert_enabled', true)
+                    ->whereColumn('stock', '<=', 'min_stock')
+                    ->count(),
                 'lowStockItems' => MasterProduct::query()
+                    ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
+                    ->where('low_stock_alert_enabled', true)
                     ->whereColumn('stock', '<=', 'min_stock')
                     ->orderBy('stock')
                     ->limit(5)
-                    ->get(['id', 'sku', 'name', 'stock', 'min_stock']),
+                    ->get(['id', 'sku', 'name', 'stock', 'min_stock', 'low_stock_alert_enabled']),
             ],
             'erpSetting' => fn () => [
                 'app_name' => $erpSetting?->app_name ?? 'OCN ERP Suite',

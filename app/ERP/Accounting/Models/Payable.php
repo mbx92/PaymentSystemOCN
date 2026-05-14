@@ -5,6 +5,8 @@ namespace App\ERP\Accounting\Models;
 use App\ERP\Shared\Concerns\Auditable;
 use App\ERP\Shared\Enums\DocumentStatus;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Payable extends Model
 {
@@ -32,5 +34,25 @@ class Payable extends Model
             'paid_amount' => 'decimal:2',
             'status' => DocumentStatus::class,
         ];
+    }
+
+    public function vendor(): BelongsTo
+    {
+        return $this->belongsTo(\App\ERP\Purchasing\Models\Vendor::class);
+    }
+
+    public function purchaseOrder(): BelongsTo
+    {
+        return $this->belongsTo(\App\ERP\Purchasing\Models\PurchaseOrder::class);
+    }
+
+    public function goodsReceipt(): BelongsTo
+    {
+        return $this->belongsTo(\App\ERP\Purchasing\Models\GoodsReceipt::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(PayablePayment::class);
     }
 }

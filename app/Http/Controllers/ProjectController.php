@@ -531,17 +531,22 @@ class ProjectController extends Controller
         ]);
 
         DB::transaction(function () use ($project, $validated): void {
-            $stock = MasterProductWarehouseStock::query()
-                ->lockForUpdate()
-                ->firstOrCreate(
-                    [
-                        'master_product_id' => (int) $validated['master_product_id'],
-                        'warehouse_id' => (int) $validated['warehouse_id'],
-                    ],
-                    ['qty' => 0, 'reserved_qty' => 0],
-                );
+            $product = MasterProduct::query()->findOrFail((int) $validated['master_product_id']);
+            $stock = null;
+            $available = 0;
+            if ($product->isStockTracked()) {
+                $stock = MasterProductWarehouseStock::query()
+                    ->lockForUpdate()
+                    ->firstOrCreate(
+                        [
+                            'master_product_id' => $product->id,
+                            'warehouse_id' => (int) $validated['warehouse_id'],
+                        ],
+                        ['qty' => 0, 'reserved_qty' => 0],
+                    );
 
-            $available = max((float) $stock->qty - (float) $stock->reserved_qty, 0);
+                $available = max((float) $stock->qty - (float) $stock->reserved_qty, 0);
+            }
             $plannedQty = (float) $validated['planned_qty'];
             $toReserve = min($plannedQty, $available);
 
@@ -561,15 +566,17 @@ class ProjectController extends Controller
             $material->planned_qty = (float) $material->planned_qty + $plannedQty;
             $material->reserved_qty = (float) $material->reserved_qty + $toReserve;
             $material->notes = $validated['notes'] ?? $material->notes;
-            $material->status = $this->projectMaterialStatus($material);
+            $material->status = $product->isStockTracked()
+                ? $this->projectMaterialStatus($material)
+                : 'ready';
             $material->save();
 
-            if ($toReserve > 0) {
+            if ($stock && $toReserve > 0) {
                 $stock->increment('reserved_qty', $toReserve);
             }
         });
 
-        return back()->with('flash', ['type' => 'success', 'message' => 'Kebutuhan material project berhasil ditambahkan. Stok tersedia otomatis di-reserve, kekurangan masuk perencanaan PO.']);
+        return back()->with('flash', ['type' => 'success', 'message' => 'Kebutuhan project berhasil ditambahkan. Item stok akan di-reserve, sedangkan jasa/non-stok tidak masuk perencanaan PO.']);
     }
 
     public function materialProductSearch(Request $request, Project $project)
@@ -611,7 +618,7 @@ class ProjectController extends Controller
                     'uom' => $product->uom,
                     'sales_channel' => $product->sales_channel,
                     'product_type' => $product->product_type,
-                    'available' => $stock ? max((float) $stock->qty - (float) $stock->reserved_qty, 0) : 0,
+                    'available' => $product->isStockTracked() && $stock ? max((float) $stock->qty - (float) $stock->reserved_qty, 0) : null,
                 ];
             })
             ->values();
