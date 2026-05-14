@@ -93,6 +93,7 @@ const formatDate = (dateStr) => {
             <div v-if="erpCompanyContext()?.companies?.length" class="md:col-span-3 flex flex-col gap-1">
               <label class="text-xs font-medium uppercase tracking-wide text-base-content/60">Perusahaan</label>
               <select v-model="filters.company_id" class="select select-bordered select-sm w-full max-w-md">
+                <option value="all">Semua Usaha</option>
                 <option v-for="c in erpCompanyContext().companies" :key="c.id" :value="c.id">{{ c.name }}</option>
               </select>
             </div>

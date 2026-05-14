@@ -10,6 +10,7 @@ use Illuminate\Validation\ValidationException;
 class ErpCompanyResolver
 {
     public const SESSION_KEY = 'erp_company_id';
+    public const ALL_COMPANIES = 'all';
 
     public static function isActiveCompany(int $id): bool
     {
@@ -42,6 +43,10 @@ class ErpCompanyResolver
     public static function resolveForReporting(Request $request): ?int
     {
         $queryId = $request->query('company_id');
+        if ($queryId === self::ALL_COMPANIES) {
+            return null;
+        }
+
         if ($queryId !== null && $queryId !== '' && self::isActiveCompany((int) $queryId)) {
             return (int) $queryId;
         }

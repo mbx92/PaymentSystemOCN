@@ -9,9 +9,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('journal_entries', function (Blueprint $table) {
-            $table->foreignId('company_id')->nullable()->after('id')->constrained('companies')->restrictOnDelete();
-        });
+        if (! Schema::hasColumn('journal_entries', 'company_id')) {
+            Schema::table('journal_entries', function (Blueprint $table) {
+                $table->foreignId('company_id')->nullable()->after('id')->constrained('companies')->restrictOnDelete();
+            });
+        }
 
         $companyId = DB::table('companies')->where('is_active', true)->orderBy('id')->value('id');
         if ($companyId) {
@@ -21,8 +23,20 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::table('journal_entries', function (Blueprint $table) {
-            $table->dropConstrainedForeignId('company_id');
-        });
+        if (! Schema::hasColumn('journal_entries', 'company_id')) {
+            return;
+        }
+
+        try {
+            Schema::table('journal_entries', function (Blueprint $table) {
+                $table->dropConstrainedForeignId('company_id');
+            });
+        } catch (\Throwable) {
+            if (Schema::hasColumn('journal_entries', 'company_id')) {
+                Schema::table('journal_entries', function (Blueprint $table) {
+                    $table->dropColumn('company_id');
+                });
+            }
+        }
     }
 };

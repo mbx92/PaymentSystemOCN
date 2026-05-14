@@ -107,6 +107,7 @@ const typeBadgeClass = (type) => {
             <div v-if="erpCompanyContext()?.companies?.length" class="flex items-center gap-2">
               <span class="text-xs text-base-content/60 whitespace-nowrap">Perusahaan</span>
               <select v-model="filters.company_id" class="select select-bordered select-sm w-48">
+                <option value="all">Semua Usaha</option>
                 <option v-for="c in erpCompanyContext().companies" :key="c.id" :value="c.id">{{ c.name }}</option>
               </select>
             </div>

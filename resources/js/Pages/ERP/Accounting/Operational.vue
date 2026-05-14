@@ -2,7 +2,7 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
-import { Head, Link, useForm, router } from '@inertiajs/vue3';
+import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
@@ -16,7 +16,12 @@ const props = defineProps({
 });
 
 const { format } = useCurrency();
-const filters = ref({ ...props.filters });
+const page = usePage();
+const erpCompanyContext = () => page.props.erpCompanyContext ?? null;
+const filters = ref({
+  ...props.filters,
+  company_id: props.filters?.company_id ?? erpCompanyContext()?.current_company_id ?? '',
+});
 
 let timer;
 watch(filters, (val) => {
@@ -123,7 +128,11 @@ const destroyRow = (row) => {
           <h2 class="ocn-panel__title">Filter operasional</h2>
         </div>
         <div class="card-body">
-          <div class="grid gap-3 md:grid-cols-4">
+          <div class="grid gap-3 md:grid-cols-5">
+            <select v-if="erpCompanyContext()?.companies?.length" v-model="filters.company_id" class="select select-bordered select-sm w-full">
+              <option value="all">Semua Usaha</option>
+              <option v-for="c in erpCompanyContext().companies" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
             <select v-model="filters.project_id" class="select select-bordered select-sm w-full">
               <option value="">Semua (termasuk operasional umum)</option>
               <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
@@ -264,4 +273,3 @@ const destroyRow = (row) => {
     </dialog>
   </AppLayout>
 </template>
-

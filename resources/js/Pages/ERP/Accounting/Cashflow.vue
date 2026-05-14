@@ -3,7 +3,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
 import ConfirmModal from '@/Components/ConfirmModal.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
-import { Head, Link, useForm, router } from '@inertiajs/vue3';
+import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { computed, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
@@ -22,6 +22,8 @@ const props = defineProps({
 });
 
 const { format } = useCurrency();
+const page = usePage();
+const erpCompanyContext = () => page.props.erpCompanyContext ?? null;
 const firstBackendError = (errors, fallback) => {
   const first = Object.values(errors ?? {})[0];
   if (Array.isArray(first)) return first[0] ?? fallback;
@@ -33,6 +35,7 @@ const filters = ref({
   source: props.filters?.source ?? '',
   project_id: props.filters?.project_id ?? '',
   category: props.filters?.category ?? '',
+  company_id: props.filters?.company_id ?? erpCompanyContext()?.current_company_id ?? '',
   date_from: props.filters?.date_from ?? '',
   date_to: props.filters?.date_to ?? '',
   q: props.filters?.q ?? '',
@@ -250,7 +253,11 @@ const confirmDestroyEntry = () => {
           <h2 class="ocn-panel__title">Filter cashflow</h2>
         </div>
         <div class="card-body">
-          <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
+          <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-8">
+            <select v-if="erpCompanyContext()?.companies?.length" v-model="filters.company_id" class="select select-bordered select-sm w-full">
+              <option value="all">Semua Usaha</option>
+              <option v-for="c in erpCompanyContext().companies" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
             <select v-model="filters.type" class="select select-bordered select-sm w-full">
               <option value="">Semua Jenis</option>
               <option value="in">Kas Masuk</option>

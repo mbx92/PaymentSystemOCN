@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\ERP\Accounting\Models\Account;
+use App\ERP\Core\Services\ErpCompanyResolver;
 use App\Models\CashIn;
 use App\Models\CashOut;
 use Illuminate\Http\Request;
@@ -15,14 +16,17 @@ class ReconciliationController extends Controller
     {
         $period = $request->string('period')->toString() ?: 'daily';
         $periodSql = $period === 'weekly' ? "to_char(date_trunc('week', date), 'IYYY-\"W\"IW')" : "to_char(date, 'YYYY-MM-DD')";
+        $companyId = ErpCompanyResolver::resolveForReporting($request);
 
         $cashInRows = CashIn::query()
             ->selectRaw("{$periodSql} as bucket, cash_account_id, sum(amount) as total_in")
+            ->when($companyId, fn ($q) => $q->whereHas('journalEntry', fn ($jq) => $jq->where('company_id', $companyId)))
             ->groupByRaw("bucket, cash_account_id")
             ->get();
 
         $cashOutRows = CashOut::query()
             ->selectRaw("{$periodSql} as bucket, cash_account_id, sum(amount) as total_out")
+            ->when($companyId, fn ($q) => $q->whereHas('journalEntry', fn ($jq) => $jq->where('company_id', $companyId)))
             ->groupByRaw("bucket, cash_account_id")
             ->get();
 
@@ -54,7 +58,7 @@ class ReconciliationController extends Controller
         return Inertia::render('ERP/Accounting/Reconciliation', [
             'period' => $period,
             'rows' => $rows,
+            'filters' => $request->only(['company_id']),
         ]);
     }
 }
-

@@ -1,6 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
@@ -8,13 +8,20 @@ import { useCurrency } from '@/composables/useCurrency';
 const props = defineProps({
   period: String,
   rows: Array,
+  filters: Object,
 });
 
 const { format } = useCurrency();
+const page = usePage();
+const erpCompanyContext = () => page.props.erpCompanyContext ?? null;
 const period = ref(props.period || 'daily');
+const companyId = ref(props.filters?.company_id ?? erpCompanyContext()?.current_company_id ?? '');
 
-watch(period, (value) => {
-  router.get(route('erp.accounting.reconciliation'), { period: value }, { preserveState: true, replace: true });
+watch([period, companyId], ([periodValue, companyValue]) => {
+  router.get(route('erp.accounting.reconciliation'), {
+    period: periodValue,
+    company_id: companyValue || undefined,
+  }, { preserveState: true, replace: true });
 });
 </script>
 
@@ -45,9 +52,15 @@ watch(period, (value) => {
           <h2 class="ocn-panel__title">Periode rekonsiliasi</h2>
         </div>
         <div class="card-body">
-          <div class="join">
-            <button class="btn btn-sm join-item" :class="period === 'daily' ? 'btn-primary' : 'btn-outline'" @click="period = 'daily'">Harian</button>
-            <button class="btn btn-sm join-item" :class="period === 'weekly' ? 'btn-primary' : 'btn-outline'" @click="period = 'weekly'">Mingguan</button>
+          <div class="flex flex-wrap items-center gap-3">
+            <select v-if="erpCompanyContext()?.companies?.length" v-model="companyId" class="select select-bordered select-sm w-full max-w-xs">
+              <option value="all">Semua Usaha</option>
+              <option v-for="c in erpCompanyContext().companies" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
+            <div class="join">
+              <button class="btn btn-sm join-item" :class="period === 'daily' ? 'btn-primary' : 'btn-outline'" @click="period = 'daily'">Harian</button>
+              <button class="btn btn-sm join-item" :class="period === 'weekly' ? 'btn-primary' : 'btn-outline'" @click="period = 'weekly'">Mingguan</button>
+            </div>
           </div>
         </div>
       </div>
@@ -85,4 +98,3 @@ watch(period, (value) => {
     </div>
   </AppLayout>
 </template>
-

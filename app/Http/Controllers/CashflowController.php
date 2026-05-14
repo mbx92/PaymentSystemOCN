@@ -53,7 +53,7 @@ class CashflowController extends Controller
                 ->where('code', 'like', '100%')
                 ->orderBy('code')
                 ->get(['id', 'code', 'name']),
-            'filters' => $request->only(['type', 'source', 'project_id', 'category', 'date_from', 'date_to', 'q']),
+            'filters' => $request->only(['type', 'source', 'project_id', 'category', 'company_id', 'date_from', 'date_to', 'q']),
             'sourceOptions' => $this->sourceOptions(),
             'categoryOptions' => [
                 'in' => CashCategory::query()
@@ -342,7 +342,7 @@ class CashflowController extends Controller
             ->get(['id', 'source_module', 'source_reference'])
             ->keyBy(fn (JournalEntry $entry) => $entry->source_module.'|'.$entry->source_reference);
 
-        return $sales->map(function (PosSale $sale) use ($posCashAccount, $journalMap): array {
+        return $sales->map(function (PosSale $sale) use ($posCashAccount, $journalMap, $companyId): ?array {
             $status = (string) $sale->status;
             $type = $status === 'refunded' ? 'out' : 'in';
             $category = $status === 'refunded' ? 'refund_penjualan_pos' : 'penjualan_pos';
@@ -351,6 +351,11 @@ class CashflowController extends Controller
                 'reopened' => 'pos_sale_reopen',
                 default => 'pos_sale',
             };
+            $journalEntry = $journalMap->get($sourceModule.'|'.$sale->number);
+
+            if ($companyId && ! $journalEntry) {
+                return null;
+            }
 
             return [
                 'id' => 'pos-'.$sale->id,
@@ -375,11 +380,11 @@ class CashflowController extends Controller
                 ])->filter()->implode(' | ')),
                 'creator_name' => $sale->soldBy?->name ?? '-',
                 'document_status' => DocumentStatus::Posted->value,
-                'journal_entry_id' => $journalMap->get($sourceModule.'|'.$sale->number)?->id,
+                'journal_entry_id' => $journalEntry?->id,
                 'mutable' => false,
                 'created_at' => optional($sale->sold_at)->timestamp ?? 0,
             ];
-        });
+        })->filter()->values();
     }
 
     private function canMutateCashflow(Request $request): bool

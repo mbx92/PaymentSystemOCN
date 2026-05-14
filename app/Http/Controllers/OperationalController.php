@@ -72,7 +72,7 @@ class OperationalController extends Controller
                 ->where('type', 'asset')
                 ->orderBy('code')
                 ->get(['id', 'code', 'name']),
-            'filters' => $request->only(['project_id', 'date_from', 'date_to', 'q']),
+            'filters' => $request->only(['project_id', 'company_id', 'date_from', 'date_to', 'q']),
         ]);
     }
 
