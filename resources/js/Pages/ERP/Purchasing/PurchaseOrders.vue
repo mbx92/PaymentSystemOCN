@@ -1,12 +1,10 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
-import ProductPickerModal from '@/Components/ProductPickerModal.vue';
 import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
-import { computed, reactive, ref, watch } from 'vue';
-import { useCurrency } from '@/composables/useCurrency';
+import { reactive, ref, watch } from 'vue';
 import { showGlobalAlert } from '@/utils/globalAlert';
 
 const props = defineProps({
@@ -14,12 +12,10 @@ const props = defineProps({
   supplierFilter: String,
   filters: Object,
   suppliers: Array,
-  products: Array,
 });
 
 const formatIdr = (n) =>
   new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n ?? 0);
-const { parse, formatInput } = useCurrency();
 
 const openRow = (number) => {
   router.visit(route('erp.purchasing.purchase-orders.show', number));
@@ -51,10 +47,7 @@ const addForm = useForm({
   order_date: new Date().toISOString().slice(0, 10),
   eta_date: '',
   notes: '',
-  lines: [{ product_id: '', product_search: '', qty: 1, unit_price: 0 }],
 });
-
-const productPicker = reactive({ lineIndex: null, show: false });
 
 const attemptedSubmit = ref(false);
 
@@ -70,57 +63,6 @@ const openAddModal = () => {
   document.getElementById('modal-add-po')?.showModal();
 };
 
-const openProductPicker = (index) => {
-  productPicker.lineIndex = index;
-  productPicker.show = true;
-};
-
-const mergeDuplicateLine = (index) => {
-  const line = addForm.lines[index];
-  if (!line?.product_id) return;
-  const duplicateIdx = addForm.lines.findIndex((candidate, idx) => idx !== index && String(candidate.product_id) === String(line.product_id));
-  if (duplicateIdx >= 0) {
-    addForm.lines[duplicateIdx].qty = Number(addForm.lines[duplicateIdx].qty || 0) + Number(line.qty || 0);
-    if (!Number(addForm.lines[duplicateIdx].unit_price || 0)) {
-      addForm.lines[duplicateIdx].unit_price = Number(line.unit_price || 0);
-    }
-    addForm.lines.splice(index, 1);
-  }
-};
-
-const selectProductForLine = (index, product) => {
-  const line = addForm.lines[index];
-  if (!line) return;
-  line.product_id = product.id;
-  line.product_search = `${product.sku} - ${product.name}`;
-  line.unit_price = Number(product.selling_price ?? 0);
-  mergeDuplicateLine(index);
-};
-
-const chooseProduct = (product) => {
-  if (productPicker.lineIndex === null) return;
-  selectProductForLine(productPicker.lineIndex, product);
-  productPicker.lineIndex = null;
-  productPicker.show = false;
-};
-
-const onUnitPriceInput = (event, line) => {
-  line.unit_price = parse(event.target.value);
-  event.target.value = formatInput(event.target.value);
-};
-
-const addLine = () => {
-  addForm.lines.push({ product_id: '', product_search: '', qty: 1, unit_price: 0 });
-};
-
-const removeLine = (index) => {
-  if (addForm.lines.length <= 1) return;
-  addForm.lines.splice(index, 1);
-};
-
-const lineSubtotal = (line) => Number(line.qty || 0) * Number(line.unit_price || 0);
-const poGrandTotal = computed(() => addForm.lines.reduce((sum, line) => sum + lineSubtotal(line), 0));
-
 const submitAdd = () => {
   attemptedSubmit.value = true;
 
@@ -132,16 +74,6 @@ const submitAdd = () => {
     showGlobalAlert('Tanggal PO wajib diisi.', 'warning');
     return;
   }
-  const hasInvalidLine = addForm.lines.some(
-    (line) =>
-      !String(line.product_id || '').trim() ||
-      Number(line.qty || 0) < 1 ||
-      Number(line.unit_price || 0) <= 0,
-  );
-  if (hasInvalidLine) {
-    showGlobalAlert('Lengkapi data wajib pada item PO (produk, qty, harga).', 'warning');
-    return;
-  }
 
   addForm.post(route('erp.purchasing.purchase-orders.store'), {
     preserveScroll: true,
@@ -149,9 +81,6 @@ const submitAdd = () => {
       attemptedSubmit.value = false;
       addForm.reset();
       addForm.order_date = new Date().toISOString().slice(0, 10);
-      addForm.lines = [{ product_id: '', product_search: '', qty: 1, unit_price: 0 }];
-      productPicker.lineIndex = null;
-      productPicker.show = false;
       document.getElementById('modal-add-po')?.close();
     },
   });
@@ -273,59 +202,8 @@ const submitAdd = () => {
             </div>
           </div>
 
-          <div class="mt-4 rounded-xl border border-base-200">
-            <div class="flex items-center justify-between border-b border-base-200 px-4 py-3">
-              <p class="font-semibold">Item Produk</p>
-              <button class="btn btn-outline btn-xs" type="button" @click="addLine">+ Tambah Baris</button>
-            </div>
-            <div class="overflow-x-auto">
-              <table class="table table-sm">
-                <thead><tr><th class="w-[40%]">Produk</th><th>UoM</th><th>Qty</th><th>Harga</th><th>Subtotal</th><th></th></tr></thead>
-                <tbody>
-                  <tr v-for="(line, idx) in addForm.lines" :key="idx">
-                    <td>
-                      <input
-                        v-model="line.product_search"
-                        type="text"
-                        class="input input-bordered input-sm w-full"
-                        :class="mandatoryInputClass(attemptedSubmit && !String(line.product_id || '').trim())"
-                        placeholder="Klik untuk pilih produk"
-                        readonly
-                        @click="openProductPicker(idx)"
-                      />
-                    </td>
-                    <td class="text-xs font-semibold uppercase text-base-content/70">
-                      {{ props.products.find((p) => String(p.id) === String(line.product_id))?.uom || '-' }}
-                    </td>
-                    <td>
-                      <input
-                        v-model.number="line.qty"
-                        type="number"
-                        min="1"
-                        step="1"
-                        class="input input-bordered input-sm w-24"
-                        :class="mandatoryInputClass(attemptedSubmit && Number(line.qty || 0) < 1)"
-                      />
-                    </td>
-                    <td>
-                      <input
-                        :value="formatInput(line.unit_price)"
-                        type="text"
-                        inputmode="numeric"
-                        class="input input-bordered input-sm w-36"
-                        :class="mandatoryInputClass(attemptedSubmit && Number(line.unit_price || 0) <= 0)"
-                        @input="onUnitPriceInput($event, line)"
-                      />
-                    </td>
-                    <td class="font-medium">{{ formatIdr(lineSubtotal(line)) }}</td>
-                    <td><button class="btn btn-ghost btn-xs text-error" type="button" @click="removeLine(idx)">Hapus</button></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div class="flex justify-end border-t border-base-200 px-4 py-3 text-sm">
-              <span class="font-semibold">Grand Total: {{ formatIdr(poGrandTotal) }}</span>
-            </div>
+          <div class="mt-4 rounded-xl border border-info/20 bg-info/5 p-3 text-sm text-base-content/70">
+            Item PO diinput setelah PO dibuat. Buka detail PO, pilih item, lalu simpan ke database setelah draft item sudah benar.
           </div>
 
           <div class="modal-action">
@@ -335,19 +213,6 @@ const submitAdd = () => {
         </div>
       </dialog>
 
-      <ProductPickerModal
-        :show="productPicker.show"
-        :products="products"
-        title="Pilih Produk untuk PO"
-        subtitle="Gunakan katalog produk global agar PO konsisten dengan modul inventory dan POS."
-        search-label="Cari SKU / Barcode / Nama Produk"
-        search-placeholder="Contoh: PKG-SP-12X20"
-        confirm-text="Pilih Produk"
-        radio-name="selected_product_po_add"
-        @close="productPicker.show = false"
-        @confirm="chooseProduct"
-      />
     </div>
   </AppLayout>
 </template>
-

@@ -1145,8 +1145,9 @@ class ERPAdministrationMasterDataController extends Controller
     {
         return [
             ['key' => 'coa', 'label' => 'Chart of Accounts (COA)', 'description' => 'Akun-akun COA standar PSAK, kategori kas, dan mapping COA.', 'class' => 'CoaSeeder'],
-            ['key' => 'product_categories', 'label' => 'Kategori Produk', 'description' => '17 kategori produk bisnis OCN Tech.', 'class' => 'ProductCategorySeeder'],
+            ['key' => 'product_categories', 'label' => 'Kategori Produk', 'description' => 'Kategori produk bisnis OCN Tech.', 'class' => 'ProductCategorySeeder'],
             ['key' => 'uom', 'label' => 'Satuan (UoM)', 'description' => '18 unit pengukuran dan 7 konversi.', 'class' => 'UomSeeder'],
+            ['key' => 'master_products', 'label' => 'Master Produk', 'description' => '20 produk demo CCTV/IT beserta stok awal gudang.', 'class' => 'MasterProductSeeder'],
             ['key' => 'label_profiles', 'label' => 'Profil Label', 'description' => '9 profil label thermal (ZPL & TSPL) untuk ukuran retail.', 'class' => 'LabelProfileSeeder'],
             ['key' => 'parser_rules', 'label' => 'Parser Rules Chatbot', 'description' => '35 rule parser keyword untuk chatbot ERP.', 'class' => 'ErpChatParserRuleSeeder'],
             ['key' => 'pos_receipt', 'label' => 'Template Struk POS', 'description' => 'Template struk thermal POS default.', 'class' => 'FillThermalPosReceiptTemplatesSeeder'],

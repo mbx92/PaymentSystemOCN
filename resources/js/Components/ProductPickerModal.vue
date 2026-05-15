@@ -20,6 +20,8 @@ const { format } = useCurrency();
 const keyword = ref('');
 const selectedId = ref('');
 const searchInputRef = ref(null);
+const page = ref(1);
+const perPage = 10;
 
 const normalizedProducts = computed(() => props.products.map((product, index) => ({
   _id: String(product.id ?? product.sku ?? index),
@@ -41,16 +43,30 @@ const filteredProducts = computed(() => {
     || product.name.toLowerCase().includes(term)
   );
 });
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredProducts.value.length / perPage)));
+const visibleProducts = computed(() => {
+  const start = (page.value - 1) * perPage;
+  return filteredProducts.value.slice(start, start + perPage);
+});
 
 watch(
   () => props.show,
-  (open) => {
+      (open) => {
     if (!open) return;
     keyword.value = '';
     selectedId.value = '';
+    page.value = 1;
     nextTick(() => searchInputRef.value?.focus());
   }
 );
+
+watch(keyword, () => {
+  page.value = 1;
+});
+
+watch(totalPages, (pages) => {
+  if (page.value > pages) page.value = pages;
+});
 
 const confirmSelection = () => {
   if (!selectedId.value) return;
@@ -63,6 +79,14 @@ const pickFirstByEnter = () => {
   if (!filteredProducts.value.length) return;
   selectedId.value = filteredProducts.value[0]._id;
   confirmSelection();
+};
+
+const prevPage = () => {
+  page.value = Math.max(1, page.value - 1);
+};
+
+const nextPage = () => {
+  page.value = Math.min(totalPages.value, page.value + 1);
 };
 
 const hasStockColumn = computed(() => normalizedProducts.value.some((item) => item.stock !== undefined && item.stock !== null));
@@ -87,22 +111,22 @@ const hasStockColumn = computed(() => normalizedProducts.value.some((item) => it
       </div>
 
       <div class="mt-5 rounded-2xl border border-base-300 overflow-hidden">
-        <div class="max-h-[60vh] overflow-y-auto">
-          <table class="table table-zebra">
-          <thead>
+        <div class="h-[31rem] overflow-y-auto">
+          <table class="table table-zebra table-pin-rows">
+          <thead class="sticky top-0 z-20">
             <tr>
               <th class="w-14 bg-base-200"></th>
               <th class="bg-base-200">SKU</th>
               <th class="bg-base-200">BARCODE</th>
               <th class="bg-base-200">PRODUK</th>
-              <th class="bg-base-200 w-24">UOM</th>
-              <th class="bg-base-200 w-40">HARGA</th>
-              <th v-if="hasStockColumn" class="bg-base-200 w-28">STOK</th>
+              <th class="w-24 bg-base-200">UOM</th>
+              <th class="w-40 bg-base-200">HARGA</th>
+              <th v-if="hasStockColumn" class="w-28 bg-base-200">STOK</th>
             </tr>
           </thead>
           <tbody>
             <tr
-              v-for="product in filteredProducts"
+              v-for="product in visibleProducts"
               :key="product._id"
               :class="[
                 'cursor-pointer',
@@ -131,6 +155,21 @@ const hasStockColumn = computed(() => normalizedProducts.value.some((item) => it
             </tr>
           </tbody>
         </table>
+        </div>
+      </div>
+
+      <div class="mt-3 flex flex-col gap-2 text-sm text-base-content/60 sm:flex-row sm:items-center sm:justify-between">
+        <p>
+          Menampilkan {{ visibleProducts.length }} dari {{ filteredProducts.length }} produk
+          <span v-if="filteredProducts.length">- halaman {{ page }} / {{ totalPages }}</span>
+        </p>
+        <div class="join">
+          <button type="button" class="btn btn-sm join-item" :disabled="page <= 1" @click="prevPage">
+            Prev
+          </button>
+          <button type="button" class="btn btn-sm join-item" :disabled="page >= totalPages" @click="nextPage">
+            Next
+          </button>
         </div>
       </div>
 

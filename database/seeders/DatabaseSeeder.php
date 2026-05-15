@@ -307,6 +307,7 @@ class DatabaseSeeder extends Seeder
         $this->call(ProductCategorySeeder::class);
         $this->call(UomSeeder::class);
         $this->call(WarehouseSeeder::class);
+        $this->call(MasterProductSeeder::class);
         $this->call(LabelProfileSeeder::class);
         $this->call(ProjectFlowSeeder::class);
     }

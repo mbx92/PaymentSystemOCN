@@ -167,50 +167,9 @@ class ERPPurchasingController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        $validatedLines = $request->validate([
-            'lines' => 'required|array|min:1',
-            'lines.*.product_id' => [
-                'required',
-                'integer',
-                Rule::exists('master_products', 'id')->where(fn ($query) => $query->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)),
-            ],
-            'lines.*.qty' => 'required|numeric|min:0.01',
-            'lines.*.unit_price' => 'required|numeric|min:0.01',
-        ]);
-
         $vendor = Vendor::query()->where('code', $baseValidated['vendor_code'])->firstOrFail();
-        $lines = collect($validatedLines['lines'])
-            ->map(function (array $line): array {
-                $product = MasterProduct::query()
-                    ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
-                    ->findOrFail((int) $line['product_id']);
-                $qty = (float) $line['qty'];
-                $unitPrice = (float) $line['unit_price'];
-                $lineTotal = $qty * $unitPrice;
 
-                return [
-                    'master_product_id' => $product->id,
-                    'qty' => $qty,
-                    'line_total' => $lineTotal,
-                ];
-            })
-            ->groupBy('master_product_id')
-            ->map(function ($group) {
-                $qty = (float) $group->sum('qty');
-                $lineTotal = (float) $group->sum('line_total');
-                $unitPrice = $qty > 0 ? $lineTotal / $qty : 0;
-
-                return [
-                    'master_product_id' => $group->first()['master_product_id'],
-                    'qty' => $qty,
-                    'unit_price' => $unitPrice,
-                    'line_total' => $lineTotal,
-                ];
-            })
-            ->values();
-        $totalAmount = (float) $lines->sum('line_total');
-
-        $poNumber = DB::transaction(function () use ($baseValidated, $vendor, $lines, $totalAmount): string {
+        $poNumber = DB::transaction(function () use ($baseValidated, $vendor): string {
             $number = $this->documentNumberService->next('purchasing', 'purchase_order', [
                 'prefix' => 'PO',
                 'padding_length' => 6,
@@ -220,14 +179,10 @@ class ERPPurchasingController extends Controller
                 'vendor_id' => $vendor->id,
                 'order_date' => $baseValidated['order_date'],
                 'eta_date' => $baseValidated['eta_date'] ?? null,
-                'total_amount' => $totalAmount,
+                'total_amount' => 0,
                 'status' => DocumentStatus::Draft,
                 'notes' => $baseValidated['notes'] ?? null,
             ]);
-
-            foreach ($lines as $line) {
-                $po->lines()->create($line);
-            }
 
             return $po->number;
         });
@@ -250,6 +205,7 @@ class ERPPurchasingController extends Controller
                 'amount' => (float) $purchaseOrder->total_amount,
                 'status' => $purchaseOrder->status->value,
                 'created_at' => $purchaseOrder->order_date?->toDateString(),
+                'notes' => $purchaseOrder->notes,
                 'lines' => $purchaseOrder->lines->map(fn ($line) => [
                     'product_id' => $line->master_product_id,
                     'sku' => $line->product?->sku,
@@ -645,6 +601,12 @@ class ERPPurchasingController extends Controller
         $status = $po->status->value;
 
         if ($action === 'submit' && $status === DocumentStatus::Draft->value) {
+            if (! $po->lines()->exists()) {
+                return redirect()
+                    ->route('erp.purchasing.purchase-orders.show', $purchaseOrder)
+                    ->with('flash', ['type' => 'warning', 'message' => 'Tambahkan minimal satu item sebelum PO diajukan.']);
+            }
+
             $po->update([
                 'status' => DocumentStatus::Submitted,
             ]);
