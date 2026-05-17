@@ -294,22 +294,21 @@ const applyFilters = () => {
       <div class="ocn-panel">
         <div class="ocn-panel__head">
           <h2 class="ocn-panel__title">Saran reorder otomatis</h2>
-          <p class="ocn-panel__desc">Berdasarkan min stock dan lead time.</p>
+          <p class="ocn-panel__desc">Berdasarkan minimum stock.</p>
         </div>
         <div class="card-body">
           <div class="overflow-x-auto">
             <table class="table table-zebra">
-              <thead><tr><th>SKU</th><th>Produk</th><th>Stock</th><th>Min</th><th>Lead Time</th><th>Saran Reorder</th></tr></thead>
+              <thead><tr><th>SKU</th><th>Produk</th><th>Stock</th><th>Min</th><th>Saran Reorder</th></tr></thead>
               <tbody>
                 <tr v-for="item in reorderSuggestions" :key="item.id">
                   <td class="font-mono text-xs">{{ item.sku }}</td>
                   <td>{{ item.name }}</td>
                   <td>{{ item.stock }}</td>
                   <td>{{ item.min_stock }}</td>
-                  <td>{{ item.lead_time_days }} hari</td>
                   <td class="font-semibold text-primary">{{ item.suggested_qty }}</td>
                 </tr>
-                <tr v-if="reorderSuggestions.length === 0"><td colspan="6" class="text-center text-base-content/50">Tidak ada saran reorder saat ini.</td></tr>
+                <tr v-if="reorderSuggestions.length === 0"><td colspan="5" class="text-center text-base-content/50">Tidak ada saran reorder saat ini.</td></tr>
               </tbody>
             </table>
           </div>

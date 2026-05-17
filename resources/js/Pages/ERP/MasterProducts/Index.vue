@@ -53,7 +53,6 @@ const form = useForm({
   description: '',
   selling_price: 0,
   stock: 0,
-  lead_time_days: 7,
 });
 
 const autoSku = ref(true);
@@ -94,7 +93,6 @@ const typeLabel = (value) => {
 watch(() => form.product_type, (type) => {
   if (type === 'service') {
     form.stock = 0;
-    form.lead_time_days = 1;
   }
 });
 
@@ -392,10 +390,6 @@ const goToDetail = (id) => {
           <div>
             <label class="label"><span class="label-text">Stock <span class="text-error">*</span></span></label>
             <input v-model.number="form.stock" type="number" min="0" class="input input-bordered w-full" :disabled="form.product_type === 'service'" />
-          </div>
-          <div>
-            <label class="label"><span class="label-text">Lead Time (hari) <span class="text-error">*</span></span></label>
-            <input v-model.number="form.lead_time_days" type="number" min="1" class="input input-bordered w-full" :disabled="form.product_type === 'service'" />
           </div>
           <div class="md:col-span-2">
             <label class="label"><span class="label-text">Deskripsi</span></label>

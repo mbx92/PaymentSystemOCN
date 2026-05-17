@@ -123,6 +123,7 @@ class ERPSalesController extends Controller
             ->when($request->filled('q'), function ($q) use ($request): void {
                 $term = $request->string('q')->toString();
                 $q->where('number', 'like', '%'.$term.'%')
+                    ->orWhere('marketplace_order_code', 'like', '%'.$term.'%')
                     ->orWhereHas('soldBy', fn ($u) => $u->where('name', 'like', '%'.$term.'%'));
             })
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->string('status')->toString()))
@@ -135,7 +136,9 @@ class ERPSalesController extends Controller
             ->through(fn (PosSale $sale) => [
                 'id' => $sale->id,
                 'number' => $sale->number,
+                'sales_channel_key' => $sale->sales_channel ?: 'retail',
                 'sales_channel' => $this->priceChannelLabel($sale->sales_channel ?: 'retail'),
+                'marketplace_order_code' => $sale->marketplace_order_code,
                 'sold_at' => $sale->sold_at?->format('Y-m-d H:i:s'),
                 'items_count' => $sale->items->count(),
                 'grand_total' => (float) $sale->grand_total,
@@ -160,6 +163,7 @@ class ERPSalesController extends Controller
                 'number' => $posSale->number,
                 'sales_channel' => $posSale->sales_channel ?: 'retail',
                 'sales_channel_label' => $this->priceChannelLabel($posSale->sales_channel ?: 'retail'),
+                'marketplace_order_code' => $posSale->marketplace_order_code,
                 'status' => $posSale->status,
                 'sold_at' => $posSale->sold_at?->format('Y-m-d H:i:s'),
                 'cashier' => $posSale->soldBy?->name,
@@ -392,6 +396,7 @@ class ERPSalesController extends Controller
     {
         $validated = $request->validate([
             'sales_channel' => ['required', 'string', Rule::in(array_column($this->priceChannels(), 'key'))],
+            'marketplace_order_code' => ['nullable', 'string', 'max:100', 'required_if:sales_channel,marketplace'],
             'payment_method_id' => 'required|exists:payment_methods,id',
             'cash_paid' => 'nullable|numeric|min:0',
             'additional_charges' => 'nullable|array',
@@ -411,6 +416,9 @@ class ERPSalesController extends Controller
 
         $paymentMethod = PaymentMethod::query()->findOrFail((int) $validated['payment_method_id']);
         $salesChannel = $validated['sales_channel'];
+        $marketplaceOrderCode = $salesChannel === 'marketplace'
+            ? trim((string) ($validated['marketplace_order_code'] ?? ''))
+            : null;
         $items = collect($validated['items'])
             ->map(function (array $item) use ($salesChannel): array {
                 $item['unit_price'] = $this->resolveCheckoutUnitPrice($item, $salesChannel);
@@ -457,7 +465,7 @@ class ERPSalesController extends Controller
             ]);
         }
 
-        $checkoutResult = DB::transaction(function () use ($items, $grossTotal, $discountTotal, $additionalCharges, $additionalFeeAdd, $adminFee, $grandTotal, $cashPaid, $paymentMethod, $salesChannel, $request): array {
+        $checkoutResult = DB::transaction(function () use ($items, $grossTotal, $discountTotal, $additionalCharges, $additionalFeeAdd, $adminFee, $grandTotal, $cashPaid, $paymentMethod, $salesChannel, $marketplaceOrderCode, $request): array {
             $transactionNumber = $this->documentNumberService->next('sales', 'pos_sale', [
                 'prefix' => 'POS',
                 'padding_length' => 6,
@@ -466,6 +474,7 @@ class ERPSalesController extends Controller
             $sale = PosSale::query()->create([
                 'number' => $transactionNumber,
                 'sales_channel' => $salesChannel,
+                'marketplace_order_code' => $marketplaceOrderCode,
                 'payment_method_id' => $paymentMethod->id,
                 'gross_total' => $grossTotal,
                 'discount_total' => $discountTotal,
@@ -587,6 +596,7 @@ class ERPSalesController extends Controller
                 'payment_method' => $paymentMethod->name,
                 'sales_channel' => $salesChannel,
                 'sales_channel_label' => $this->priceChannelLabel($salesChannel),
+                'marketplace_order_code' => $marketplaceOrderCode,
                 'cashier' => Auth::user()?->name,
             ];
         });
@@ -605,6 +615,7 @@ class ERPSalesController extends Controller
             'payment_method_name' => $paymentMethod->name,
             'sales_channel' => $salesChannel,
             'sales_channel_label' => $this->priceChannelLabel($salesChannel),
+            'marketplace_order_code' => $marketplaceOrderCode,
             'transaction' => $checkoutResult,
             'direct_print' => $directPrint,
         ]);
@@ -1199,10 +1210,23 @@ class ERPSalesController extends Controller
     private function projectSalesNoteItems(Project $project)
     {
         $budget = ProjectBudget::query()
+            ->with('items')
             ->where('converted_project_id', $project->id)
             ->first();
 
-        $budgetItems = collect($budget?->cctv_items ?? [])
+        $budgetItems = $budget?->items?->isNotEmpty()
+            ? $budget->items->map(fn ($item): array => [
+                'name' => (string) $item->name,
+                'description' => trim(collect([$item->item_type, $item->notes])->filter()->implode(' · ')) ?: 'Item budget project',
+                'qty' => (float) $item->qty,
+                'uom' => (string) ($item->uom ?: 'unit'),
+                'unit_price' => (float) $item->unit_price,
+                'subtotal' => (float) $item->qty * (float) $item->unit_price,
+            ])->values()
+            : collect();
+
+        if ($budgetItems->isEmpty()) {
+            $budgetItems = collect($budget?->cctv_items ?? [])
             ->filter(fn ($item) => is_array($item) && trim((string) ($item['name'] ?? '')) !== '')
             ->map(function (array $item): array {
                 $qty = (float) ($item['qty'] ?? 0);
@@ -1218,6 +1242,7 @@ class ERPSalesController extends Controller
                 ];
             })
             ->values();
+        }
 
         if ($budgetItems->isNotEmpty()) {
             return $budgetItems;

@@ -27,6 +27,7 @@ const defaultPaymentMethodId = props.payment_methods?.[0]?.id ?? null;
 const paymentMethodId = ref(defaultPaymentMethodId);
 const heldCart = ref([]);
 const heldAdditionalCharges = ref([]);
+const heldMarketplaceOrderCode = ref('');
 const isOnHold = ref(false);
 const cashInputRef = ref(null);
 const processingPayment = ref(false);
@@ -38,6 +39,7 @@ const successToast = ref('');
 let toastTimer = null;
 const printingReceipt = ref(false);
 const additionalCharges = ref([]);
+const marketplaceOrderCode = ref('');
 const CHARGE_ADD = 'add_to_total';
 const CHARGE_ADMIN = 'journal_admin';
 const chargeForm = ref({
@@ -82,6 +84,7 @@ function onPosAlertDialogClose() {
 }
 const selectedSalesChannelOption = computed(() => props.price_channels?.find((channel) => channel.key === selectedSalesChannel.value) ?? props.price_channels?.[0] ?? { key: 'retail', label: 'Retail' });
 const selectedSalesChannelLabel = computed(() => selectedSalesChannelOption.value?.label ?? 'Retail');
+const isMarketplaceChannel = computed(() => selectedSalesChannel.value === 'marketplace');
 
 const applySalesChannelPricesToCatalog = () => {
   productCatalog.value = productCatalog.value.map((item) => ({
@@ -99,6 +102,10 @@ const repriceCartForSelectedChannel = () => {
     line.salesChannelLabel = selectedSalesChannelLabel.value;
   });
 };
+
+watch(selectedSalesChannel, () => {
+  if (!isMarketplaceChannel.value) marketplaceOrderCode.value = '';
+});
 
 const openProductModal = () => {
   showProductModal.value = true;
@@ -237,6 +244,7 @@ const hasStockViolation = computed(() => cart.value.some((line) => Number(line.q
 const canProcessPayment = computed(() => {
   if (cart.value.length === 0) return false;
   if (hasStockViolation.value) return false;
+  if (isMarketplaceChannel.value && !marketplaceOrderCode.value.trim()) return false;
   if (!isCashPayment.value) return true;
   return Number(cashPaidValue.value || 0) >= grandTotal.value;
 });
@@ -306,6 +314,7 @@ const processPayment = async () => {
       credentials: 'same-origin',
       body: JSON.stringify({
         sales_channel: selectedSalesChannel.value,
+        marketplace_order_code: isMarketplaceChannel.value ? marketplaceOrderCode.value.trim() : null,
         payment_method_id: paymentMethodId.value,
         cash_paid: isCashPayment.value ? cashPaidValue.value : grandTotal.value,
         additional_charges: additionalCharges.value.map((charge) => ({
@@ -334,6 +343,7 @@ const processPayment = async () => {
 
     lastReceipt.value = {
       number: payload.transaction_number,
+      marketplaceOrderCode: payload.marketplace_order_code || marketplaceOrderCode.value.trim(),
       paymentMethodName: payload.payment_method_name,
       salesChannelLabel: payload.sales_channel_label || selectedSalesChannelLabel.value,
       grandTotal: payload.grand_total,
@@ -351,9 +361,11 @@ const processPayment = async () => {
     cart.value = [];
     heldCart.value = [];
     heldAdditionalCharges.value = [];
+    heldMarketplaceOrderCode.value = '';
     isOnHold.value = false;
     cashPaidInput.value = '0';
     additionalCharges.value = [];
+    marketplaceOrderCode.value = '';
 
     openReceiptPreview();
   } catch (error) {
@@ -372,8 +384,10 @@ const voidTransaction = () => {
   cart.value = [];
   cashPaidInput.value = '0';
   additionalCharges.value = [];
+  marketplaceOrderCode.value = '';
   heldCart.value = [];
   heldAdditionalCharges.value = [];
+  heldMarketplaceOrderCode.value = '';
   isOnHold.value = false;
 };
 
@@ -382,9 +396,12 @@ const toggleHoldResume = () => {
     if (cart.value.length === 0) return;
     heldCart.value = JSON.parse(JSON.stringify(cart.value));
     heldAdditionalCharges.value = JSON.parse(JSON.stringify(additionalCharges.value));
+    heldMarketplaceOrderCode.value = marketplaceOrderCode.value;
     cart.value = [];
     cashPaidInput.value = '0';
     additionalCharges.value = [];
+    marketplaceOrderCode.value = '';
+    marketplaceOrderCode.value = '';
     isOnHold.value = true;
     return;
   }
@@ -393,6 +410,8 @@ const toggleHoldResume = () => {
   heldCart.value = [];
   additionalCharges.value = JSON.parse(JSON.stringify(heldAdditionalCharges.value));
   heldAdditionalCharges.value = [];
+  marketplaceOrderCode.value = heldMarketplaceOrderCode.value;
+  heldMarketplaceOrderCode.value = '';
   isOnHold.value = false;
 };
 
@@ -603,6 +622,17 @@ onBeforeUnmount(() => {
                   <option v-for="channel in price_channels" :key="channel.key" :value="channel.key">{{ channel.label }}</option>
                 </select>
               </div>
+              <div v-if="isMarketplaceChannel">
+                <label class="label py-1"><span class="label-text text-xs uppercase tracking-wide">Kode Pesanan</span></label>
+                <input
+                  v-model.trim="marketplaceOrderCode"
+                  type="text"
+                  class="input input-bordered w-full"
+                  placeholder="Contoh: MP-20260516-001"
+                  maxlength="100"
+                />
+                <p class="mt-1 text-[11px] text-base-content/55">Wajib untuk transaksi marketplace agar pesanan mudah dilacak.</p>
+              </div>
               <div>
                 <label class="label py-1"><span class="label-text text-xs uppercase tracking-wide">Metode Pembayaran</span></label>
                 <select v-model="paymentMethodId" class="select select-bordered w-full">
@@ -665,6 +695,10 @@ onBeforeUnmount(() => {
           <div class="flex justify-between"><span>No. Transaksi</span><span>{{ lastReceipt?.number || '-' }}</span></div>
           <div class="flex justify-between"><span>Total Item</span><span>{{ receiptLines.length }}</span></div>
           <div class="flex justify-between"><span>Sales Channel</span><span>{{ lastReceipt?.salesChannelLabel || selectedSalesChannelLabel }}</span></div>
+          <div v-if="lastReceipt?.marketplaceOrderCode || marketplaceOrderCode" class="flex justify-between gap-3">
+            <span>Kode Pesanan</span>
+            <span class="font-mono text-right">{{ lastReceipt?.marketplaceOrderCode || marketplaceOrderCode }}</span>
+          </div>
           <div class="flex justify-between"><span>Metode Bayar</span><span class="uppercase">{{ lastReceipt?.paymentMethodName || selectedPaymentMethod?.name || '-' }}</span></div>
           <div class="flex justify-between"><span>Biaya lainnya (ditagih)</span><span>{{ format(lastReceipt?.additionalFee ?? additionalFeeAddToTotal) }}</span></div>
           <div v-if="(lastReceipt?.adminChannelFee ?? 0) > 0 || adminChannelFeeTotal > 0" class="flex justify-between text-xs text-base-content/65">
@@ -839,6 +873,17 @@ onBeforeUnmount(() => {
                   <option v-for="channel in price_channels" :key="channel.key" :value="channel.key">{{ channel.label }}</option>
                 </select>
               </div>
+              <div v-if="isMarketplaceChannel">
+                <label class="label py-1"><span class="label-text text-xs uppercase tracking-wide">Kode Pesanan</span></label>
+                <input
+                  v-model.trim="marketplaceOrderCode"
+                  type="text"
+                  class="input input-bordered w-full"
+                  placeholder="Contoh: MP-20260516-001"
+                  maxlength="100"
+                />
+                <p class="mt-1 text-[11px] text-base-content/55">Wajib untuk transaksi marketplace agar pesanan mudah dilacak.</p>
+              </div>
               <div>
                 <label class="label py-1"><span class="label-text text-xs uppercase tracking-wide">Metode Pembayaran</span></label>
                 <select v-model="paymentMethodId" class="select select-bordered w-full">
@@ -901,6 +946,10 @@ onBeforeUnmount(() => {
           <div class="flex justify-between"><span>No. Transaksi</span><span>{{ lastReceipt?.number || '-' }}</span></div>
           <div class="flex justify-between"><span>Total Item</span><span>{{ receiptLines.length }}</span></div>
           <div class="flex justify-between"><span>Sales Channel</span><span>{{ lastReceipt?.salesChannelLabel || selectedSalesChannelLabel }}</span></div>
+          <div v-if="lastReceipt?.marketplaceOrderCode || marketplaceOrderCode" class="flex justify-between gap-3">
+            <span>Kode Pesanan</span>
+            <span class="font-mono text-right">{{ lastReceipt?.marketplaceOrderCode || marketplaceOrderCode }}</span>
+          </div>
           <div class="flex justify-between"><span>Metode Bayar</span><span class="uppercase">{{ lastReceipt?.paymentMethodName || selectedPaymentMethod?.name || '-' }}</span></div>
           <div class="flex justify-between"><span>Biaya lainnya (ditagih)</span><span>{{ format(lastReceipt?.additionalFee ?? additionalFeeAddToTotal) }}</span></div>
           <div v-if="(lastReceipt?.adminChannelFee ?? 0) > 0 || adminChannelFeeTotal > 0" class="flex justify-between text-xs text-base-content/65">

@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\Project;
 use App\Models\TeamDistribution;
+use App\Models\TeamRole;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class TeamDistributionController extends Controller
@@ -27,6 +29,7 @@ class TeamDistributionController extends Controller
         $members = User::role('anggota')->orWhereHas('roles', fn ($q) => $q->where('name', 'manajer'))
             ->orderBy('name')
             ->get(['id', 'name']);
+        $teamRoles = $this->activeTeamRoles();
 
         $selectedProject = null;
         $existingDistributions = [];
@@ -67,6 +70,7 @@ class TeamDistributionController extends Controller
         return Inertia::render('TeamDistribution/Calculator', [
             'projects'              => $projects,
             'members'               => $members,
+            'teamRoles'             => $teamRoles,
             'selectedProject'       => $selectedProject,
             'existingDistributions' => $existingDistributions,
             'selectedProjectId'     => filled($projectId) ? $projectId : null,
@@ -75,11 +79,13 @@ class TeamDistributionController extends Controller
 
     public function save(Request $request)
     {
+        $roleNames = $this->activeTeamRoles()->pluck('name')->all();
+
         $validated = $request->validate([
             'project_id'    => 'required|uuid|exists:projects,id',
             'distributions' => 'required|array|min:1',
             'distributions.*.user_id'         => 'required|exists:users,id',
-            'distributions.*.role_in_project' => 'required|in:lead,developer,designer,qa',
+            'distributions.*.role_in_project' => ['required', 'string', 'max:20', Rule::in($roleNames)],
             'distributions.*.percentage'      => 'required|numeric|min:0|max:100',
             'distributions.*.base_pay'        => 'required|numeric|min:0',
             'distributions.*.bonus'           => 'required|numeric|min:0',
@@ -107,5 +113,19 @@ class TeamDistributionController extends Controller
         });
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Pembagian tim berhasil disimpan.']);
+    }
+
+    private function activeTeamRoles()
+    {
+        if (! TeamRole::query()->exists()) {
+            foreach (['lead', 'developer', 'designer', 'qa'] as $name) {
+                TeamRole::query()->create(['name' => $name, 'is_active' => true]);
+            }
+        }
+
+        return TeamRole::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name']);
     }
 }

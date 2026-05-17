@@ -135,6 +135,12 @@ class CashOutController extends Controller
 
     private function assertCategoryExists(string $category): void
     {
+        if (CashCategory::isRetired('cash_out', $category)) {
+            throw ValidationException::withMessages([
+                'category' => 'Kategori kas keluar ini sudah tidak digunakan. Gunakan kategori expense project yang aktif.',
+            ]);
+        }
+
         $exists = CashCategory::query()
             ->where('domain', 'cash_out')
             ->where('key', $category)
@@ -168,6 +174,7 @@ class CashOutController extends Controller
     {
         return CashCategory::query()
             ->where('domain', 'cash_out')
+            ->whereNotIn('key', CashCategory::retiredKeysFor('cash_out'))
             ->where('is_active', true)
             ->orderBy('sort_order')
             ->orderBy('label')

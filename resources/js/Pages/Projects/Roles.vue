@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({
     roles: Array,
@@ -87,4 +88,3 @@ const removeRole = (id) => {
         </div>
     </AppLayout>
 </template>
-

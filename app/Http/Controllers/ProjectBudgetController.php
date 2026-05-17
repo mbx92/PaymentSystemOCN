@@ -2,9 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\ERP\Inventory\Models\Warehouse;
 use App\Models\MasterProduct;
+use App\Models\MasterProductWarehouseStock;
 use App\Models\Project;
 use App\Models\ProjectBudget;
+use App\Models\ProjectBudgetItem;
+use App\Models\ProjectMaterial;
+use App\Services\PdfThemeResolver;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +21,22 @@ class ProjectBudgetController extends Controller
 {
     private function mapBudget(ProjectBudget $budget): array
     {
+        $items = $budget->relationLoaded('items') ? $budget->items : $budget->items()->get();
+        $mappedItems = $items->map(fn (ProjectBudgetItem $item): array => [
+            'id' => $item->id,
+            'master_product_id' => $item->master_product_id,
+            'item_type' => $item->item_type,
+            'name' => $item->name,
+            'uom' => $item->uom,
+            'qty' => (float) $item->qty,
+            'unit_cost' => (float) $item->unit_cost,
+            'unit_price' => (float) $item->unit_price,
+            'subtotal_cost' => $item->subtotal_cost,
+            'subtotal_price' => $item->subtotal_price,
+            'margin_amount' => $item->margin_amount,
+            'notes' => $item->notes,
+        ])->values();
+
         return [
             'id' => $budget->id,
             'name' => $budget->name,
@@ -23,7 +44,10 @@ class ProjectBudgetController extends Controller
             'client_contact' => $budget->client_contact,
             'project_type' => $budget->project_type,
             'estimated_value' => (float) $budget->estimated_value,
-            'cctv_items' => $budget->cctv_items ?? [],
+            'cctv_items' => $mappedItems->isNotEmpty() ? $mappedItems : ($budget->cctv_items ?? []),
+            'budget_items' => $mappedItems,
+            'total_cost' => (float) $mappedItems->sum('subtotal_cost'),
+            'total_margin' => (float) $mappedItems->sum('margin_amount'),
             'description' => $budget->description,
             'status' => $budget->status,
             'deal_at' => $budget->deal_at?->format('Y-m-d H:i'),
@@ -73,8 +97,13 @@ class ProjectBudgetController extends Controller
             'description' => 'nullable|string',
             'cctv_items' => 'nullable|array',
             'cctv_items.*.name' => 'required|string|max:255',
+            'cctv_items.*.master_product_id' => 'nullable|exists:master_products,id',
+            'cctv_items.*.item_type' => 'nullable|in:product,material,service',
+            'cctv_items.*.uom' => 'nullable|string|max:30',
             'cctv_items.*.qty' => 'required|numeric|min:0.01',
+            'cctv_items.*.unit_cost' => 'nullable|numeric|min:0',
             'cctv_items.*.unit_price' => 'required|numeric|min:0',
+            'cctv_items.*.notes' => 'nullable|string|max:1000',
         ]);
     }
 
@@ -92,9 +121,14 @@ class ProjectBudgetController extends Controller
         $cctvItems = collect($validated['cctv_items'] ?? [])
             ->filter(fn (array $row) => ! empty($row['name']) && (float) ($row['qty'] ?? 0) > 0)
             ->map(fn (array $row) => [
+                'master_product_id' => $row['master_product_id'] ?? null,
+                'item_type' => $row['item_type'] ?? 'material',
                 'name' => $row['name'],
+                'uom' => $row['uom'] ?? null,
                 'qty' => (float) $row['qty'],
+                'unit_cost' => (float) ($row['unit_cost'] ?? 0),
                 'unit_price' => (float) $row['unit_price'],
+                'notes' => $row['notes'] ?? null,
             ])
             ->values()
             ->all();
@@ -109,6 +143,7 @@ class ProjectBudgetController extends Controller
     public function index(): Response
     {
         $budgets = ProjectBudget::query()
+            ->with('items')
             ->latest()
             ->get()
             ->map(fn (ProjectBudget $budget) => $this->mapBudget($budget));
@@ -128,13 +163,15 @@ class ProjectBudgetController extends Controller
 
     public function show(ProjectBudget $budget): Response
     {
+        $budget->load('items');
+
         return Inertia::render('Projects/BudgetShow', [
             'budget' => $this->mapBudget($budget),
             'cctv_products' => MasterProduct::query()
                 ->where('status', 'active')
                 ->whereIn('sales_channel', ['project', 'both'])
                 ->orderBy('name')
-                ->get(['id', 'sku', 'barcode', 'name', 'uom', 'selling_price']),
+                ->get(['id', 'sku', 'barcode', 'name', 'uom', 'selling_price', 'product_type']),
         ]);
     }
 
@@ -153,7 +190,12 @@ class ProjectBudgetController extends Controller
         }
 
         $payload = $this->normalizeUpdatePayload($this->validateUpdatePayload($request));
-        $budget->update($payload);
+
+        DB::transaction(function () use ($budget, $payload): void {
+            $items = $payload['cctv_items'] ?? [];
+            $budget->update($payload);
+            $this->replaceBudgetItems($budget, $items);
+        });
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Budget berhasil diperbarui.']);
     }
@@ -198,6 +240,8 @@ class ProjectBudgetController extends Controller
                 'description' => $budget->description,
             ]);
 
+            $this->syncProjectMaterialsFromBudget($budget, $project);
+
             $budget->update([
                 'status' => 'converted',
                 'converted_project_id' => $project->id,
@@ -209,14 +253,215 @@ class ProjectBudgetController extends Controller
 
     public function pdf(ProjectBudget $budget)
     {
+        $budget->load('items');
+        $mapped = $this->mapBudget($budget);
+        $lineItems = $this->pdfLineItems($budget, $mapped['budget_items']);
+        $grandTotal = (float) collect($lineItems)->sum('line_total');
+        if ($grandTotal <= 0) {
+            $grandTotal = (float) $budget->estimated_value;
+        }
+
+        $budgetNumber = $this->budgetNumber($budget);
+        $generatedAt = $budget->updated_at ?? $budget->created_at ?? now();
+
+        $themeResolver = app(PdfThemeResolver::class);
+
         $pdf = Pdf::loadView('pdf.project-budget', [
             'budget' => $budget,
-            'items' => collect($budget->cctv_items ?? []),
-            'generatedAt' => now(),
+            'lineItems' => $lineItems,
+            'grandTotal' => $grandTotal,
+            'budgetNumber' => $budgetNumber,
+            'brand' => $themeResolver->brand(),
+            'company' => $themeResolver->companyContact(),
+            'theme' => $themeResolver->theme(),
+            'generatedAt' => $generatedAt,
         ])->setPaper('a4');
 
-        $filename = 'budget-project-'.$budget->id.'.pdf';
+        return $pdf->download($budgetNumber.'.pdf');
+    }
 
-        return $pdf->download($filename);
+    private function budgetNumber(ProjectBudget $budget): string
+    {
+        $period = ($budget->created_at ?? now())->format('Ym');
+
+        return 'BDG-'.$period.'-'.str_pad((string) $budget->id, 3, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * @param  iterable<int, array<string, mixed>>  $items
+     * @return list<array{name: string, qty: float, uom: string, unit_price: float, line_total: float}>
+     */
+    private function pdfLineItems(ProjectBudget $budget, iterable $items): array
+    {
+        $rows = collect($items)
+            ->filter(fn ($item) => is_array($item) && trim((string) ($item['name'] ?? '')) !== '')
+            ->map(function (array $item): array {
+                $qty = (float) ($item['qty'] ?? 0);
+                $unitPrice = (float) ($item['unit_price'] ?? 0);
+                $lineTotal = (float) ($item['subtotal_price'] ?? ($qty * $unitPrice));
+
+                return [
+                    'name' => (string) $item['name'],
+                    'qty' => $qty,
+                    'uom' => (string) ($item['uom'] ?? 'unit'),
+                    'unit_price' => $unitPrice,
+                    'line_total' => $lineTotal,
+                ];
+            })
+            ->values();
+
+        if ($rows->isNotEmpty()) {
+            return $rows->all();
+        }
+
+        if ($budget->project_type !== 'cctv_installation' && (float) $budget->estimated_value > 0) {
+            return [[
+                'name' => $budget->description
+                    ? trim((string) $budget->description)
+                    : 'Estimasi project '.$budget->name,
+                'qty' => 1,
+                'uom' => 'paket',
+                'unit_price' => (float) $budget->estimated_value,
+                'line_total' => (float) $budget->estimated_value,
+            ]];
+        }
+
+        return [];
+    }
+
+    private function replaceBudgetItems(ProjectBudget $budget, array $items): void
+    {
+        $budget->items()->delete();
+
+        foreach ($items as $index => $item) {
+            $budget->items()->create([
+                'master_product_id' => $item['master_product_id'] ?? null,
+                'item_type' => $item['item_type'] ?? 'material',
+                'name' => $item['name'],
+                'uom' => $item['uom'] ?? null,
+                'qty' => $item['qty'],
+                'unit_cost' => $item['unit_cost'] ?? 0,
+                'unit_price' => $item['unit_price'],
+                'notes' => $item['notes'] ?? null,
+                'sort_order' => $index + 1,
+            ]);
+        }
+    }
+
+    private function syncProjectMaterialsFromBudget(ProjectBudget $budget, Project $project): void
+    {
+        $budgetItems = $budget->items()->with('product')->get();
+
+        if ($budgetItems->isEmpty()) {
+            $budgetItems = collect($budget->cctv_items ?? [])
+                ->map(function (array $item): ProjectBudgetItem {
+                    $budgetItem = new ProjectBudgetItem($item);
+                    $budgetItem->master_product_id = $item['master_product_id'] ?? null;
+
+                    return $budgetItem;
+                });
+        }
+
+        $budgetItems
+            ->filter(fn (ProjectBudgetItem $item): bool => (int) $item->master_product_id > 0 && (float) $item->qty > 0)
+            ->each(function (ProjectBudgetItem $item) use ($project): void {
+                $product = $item->relationLoaded('product')
+                    ? $item->product
+                    : MasterProduct::query()->find($item->master_product_id);
+
+                if (! $product || ! in_array($product->sales_channel, ['project', 'both'], true)) {
+                    return;
+                }
+
+                $warehouse = $this->warehouseForBudgetMaterial($product);
+                if (! $warehouse) {
+                    return;
+                }
+
+                $plannedQty = (float) $item->qty;
+                $reservedQty = 0.0;
+                $stock = null;
+
+                if ($product->isStockTracked()) {
+                    $stock = MasterProductWarehouseStock::query()
+                        ->lockForUpdate()
+                        ->firstOrCreate(
+                            [
+                                'master_product_id' => $product->id,
+                                'warehouse_id' => $warehouse->id,
+                            ],
+                            ['qty' => 0, 'reserved_qty' => 0],
+                        );
+
+                    $available = max((float) $stock->qty - (float) $stock->reserved_qty, 0);
+                    $reservedQty = min($plannedQty, $available);
+                }
+
+                $material = ProjectMaterial::query()->firstOrNew([
+                    'project_id' => $project->id,
+                    'master_product_id' => $product->id,
+                    'warehouse_id' => $warehouse->id,
+                ]);
+
+                $previousQty = (float) $material->planned_qty;
+                $newTotalQty = $previousQty + $plannedQty;
+                $material->planned_qty = $newTotalQty;
+                $material->reserved_qty = (float) $material->reserved_qty + $reservedQty;
+                $material->issued_qty = (float) ($material->issued_qty ?? 0);
+                $material->unit_cost = $newTotalQty > 0
+                    ? (($previousQty * (float) $material->unit_cost) + ($plannedQty * (float) $item->unit_cost)) / $newTotalQty
+                    : (float) $item->unit_cost;
+                $material->unit_price = $newTotalQty > 0
+                    ? (($previousQty * (float) $material->unit_price) + ($plannedQty * (float) $item->unit_price)) / $newTotalQty
+                    : (float) $item->unit_price;
+                $material->notes = trim(collect([$item->name, $item->notes])->filter()->implode(' - ')) ?: null;
+                $material->status = $product->isStockTracked()
+                    ? $this->projectMaterialStatus($material)
+                    : 'ready';
+                $material->save();
+
+                if ($stock && $reservedQty > 0) {
+                    $stock->increment('reserved_qty', $reservedQty);
+                }
+            });
+    }
+
+    private function warehouseForBudgetMaterial(MasterProduct $product): ?Warehouse
+    {
+        $stockWarehouseId = MasterProductWarehouseStock::query()
+            ->where('master_product_id', $product->id)
+            ->orderByRaw('(qty - reserved_qty) desc')
+            ->value('warehouse_id');
+
+        if ($stockWarehouseId) {
+            return Warehouse::query()->whereKey($stockWarehouseId)->where('is_active', true)->first();
+        }
+
+        return Warehouse::query()
+            ->where('is_active', true)
+            ->orderByRaw("case when code = 'WH-MAIN' then 0 else 1 end")
+            ->orderBy('name')
+            ->first();
+    }
+
+    private function projectMaterialStatus(ProjectMaterial $material): string
+    {
+        $plannedQty = (float) $material->planned_qty;
+        $reservedQty = (float) $material->reserved_qty;
+        $issuedQty = (float) $material->issued_qty;
+
+        if ($plannedQty > 0 && $issuedQty >= $plannedQty) {
+            return 'issued';
+        }
+
+        if ($plannedQty > 0 && $reservedQty >= $plannedQty) {
+            return 'ready';
+        }
+
+        if ($reservedQty > 0) {
+            return 'partial';
+        }
+
+        return 'planned';
     }
 }

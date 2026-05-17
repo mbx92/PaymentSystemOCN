@@ -117,7 +117,7 @@ const paidPayables = computed(() => (props.payables ?? []).filter((row) => Numbe
               Akses laporan pembayaran anggota untuk validasi pembagian tim dan proses approval internal.
             </p>
             <div class="mt-4">
-              <Link :href="route('reports.member-payments')" class="btn btn-primary btn-sm">Buka Pembayaran Anggota</Link>
+              <Link :href="route('erp.accounting.payments.member')" class="btn btn-primary btn-sm">Buka Pembayaran Anggota</Link>
             </div>
           </div>
         </div>

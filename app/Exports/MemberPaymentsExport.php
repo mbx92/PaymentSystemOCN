@@ -17,12 +17,14 @@ class MemberPaymentsExport implements FromCollection, WithHeadings, WithMapping,
         return TeamDistribution::with(['project', 'user'])
             ->when($this->filters['user_id'] ?? null, fn ($q) => $q->where('user_id', $this->filters['user_id']))
             ->when($this->filters['year'] ?? null, fn ($q) => $q->whereYear('created_at', $this->filters['year']))
+            ->when(($this->filters['status'] ?? null) === 'unpaid', fn ($q) => $q->whereNull('paid_at'))
+            ->when(($this->filters['status'] ?? null) === 'paid', fn ($q) => $q->whereNotNull('paid_at'))
             ->get();
     }
 
     public function headings(): array
     {
-        return ['Nama Anggota', 'Project', 'Status Project', 'Peran', 'Persentase (%)', 'Base Pay', 'Bonus', 'Total'];
+        return ['Nama Anggota', 'Project', 'Status Project', 'Peran', 'Persentase (%)', 'Base Pay', 'Bonus', 'Total', 'Status Bayar', 'Tgl Bayar'];
     }
 
     public function map($row): array
@@ -30,6 +32,8 @@ class MemberPaymentsExport implements FromCollection, WithHeadings, WithMapping,
         return [
             $row->user->name, $row->project->name, $row->project->status,
             $row->role_in_project, $row->percentage, $row->base_pay, $row->bonus, $row->total_pay,
+            $row->isPaid() ? 'Sudah dibayar' : 'Belum dibayar',
+            $row->paid_at?->format('Y-m-d') ?? '-',
         ];
     }
 

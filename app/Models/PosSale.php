@@ -11,6 +11,7 @@ class PosSale extends Model
     protected $fillable = [
         'number',
         'sales_channel',
+        'marketplace_order_code',
         'payment_method_id',
         'gross_total',
         'discount_total',

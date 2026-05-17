@@ -16,6 +16,8 @@ class TeamDistribution extends Model
         'base_pay',
         'bonus',
         'total_pay',
+        'cash_out_id',
+        'paid_at',
     ];
 
     protected $casts = [
@@ -23,6 +25,7 @@ class TeamDistribution extends Model
         'base_pay'   => 'decimal:2',
         'bonus'      => 'decimal:2',
         'total_pay'  => 'decimal:2',
+        'paid_at'    => 'datetime',
     ];
 
     public function project()
@@ -33,5 +36,15 @@ class TeamDistribution extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function cashOut()
+    {
+        return $this->belongsTo(CashOut::class);
+    }
+
+    public function isPaid(): bool
+    {
+        return $this->paid_at !== null && $this->cash_out_id !== null;
     }
 }

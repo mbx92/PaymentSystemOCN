@@ -86,11 +86,7 @@ const submitPo = () => {
                 <dd>{{ detail.daily_usage_est }}</dd>
               </div>
               <div>
-                <dt class="text-xs font-semibold uppercase text-base-content/50">Lead time</dt>
-                <dd>{{ detail.lead_time_days }} hari</dd>
-              </div>
-              <div>
-                <dt class="text-xs font-semibold uppercase text-base-content/50">Target stok (min + kebutuhan lead)</dt>
+                <dt class="text-xs font-semibold uppercase text-base-content/50">Target stok minimum</dt>
                 <dd class="font-semibold">{{ detail.target_stock }}</dd>
               </div>
               <div>

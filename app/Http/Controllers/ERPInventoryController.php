@@ -283,9 +283,7 @@ class ERPInventoryController extends Controller
 
         $reorderSuggestions = $products
             ->map(function (MasterProduct $item) {
-                $dailyUsage = $item->total_sold > 0 ? $item->total_sold / 30 : 0;
-                $leadDemand = (int) ceil($dailyUsage * max($item->lead_time_days, 1));
-                $targetStock = $item->min_stock + $leadDemand;
+                $targetStock = $item->min_stock;
                 $suggestedQty = max($targetStock - $item->stock, 0);
 
                 return [
@@ -294,7 +292,6 @@ class ERPInventoryController extends Controller
                     'name' => $item->name,
                     'stock' => $item->stock,
                     'min_stock' => $item->min_stock,
-                    'lead_time_days' => $item->lead_time_days,
                     'suggested_qty' => $suggestedQty,
                 ];
             })

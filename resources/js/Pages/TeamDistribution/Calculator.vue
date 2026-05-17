@@ -1,216 +1,307 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
-import { Link, useForm, router } from '@inertiajs/vue3';
-import { ref, computed, watch } from 'vue';
+import { Link, router, useForm } from '@inertiajs/vue3';
+import { computed, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
-import { ArrowLeftIcon, PlusIcon, TrashIcon, ExclamationTriangleIcon } from '@heroicons/vue/24/outline';
+import {
+    ArrowLeftIcon,
+    ExclamationTriangleIcon,
+    PlusIcon,
+    TrashIcon,
+} from '@heroicons/vue/24/outline';
 
 const props = defineProps({
-    projects: Array,
-    members: Array,
-    selectedProject: Object,
-    existingDistributions: Array,
+    projects: { type: Array, default: () => [] },
+    members: { type: Array, default: () => [] },
+    teamRoles: { type: Array, default: () => [] },
+    selectedProject: { type: Object, default: null },
+    existingDistributions: { type: Array, default: () => [] },
     selectedProjectId: { type: String, default: null },
 });
 
 const { format } = useCurrency();
 
-const selectedProjectId = ref(
-    props.selectedProjectId != null && props.selectedProjectId !== '' ? String(props.selectedProjectId) : '',
-);
+const selectedProjectId = ref(props.selectedProjectId ? String(props.selectedProjectId) : '');
+const saveForm = useForm({});
 
-watch(selectedProjectId, (val) => {
-    if (val) router.get(route('team-distribution.calculator'), { project_id: val }, { preserveState: false });
+const defaultRole = computed(() => props.teamRoles?.[0]?.name ?? 'developer');
+const netValue = computed(() => Number(props.selectedProject?.net_value ?? 0));
+
+const makeRow = (overrides = {}) => ({
+    user_id: '',
+    role_in_project: defaultRole.value,
+    percentage: 0,
+    base_pay: 0,
+    bonus: 0,
+    ...overrides,
 });
 
-// Form state
+const normalizeRow = (row = {}) => makeRow({
+    user_id: row.user_id ? Number(row.user_id) : '',
+    role_in_project: row.role_in_project || defaultRole.value,
+    percentage: Number(row.percentage ?? 0),
+    base_pay: Number(row.base_pay ?? 0),
+    bonus: Number(row.bonus ?? 0),
+});
+
 const rows = ref(
-    props.existingDistributions.length > 0
-        ? props.existingDistributions.map(d => ({ ...d }))
-        : [{ user_id: '', role_in_project: 'developer', percentage: 0, base_pay: 0, bonus: 0 }]
+    props.existingDistributions.length
+        ? props.existingDistributions.map(normalizeRow)
+        : [makeRow()],
 );
 
-const addRow = () => rows.value.push({ user_id: '', role_in_project: 'developer', percentage: 0, base_pay: 0, bonus: 0 });
-const removeRow = (i) => rows.value.splice(i, 1);
+watch(selectedProjectId, (value) => {
+    router.get(
+        route('team-distribution.calculator'),
+        value ? { project_id: value } : {},
+        { preserveState: false },
+    );
+});
 
-// Presets
-const applyPreset = () => {
-    if (!props.selectedProject) return;
-    const net = props.selectedProject.net_value;
-    rows.value = [
-        { user_id: '', role_in_project: 'lead',      percentage: 45,   base_pay: Math.round(net * 0.45), bonus: 0 },
-        { user_id: '', role_in_project: 'developer', percentage: 27.5, base_pay: Math.round(net * 0.275), bonus: 0 },
-        { user_id: '', role_in_project: 'developer', percentage: 27.5, base_pay: Math.round(net * 0.275), bonus: 0 },
-    ];
-};
-
-// Computed totals
-const totalPercentage = computed(() => rows.value.reduce((s, r) => s + Number(r.percentage), 0));
-const totalPay = computed(() => rows.value.reduce((s, r) => s + Number(r.base_pay) + Number(r.bonus), 0));
-
-const percentageValid = computed(() => Math.abs(totalPercentage.value - 100) < 0.01);
-const budgetValid = computed(() => !props.selectedProject || totalPay.value <= props.selectedProject.net_value);
-
-// Auto-calculate base_pay from percentage
-const autoCalc = (row) => {
-    if (props.selectedProject && row.percentage > 0) {
-        row.base_pay = Math.round(props.selectedProject.net_value * row.percentage / 100);
+const addRow = () => rows.value.push(makeRow());
+const removeRow = (index) => {
+    rows.value.splice(index, 1);
+    if (! rows.value.length) {
+        addRow();
     }
 };
 
-const saveForm = useForm({});
+const calculateBasePay = (row) => {
+    row.base_pay = Math.round(netValue.value * Number(row.percentage || 0) / 100);
+};
+
+const applyPreset = () => {
+    if (! props.selectedProject) return;
+
+    const roleNames = props.teamRoles.map((role) => role.name);
+    const leadRole = roleNames.includes('lead') ? 'lead' : defaultRole.value;
+    const developerRole = roleNames.includes('developer') ? 'developer' : defaultRole.value;
+
+    rows.value = [
+        makeRow({ role_in_project: leadRole, percentage: 45 }),
+        makeRow({ role_in_project: developerRole, percentage: 27.5 }),
+        makeRow({ role_in_project: developerRole, percentage: 27.5 }),
+    ];
+    rows.value.forEach(calculateBasePay);
+};
+
+const totalPercentage = computed(() => rows.value.reduce((sum, row) => sum + Number(row.percentage || 0), 0));
+const totalBasePay = computed(() => rows.value.reduce((sum, row) => sum + Number(row.base_pay || 0), 0));
+const totalBonus = computed(() => rows.value.reduce((sum, row) => sum + Number(row.bonus || 0), 0));
+const totalPay = computed(() => totalBasePay.value + totalBonus.value);
+const remainingBudget = computed(() => netValue.value - totalPay.value);
+
+const percentageValid = computed(() => Math.abs(totalPercentage.value - 100) < 0.01);
+const budgetValid = computed(() => ! props.selectedProject || totalPay.value <= netValue.value);
+const rowsValid = computed(() => rows.value.every((row) => row.user_id && row.role_in_project));
+const canSave = computed(() => (
+    props.selectedProject
+    && percentageValid.value
+    && budgetValid.value
+    && rowsValid.value
+    && ! saveForm.processing
+));
+
 const save = () => {
-    saveForm.transform(() => ({
-        project_id: selectedProjectId.value,
-        distributions: rows.value,
-    })).post(route('team-distribution.save'));
+    saveForm
+        .transform(() => ({
+            project_id: selectedProjectId.value,
+            distributions: rows.value.map((row) => ({
+                user_id: row.user_id,
+                role_in_project: row.role_in_project,
+                percentage: Number(row.percentage || 0),
+                base_pay: Number(row.base_pay || 0),
+                bonus: Number(row.bonus || 0),
+            })),
+        }))
+        .post(route('team-distribution.save'), {
+            preserveScroll: true,
+        });
 };
 </script>
 
 <template>
     <AppLayout>
-        <div class="space-y-5">
-            <div class="flex flex-wrap items-center justify-between gap-3">
-                <h1 class="text-2xl font-bold">Kalkulator Pembagian Tim</h1>
+        <div class="space-y-4">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Project Workspace</p>
+                    <h1 class="ocn-panel__title mt-1">Kalkulator Pembagian Tim</h1>
+                    <p class="ocn-panel__desc mt-1">Hitung dan simpan pembagian payout anggota berdasarkan nilai bersih project.</p>
+                </div>
                 <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.projects')">
                     <ArrowLeftIcon class="h-4 w-4" />
                     Back
                 </Link>
             </div>
 
-            <!-- Project Selector -->
             <div class="ocn-panel">
                 <div class="ocn-panel__head">
-                    <h2 class="ocn-panel__title">Pilih project</h2>
+                    <h2 class="ocn-panel__title">Project</h2>
+                    <p class="ocn-panel__desc">Pilih project berjalan atau selesai untuk memuat nilai bersih dan pembagian yang sudah tersimpan.</p>
                 </div>
                 <div class="card-body">
-                    <label class="label"><span class="label-text font-medium">Project aktif</span></label>
-                    <select v-model="selectedProjectId" class="select select-bordered max-w-md">
-                        <option value="">-- Pilih Project --</option>
-                        <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }} ({{ p.status }})</option>
+                    <select v-model="selectedProjectId" class="select select-bordered w-full max-w-xl">
+                        <option value="">Pilih project</option>
+                        <option v-for="project in projects" :key="project.id" :value="project.id">
+                            {{ project.name }} ({{ project.status }})
+                        </option>
                     </select>
                 </div>
             </div>
 
             <template v-if="selectedProject">
-                <!-- Summary -->
-                <div class="stats stats-vertical sm:stats-horizontal shadow w-full">
-                    <div class="stat">
-                        <div class="stat-title">Nilai Project</div>
-                        <div class="stat-value text-xl">{{ format(selectedProject.total_value) }}</div>
+                <div class="grid gap-3 md:grid-cols-4">
+                    <div class="ocn-panel">
+                        <div class="card-body py-4">
+                            <p class="text-xs font-semibold uppercase text-base-content/50">Nilai Project</p>
+                            <p class="mt-1 text-xl font-bold">{{ format(selectedProject.total_value) }}</p>
+                        </div>
                     </div>
-                    <div class="stat">
-                        <div class="stat-title">Komisi Referral</div>
-                        <div class="stat-value text-xl text-warning">{{ format(selectedProject.referral_total) }}</div>
+                    <div class="ocn-panel">
+                        <div class="card-body py-4">
+                            <p class="text-xs font-semibold uppercase text-base-content/50">Komisi Referral</p>
+                            <p class="mt-1 text-xl font-bold text-warning">{{ format(selectedProject.referral_total) }}</p>
+                        </div>
                     </div>
-                    <div class="stat">
-                        <div class="stat-title">Operasional</div>
-                        <div class="stat-value text-xl text-error">{{ format(selectedProject.operational_total) }}</div>
+                    <div class="ocn-panel">
+                        <div class="card-body py-4">
+                            <p class="text-xs font-semibold uppercase text-base-content/50">Operasional</p>
+                            <p class="mt-1 text-xl font-bold text-error">{{ format(selectedProject.operational_total) }}</p>
+                        </div>
                     </div>
-                    <div class="stat">
-                        <div class="stat-title">Nilai Bersih Tim</div>
-                        <div class="stat-value text-xl text-primary">{{ format(selectedProject.net_value) }}</div>
+                    <div class="ocn-panel border-primary/30 bg-primary/5">
+                        <div class="card-body py-4">
+                            <p class="text-xs font-semibold uppercase text-primary/70">Nilai Bersih Tim</p>
+                            <p class="mt-1 text-xl font-bold text-primary">{{ format(selectedProject.net_value) }}</p>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Warnings -->
-                <div v-if="!percentageValid" class="alert alert-warning">
-                    <ExclamationTriangleIcon class="w-5 h-5" />
-                    Total persentase = {{ totalPercentage.toFixed(1) }}% — harus tepat 100%
-                </div>
-                <div v-if="!budgetValid" class="alert alert-error">
-                    <ExclamationTriangleIcon class="w-5 h-5" />
-                    Total bayar {{ format(totalPay) }} melebihi nilai bersih {{ format(selectedProject.net_value) }}
+                <div v-if="!percentageValid || !budgetValid || !rowsValid || saveForm.errors.distributions" class="space-y-2">
+                    <div v-if="!percentageValid" class="alert alert-warning">
+                        <ExclamationTriangleIcon class="h-5 w-5" />
+                        <span>Total persentase saat ini {{ totalPercentage.toFixed(1) }}%. Total harus tepat 100%.</span>
+                    </div>
+                    <div v-if="!budgetValid" class="alert alert-error">
+                        <ExclamationTriangleIcon class="h-5 w-5" />
+                        <span>Total bayar {{ format(totalPay) }} melebihi nilai bersih {{ format(selectedProject.net_value) }}.</span>
+                    </div>
+                    <div v-if="!rowsValid" class="alert alert-info">
+                        <ExclamationTriangleIcon class="h-5 w-5" />
+                        <span>Setiap baris perlu anggota dan peran sebelum disimpan.</span>
+                    </div>
+                    <div v-if="saveForm.errors.distributions" class="alert alert-error">
+                        <ExclamationTriangleIcon class="h-5 w-5" />
+                        <span>{{ saveForm.errors.distributions }}</span>
+                    </div>
                 </div>
 
-                <!-- Distribution Table -->
                 <div class="ocn-panel">
-                    <div class="ocn-panel__head">
-                        <h2 class="ocn-panel__title">Pembagian anggota tim</h2>
+                    <div class="ocn-panel__head flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                            <h2 class="ocn-panel__title">Pembagian Anggota</h2>
+                            <p class="ocn-panel__desc">Nominal base pay bisa otomatis mengikuti persentase, lalu bonus ditambahkan terpisah.</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" class="btn btn-outline btn-sm" @click="applyPreset">Preset 1 Lead + 2 Dev</button>
+                            <button type="button" class="btn btn-primary btn-sm gap-1" @click="addRow">
+                                <PlusIcon class="h-4 w-4" />
+                                Tambah
+                            </button>
+                        </div>
                     </div>
-                    <div class="card-body">
-                        <div class="flex items-center justify-between mb-4">
-                            <p class="text-sm text-base-content/70">Atur persentase dan nominal per anggota.</p>
-                            <div class="flex gap-2">
-                                <button class="btn btn-outline btn-sm" @click="applyPreset">Preset 1 Lead + 2 Dev</button>
-                                <button class="btn btn-primary btn-sm gap-1" @click="addRow">
-                                    <PlusIcon class="w-4 h-4" /> Tambah Anggota
-                                </button>
+                    <div class="card-body space-y-4">
+                        <div class="overflow-x-auto">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th class="min-w-52">Anggota</th>
+                                        <th class="min-w-40">Peran</th>
+                                        <th class="w-28 text-right">%</th>
+                                        <th class="min-w-44 text-right">Base Pay</th>
+                                        <th class="min-w-44 text-right">Bonus</th>
+                                        <th class="min-w-36 text-right">Total</th>
+                                        <th class="w-12"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="(row, index) in rows" :key="index">
+                                        <td>
+                                            <select v-model="row.user_id" class="select select-bordered select-sm w-full">
+                                                <option value="">Pilih anggota</option>
+                                                <option v-for="member in members" :key="member.id" :value="member.id">
+                                                    {{ member.name }}
+                                                </option>
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <select v-model="row.role_in_project" class="select select-bordered select-sm w-full">
+                                                <option v-for="role in teamRoles" :key="role.id" :value="role.name">
+                                                    {{ role.name }}
+                                                </option>
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <input
+                                                v-model.number="row.percentage"
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                step="0.5"
+                                                class="input input-bordered input-sm w-full text-right"
+                                                @change="calculateBasePay(row)"
+                                            />
+                                        </td>
+                                        <td>
+                                            <CurrencyInput v-model="row.base_pay" />
+                                        </td>
+                                        <td>
+                                            <CurrencyInput v-model="row.bonus" />
+                                        </td>
+                                        <td class="text-right font-semibold text-primary">
+                                            {{ format(Number(row.base_pay || 0) + Number(row.bonus || 0)) }}
+                                        </td>
+                                        <td class="text-right">
+                                            <button type="button" class="btn btn-ghost btn-xs text-error" @click="removeRow(index)">
+                                                <TrashIcon class="h-4 w-4" />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="grid gap-3 border-t border-base-300 pt-4 md:grid-cols-4">
+                            <div>
+                                <p class="text-xs uppercase text-base-content/50">Total Persentase</p>
+                                <p :class="['mt-1 text-lg font-bold', percentageValid ? 'text-success' : 'text-error']">
+                                    {{ totalPercentage.toFixed(1) }}%
+                                </p>
+                            </div>
+                            <div>
+                                <p class="text-xs uppercase text-base-content/50">Base Pay</p>
+                                <p class="mt-1 text-lg font-bold">{{ format(totalBasePay) }}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs uppercase text-base-content/50">Bonus</p>
+                                <p class="mt-1 text-lg font-bold">{{ format(totalBonus) }}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs uppercase text-base-content/50">Sisa Nilai Bersih</p>
+                                <p :class="['mt-1 text-lg font-bold', remainingBudget >= 0 ? 'text-primary' : 'text-error']">
+                                    {{ format(remainingBudget) }}
+                                </p>
                             </div>
                         </div>
 
-                        <div class="space-y-4">
-                            <div v-for="(row, i) in rows" :key="i"
-                                class="grid grid-cols-1 sm:grid-cols-6 gap-3 p-4 border border-base-300 rounded-xl items-end"
-                            >
-                                <!-- Anggota -->
-                                <div class="sm:col-span-2">
-                                    <label class="label py-0"><span class="label-text text-xs">Anggota</span></label>
-                                    <select v-model="row.user_id" class="select select-bordered select-sm w-full">
-                                        <option value="">-- Pilih --</option>
-                                        <option v-for="m in members" :key="m.id" :value="m.id">{{ m.name }}</option>
-                                    </select>
-                                </div>
-                                <!-- Peran -->
-                                <div>
-                                    <label class="label py-0"><span class="label-text text-xs">Peran</span></label>
-                                    <select v-model="row.role_in_project" class="select select-bordered select-sm w-full">
-                                        <option value="lead">Lead</option>
-                                        <option value="developer">Developer</option>
-                                        <option value="designer">Designer</option>
-                                        <option value="qa">QA</option>
-                                    </select>
-                                </div>
-                                <!-- Persentase -->
-                                <div>
-                                    <label class="label py-0"><span class="label-text text-xs">% Bagi</span></label>
-                                    <input v-model.number="row.percentage" type="number" min="0" max="100" step="0.5"
-                                        class="input input-bordered input-sm w-full"
-                                        @change="autoCalc(row)"
-                                    />
-                                </div>
-                                <!-- Base Pay -->
-                                <div>
-                                    <label class="label py-0"><span class="label-text text-xs">Base Pay</span></label>
-                                    <input v-model.number="row.base_pay" type="number" min="0"
-                                        class="input input-bordered input-sm w-full" />
-                                </div>
-                                <!-- Bonus -->
-                                <div class="flex gap-2 items-end">
-                                    <div class="flex-1">
-                                        <label class="label py-0"><span class="label-text text-xs">Bonus</span></label>
-                                        <input v-model.number="row.bonus" type="number" min="0"
-                                            class="input input-bordered input-sm w-full" />
-                                    </div>
-                                    <button class="btn btn-ghost btn-sm text-error" @click="removeRow(i)">
-                                        <TrashIcon class="w-4 h-4" />
-                                    </button>
-                                </div>
+                        <div class="flex flex-col gap-3 border-t border-base-300 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <p class="text-sm font-semibold">Total bayar: {{ format(totalPay) }}</p>
+                                <p class="text-xs text-base-content/60">Saat disimpan, pembagian lama untuk project ini akan diganti dengan baris di tabel.</p>
                             </div>
-                        </div>
-
-                        <!-- Total Row -->
-                        <div class="border-t border-base-300 pt-4 mt-2 flex flex-wrap justify-between items-center gap-4">
-                            <div class="flex gap-6">
-                                <div>
-                                    <span class="text-sm text-base-content/60">Total %: </span>
-                                    <span :class="['font-bold', percentageValid ? 'text-success' : 'text-error']">
-                                        {{ totalPercentage.toFixed(1) }}%
-                                    </span>
-                                </div>
-                                <div>
-                                    <span class="text-sm text-base-content/60">Total Bayar: </span>
-                                    <span :class="['font-bold', budgetValid ? 'text-primary' : 'text-error']">
-                                        {{ format(totalPay) }}
-                                    </span>
-                                </div>
-                            </div>
-                            <button
-                                class="btn btn-primary"
-                                :disabled="!percentageValid || !budgetValid || saveForm.processing || rows.some(r => !r.user_id)"
-                                @click="save"
-                            >
+                            <button type="button" class="btn btn-primary" :disabled="!canSave" @click="save">
                                 <span v-if="saveForm.processing" class="loading loading-spinner loading-sm" />
                                 Simpan Pembagian
                             </button>

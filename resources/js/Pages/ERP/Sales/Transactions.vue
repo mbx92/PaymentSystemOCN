@@ -35,6 +35,13 @@ watch(filters, (val) => {
 const openTransaction = (trxId) => {
   router.visit(route('erp.sales.pos.transactions.show', trxId));
 };
+
+const channelBadgeClass = (channel) => ({
+  retail: 'badge-primary',
+  grosir: 'badge-secondary',
+  marketplace: 'badge-accent',
+  project: 'badge-info',
+}[channel] ?? 'badge-ghost');
 </script>
 
 <template>
@@ -66,7 +73,7 @@ const openTransaction = (trxId) => {
           <div class="grid grid-cols-1 gap-3 md:grid-cols-5">
             <div class="md:col-span-2">
               <label class="label"><span class="label-text text-xs uppercase tracking-wide">Search</span></label>
-              <input v-model="filters.q" type="text" class="input input-sm input-bordered w-full" placeholder="No transaksi / nama kasir" />
+              <input v-model="filters.q" type="text" class="input input-sm input-bordered w-full" placeholder="No transaksi / kode pesanan / nama kasir" />
             </div>
             <div>
               <label class="label"><span class="label-text text-xs uppercase tracking-wide">Status</span></label>
@@ -99,6 +106,7 @@ const openTransaction = (trxId) => {
               <thead>
                 <tr>
                   <th>No Transaksi</th>
+                  <th>Kode Pesanan</th>
                   <th>Channel</th>
                   <th>Waktu</th>
                   <th>Item</th>
@@ -116,7 +124,8 @@ const openTransaction = (trxId) => {
                   @click="openTransaction(trx.id)"
                 >
                   <td class="font-mono text-xs">{{ trx.number }}</td>
-                  <td><span class="badge badge-ghost badge-sm">{{ trx.sales_channel || '-' }}</span></td>
+                  <td class="font-mono text-xs">{{ trx.marketplace_order_code || '-' }}</td>
+                  <td><span class="badge badge-sm" :class="channelBadgeClass(trx.sales_channel_key)">{{ trx.sales_channel || '-' }}</span></td>
                   <td>{{ trx.sold_at || '-' }}</td>
                   <td>{{ trx.items_count }}</td>
                   <td class="font-semibold text-primary">{{ format(trx.grand_total) }}</td>
@@ -125,7 +134,7 @@ const openTransaction = (trxId) => {
                   <td @click.stop><StatusBadge :status="trx.status" /></td>
                 </tr>
                 <tr v-if="!(transactions?.data || []).length">
-                  <td colspan="8" class="py-10 text-center text-base-content/50">Belum ada transaksi POS.</td>
+                  <td colspan="9" class="py-10 text-center text-base-content/50">Belum ada transaksi POS.</td>
                 </tr>
               </tbody>
             </table>

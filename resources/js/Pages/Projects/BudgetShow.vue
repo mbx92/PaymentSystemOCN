@@ -4,7 +4,7 @@ import CurrencyInput from '@/Components/CurrencyInput.vue';
 import ProductPickerModal from '@/Components/ProductPickerModal.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
-import { computed, ref, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 
 const props = defineProps({
@@ -15,8 +15,17 @@ const { format } = useCurrency();
 
 function normalizeCctvItems(raw) {
     const list = Array.isArray(raw) && raw.length
-        ? raw.map((i) => ({ name: i.name ?? '', qty: i.qty ?? 1, unit_price: i.unit_price ?? 0 }))
-        : [{ name: '', qty: 1, unit_price: 0 }];
+        ? raw.map((i) => ({
+            master_product_id: i.master_product_id ?? null,
+            item_type: i.item_type ?? 'material',
+            name: i.name ?? '',
+            uom: i.uom ?? 'unit',
+            qty: i.qty ?? 1,
+            unit_cost: i.unit_cost ?? 0,
+            unit_price: i.unit_price ?? 0,
+            notes: i.notes ?? '',
+        }))
+        : [{ master_product_id: null, item_type: 'material', name: '', uom: 'unit', qty: 1, unit_cost: 0, unit_price: 0, notes: '' }];
     return list;
 }
 
@@ -47,6 +56,8 @@ watch(
 
 const isCctv = computed(() => budgetForm.project_type === 'cctv_installation');
 const totalCctvItems = computed(() => (budgetForm.cctv_items ?? []).reduce((s, r) => s + ((Number(r.qty) || 0) * (Number(r.unit_price) || 0)), 0));
+const totalCctvCost = computed(() => (budgetForm.cctv_items ?? []).reduce((s, r) => s + ((Number(r.qty) || 0) * (Number(r.unit_cost) || 0)), 0));
+const totalCctvMargin = computed(() => totalCctvItems.value - totalCctvCost.value);
 
 /** Estimasi tampilan: untuk CCTV aktif, ikuti total item secara live; jika belum ada subtotal, pakai nilai form/server. */
 const displayedEstimated = computed(() => {
@@ -63,16 +74,59 @@ const displayedEstimated = computed(() => {
 
 const canEditCctvItems = computed(() => props.budget.project_type === 'cctv_installation' && props.budget.status !== 'converted');
 const showProductPicker = ref(false);
+const productPicker = reactive({ lineIndex: null });
+const suppressProductPickerOpen = ref(false);
 
 const openEditModal = () => document.getElementById('modal-edit-budget')?.showModal();
-const addCctvItem = () => budgetForm.cctv_items.push({ name: '', qty: 1, unit_price: 0 });
+const addCctvItem = () => budgetForm.cctv_items.push({ master_product_id: null, item_type: 'material', name: '', uom: 'unit', qty: 1, unit_cost: 0, unit_price: 0, notes: '' });
+const productLabel = (item) => {
+    if (item.master_product_id && item.notes) return `${item.notes.replace(/^SKU:\s*/, '')} - ${item.name}`.trim();
+    return item.name ?? '';
+};
+const applyProductToItem = (item, product) => {
+    if (!item || !product) return;
+    item.master_product_id = product.id ?? null;
+    item.item_type = product.product_type === 'service' ? 'service' : 'material';
+    item.name = product.name ?? '';
+    item.uom = product.uom ?? 'unit';
+    item.unit_price = Number(product.selling_price ?? product.price ?? 0);
+    item.notes = product.sku ? `SKU: ${product.sku}` : '';
+};
+const openProductPickerForLine = (idx) => {
+    if (suppressProductPickerOpen.value) return;
+    productPicker.lineIndex = idx;
+    showProductPicker.value = true;
+};
 const addCctvItemFromProduct = (product) => {
-    budgetForm.cctv_items.push({
+    const row = {
+        master_product_id: product.id ?? null,
+        item_type: product.product_type === 'service' ? 'service' : 'material',
         name: product.name ?? '',
+        uom: product.uom ?? 'unit',
         qty: 1,
+        unit_cost: 0,
         unit_price: Number(product.selling_price ?? product.price ?? 0),
-    });
+        notes: product.sku ? `SKU: ${product.sku}` : '',
+    };
+    budgetForm.cctv_items.push(row);
+};
+const chooseProduct = (product) => {
+    suppressProductPickerOpen.value = true;
+    if (productPicker.lineIndex !== null) {
+        applyProductToItem(budgetForm.cctv_items[productPicker.lineIndex], product);
+        productPicker.lineIndex = null;
+    } else {
+        addCctvItemFromProduct(product);
+    }
     showProductPicker.value = false;
+    window.setTimeout(() => {
+        suppressProductPickerOpen.value = false;
+    }, 250);
+};
+const openAddProductPicker = () => {
+    if (suppressProductPickerOpen.value) return;
+    productPicker.lineIndex = null;
+    showProductPicker.value = true;
 };
 const removeCctvItem = (idx) => {
     if (budgetForm.cctv_items.length > 1) budgetForm.cctv_items.splice(idx, 1);
@@ -144,6 +198,8 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
                         <div class="font-semibold">{{ format(displayedEstimated) }}</div>
                         <p v-if="canEditCctvItems && totalCctvItems > 0" class="text-xs text-base-content/60 mt-0.5">Total dihitung otomatis dari item CCTV di bawah.</p>
                     </div>
+                    <div v-if="budget.project_type === 'cctv_installation'"><span class="text-base-content/60">Estimasi HPP</span><div>{{ format(budget.total_cost ?? totalCctvCost) }}</div></div>
+                    <div v-if="budget.project_type === 'cctv_installation'"><span class="text-base-content/60">Estimasi Margin</span><div class="font-semibold text-success">{{ format(budget.total_margin ?? totalCctvMargin) }}</div></div>
                     <div><span class="text-base-content/60">Dibuat</span><div>{{ budget.created_at || '-' }}</div></div>
                     <div class="md:col-span-2"><span class="text-base-content/60">Deskripsi</span><div>{{ budget.description || '-' }}</div></div>
                 </div>
@@ -153,7 +209,7 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
                 <div class="ocn-panel__head flex flex-wrap items-center justify-between gap-2">
                     <h2 class="ocn-panel__title">Item CCTV</h2>
                     <div v-if="canEditCctvItems" class="flex flex-wrap items-center gap-2 shrink-0">
-                        <button type="button" class="btn btn-ghost btn-sm gap-1" @click="showProductPicker = true">Pilih dari master</button>
+                        <button type="button" class="btn btn-ghost btn-sm gap-1" @click="openAddProductPicker">Pilih dari master</button>
                         <button type="button" class="btn btn-outline btn-sm gap-1" @click="addCctvItem">+ Tambah item</button>
                         <button type="button" class="btn btn-primary btn-sm" :disabled="budgetForm.processing" @click="saveCctvItemsFromDetail">Simpan item &amp; estimasi</button>
                     </div>
@@ -165,28 +221,50 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
                             <table class="table table-sm">
                                 <thead>
                                     <tr>
-                                        <th>Produk</th>
+                                        <th>Tipe</th>
+                                        <th>Item</th>
+                                        <th>UOM</th>
                                         <th>Qty</th>
-                                        <th>Harga Satuan</th>
+                                        <th>HPP</th>
+                                        <th>Harga Jual</th>
                                         <th>Subtotal</th>
+                                        <th>Margin</th>
                                         <th class="w-16"></th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <tr v-for="(item, idx) in budgetForm.cctv_items" :key="idx">
                                         <td>
-                                            <input v-model="item.name" type="text" class="input input-bordered input-sm w-full min-w-[8rem]" placeholder="Nama produk" />
+                                            <select v-model="item.item_type" class="select select-bordered select-sm w-28">
+                                                <option value="material">Material</option>
+                                                <option value="product">Produk</option>
+                                                <option value="service">Jasa</option>
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <input
+                                                :value="productLabel(item)"
+                                                type="text"
+                                                class="input input-bordered input-sm w-full min-w-[12rem] cursor-pointer"
+                                                placeholder="Klik untuk pilih produk"
+                                                readonly
+                                                @click="openProductPickerForLine(idx)"
+                                                @focus="openProductPickerForLine(idx)"
+                                            />
                                             <p v-if="budgetForm.errors[`cctv_items.${idx}.name`]" class="text-error text-xs mt-0.5">{{ budgetForm.errors[`cctv_items.${idx}.name`] }}</p>
                                         </td>
+                                        <td><input v-model="item.uom" type="text" class="input input-bordered input-sm w-24" /></td>
                                         <td>
                                             <input v-model.number="item.qty" type="number" min="0.01" step="0.01" class="input input-bordered input-sm w-24" />
                                             <p v-if="budgetForm.errors[`cctv_items.${idx}.qty`]" class="text-error text-xs mt-0.5">{{ budgetForm.errors[`cctv_items.${idx}.qty`] }}</p>
                                         </td>
+                                        <td><input v-model.number="item.unit_cost" type="number" min="0" step="1000" class="input input-bordered input-sm w-32" /></td>
                                         <td>
                                             <input v-model.number="item.unit_price" type="number" min="0" step="1000" class="input input-bordered input-sm w-36" />
                                             <p v-if="budgetForm.errors[`cctv_items.${idx}.unit_price`]" class="text-error text-xs mt-0.5">{{ budgetForm.errors[`cctv_items.${idx}.unit_price`] }}</p>
                                         </td>
                                         <td class="font-medium">{{ format((Number(item.qty) || 0) * (Number(item.unit_price) || 0)) }}</td>
+                                        <td class="font-medium text-success">{{ format(((Number(item.qty) || 0) * (Number(item.unit_price) || 0)) - ((Number(item.qty) || 0) * (Number(item.unit_cost) || 0))) }}</td>
                                         <td>
                                             <button type="button" class="btn btn-ghost btn-xs text-error" :disabled="budgetForm.cctv_items.length <= 1" @click="removeCctvItem(idx)">Hapus</button>
                                         </td>
@@ -194,20 +272,27 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
                                 </tbody>
                             </table>
                         </div>
-                        <p class="text-xs text-base-content/60 px-4 pb-4">Subtotal per baris menjumlah ke estimasi budget secara otomatis setelah disimpan.</p>
+                        <div class="flex flex-wrap gap-4 px-4 pb-4 text-sm">
+                            <span>Total jual: <strong>{{ format(totalCctvItems) }}</strong></span>
+                            <span>Total HPP: <strong>{{ format(totalCctvCost) }}</strong></span>
+                            <span>Margin: <strong class="text-success">{{ format(totalCctvMargin) }}</strong></span>
+                        </div>
                     </template>
 
                     <template v-else>
                         <table class="table table-sm">
-                            <thead><tr><th>Produk</th><th>Qty</th><th>Harga Satuan</th><th>Subtotal</th></tr></thead>
+                            <thead><tr><th>Tipe</th><th>Item</th><th>Qty</th><th>HPP</th><th>Harga Jual</th><th>Subtotal</th><th>Margin</th></tr></thead>
                             <tbody>
                                 <tr v-for="(item, idx) in budget.cctv_items" :key="idx">
+                                    <td>{{ item.item_type ?? 'material' }}</td>
                                     <td>{{ item.name }}</td>
-                                    <td>{{ item.qty }}</td>
+                                    <td>{{ item.qty }} {{ item.uom ?? 'unit' }}</td>
+                                    <td>{{ format(item.unit_cost ?? 0) }}</td>
                                     <td>{{ format(item.unit_price) }}</td>
                                     <td class="font-medium">{{ format((Number(item.qty) || 0) * (Number(item.unit_price) || 0)) }}</td>
+                                    <td class="font-medium text-success">{{ format(item.margin_amount ?? (((Number(item.qty) || 0) * (Number(item.unit_price) || 0)) - ((Number(item.qty) || 0) * (Number(item.unit_cost) || 0)))) }}</td>
                                 </tr>
-                                <tr v-if="!budget.cctv_items?.length"><td colspan="4" class="text-center py-4 text-base-content/50">Tidak ada item.</td></tr>
+                                <tr v-if="!budget.cctv_items?.length"><td colspan="7" class="text-center py-4 text-base-content/50">Tidak ada item.</td></tr>
                             </tbody>
                         </table>
                     </template>
@@ -237,9 +322,9 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
                     <div class="md:col-span-2"><label class="label"><span class="label-text">Deskripsi</span></label><textarea v-model="budgetForm.description" class="textarea textarea-bordered w-full" rows="3" /></div>
                 </div>
                 <div v-if="isCctv" class="mt-4 space-y-2">
-                    <div class="flex items-center justify-between"><h3 class="font-semibold">Item CCTV</h3><div class="flex items-center gap-2"><button class="btn btn-ghost btn-xs" type="button" @click="showProductPicker = true">Pilih dari master</button><button class="btn btn-outline btn-xs" type="button" @click="addCctvItem">+ Tambah item</button></div></div>
+                    <div class="flex items-center justify-between"><h3 class="font-semibold">Item CCTV</h3><div class="flex items-center gap-2"><button class="btn btn-ghost btn-xs" type="button" @click="openAddProductPicker">Pilih dari master</button><button class="btn btn-outline btn-xs" type="button" @click="addCctvItem">+ Tambah item</button></div></div>
                     <p v-if="budgetForm.errors.cctv_items" class="text-error text-xs">{{ budgetForm.errors.cctv_items }}</p>
-                    <div class="overflow-x-auto rounded-xl border border-base-300"><table class="table table-sm"><thead><tr><th>Produk</th><th>Qty</th><th>Harga Satuan</th><th>Subtotal</th><th></th></tr></thead><tbody><tr v-for="(item, idx) in budgetForm.cctv_items" :key="idx"><td><input v-model="item.name" type="text" class="input input-bordered input-sm w-full" placeholder="Nama produk" /></td><td><input v-model.number="item.qty" type="number" min="0.01" step="0.01" class="input input-bordered input-sm w-24" /></td><td><input v-model.number="item.unit_price" type="number" min="0" step="1000" class="input input-bordered input-sm w-36" /></td><td>{{ format((Number(item.qty) || 0) * (Number(item.unit_price) || 0)) }}</td><td><button type="button" class="btn btn-ghost btn-xs text-error" @click="removeCctvItem(idx)">Hapus</button></td></tr></tbody></table></div>
+                    <div class="overflow-x-auto rounded-xl border border-base-300"><table class="table table-sm"><thead><tr><th>Produk</th><th>Qty</th><th>Harga Satuan</th><th>Subtotal</th><th></th></tr></thead><tbody><tr v-for="(item, idx) in budgetForm.cctv_items" :key="idx"><td><input :value="productLabel(item)" type="text" class="input input-bordered input-sm w-full cursor-pointer" placeholder="Klik untuk pilih produk" readonly @click="openProductPickerForLine(idx)" @focus="openProductPickerForLine(idx)" /></td><td><input v-model.number="item.qty" type="number" min="0.01" step="0.01" class="input input-bordered input-sm w-24" /></td><td><input v-model.number="item.unit_price" type="number" min="0" step="1000" class="input input-bordered input-sm w-36" /></td><td>{{ format((Number(item.qty) || 0) * (Number(item.unit_price) || 0)) }}</td><td><button type="button" class="btn btn-ghost btn-xs text-error" @click="removeCctvItem(idx)">Hapus</button></td></tr></tbody></table></div>
                 </div>
                 <div class="modal-action">
                     <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
@@ -255,11 +340,10 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
             subtitle="Pilih produk dari master product agar item budget selaras dengan modul lain."
             search-label="Cari SKU / Barcode / Nama Product"
             search-placeholder="Contoh: CAM-4MP-OUTDOOR"
-            confirm-text="Tambah ke Item CCTV"
+            confirm-text="Pilih Produk"
             radio-name="selected_product_budget"
-            @close="showProductPicker = false"
-            @confirm="addCctvItemFromProduct"
+            @close="showProductPicker = false; productPicker.lineIndex = null"
+            @confirm="chooseProduct"
         />
     </AppLayout>
 </template>
-

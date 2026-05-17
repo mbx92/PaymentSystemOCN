@@ -15,6 +15,8 @@ class ProjectMaterial extends Model
         'planned_qty',
         'reserved_qty',
         'issued_qty',
+        'unit_cost',
+        'unit_price',
         'status',
         'notes',
     ];
@@ -25,6 +27,8 @@ class ProjectMaterial extends Model
             'planned_qty' => 'decimal:2',
             'reserved_qty' => 'decimal:2',
             'issued_qty' => 'decimal:2',
+            'unit_cost' => 'decimal:2',
+            'unit_price' => 'decimal:2',
         ];
     }
 
@@ -43,4 +47,3 @@ class ProjectMaterial extends Model
         return $this->belongsTo(Warehouse::class);
     }
 }
-

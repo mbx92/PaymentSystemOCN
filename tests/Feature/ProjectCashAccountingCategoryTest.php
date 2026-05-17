@@ -3,8 +3,7 @@
 namespace Tests\Feature;
 
 use App\ERP\Accounting\Models\Account;
-use App\Models\CashIn;
-use App\Models\CashOut;
+use App\Models\CashCategory;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -16,14 +15,13 @@ class ProjectCashAccountingCategoryTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_material_client_fund_posts_to_liability_account(): void
+    public function test_material_client_fund_cash_in_category_is_retired_globally(): void
     {
         $this->disableErpMiddleware();
 
         $user = User::factory()->create();
         $project = $this->createProject();
         $cashAccount = $this->cashAccount();
-        $liabilityAccount = Account::query()->where('code', '2006')->firstOrFail();
 
         $response = $this
             ->actingAs($user)
@@ -37,49 +35,27 @@ class ProjectCashAccountingCategoryTest extends TestCase
             ]);
 
         $response
-            ->assertSessionHasNoErrors()
+            ->assertSessionHasErrors('category')
             ->assertRedirect();
 
-        $cashIn = CashIn::query()->where('project_id', $project->id)->firstOrFail();
+        $this->assertDatabaseMissing('cash_in', [
+            'project_id' => $project->id,
+            'category' => 'dana_material_client',
+        ]);
 
-        $this->assertDatabaseHas('journal_entries', [
-            'id' => $cashIn->journal_entry_id,
-            'source_module' => 'cash_in',
-            'source_reference' => $cashIn->id,
-        ]);
-        $this->assertDatabaseHas('journal_lines', [
-            'journal_entry_id' => $cashIn->journal_entry_id,
-            'account_id' => $cashAccount->id,
-            'debit' => '750000.00',
-            'credit' => '0.00',
-        ]);
-        $this->assertDatabaseHas('journal_lines', [
-            'journal_entry_id' => $cashIn->journal_entry_id,
-            'account_id' => $liabilityAccount->id,
-            'debit' => '0.00',
-            'credit' => '750000.00',
-        ]);
+        $this->assertFalse((bool) CashCategory::query()
+            ->where('domain', 'cash_in')
+            ->where('key', 'dana_material_client')
+            ->value('is_active'));
     }
 
-    public function test_material_client_fund_usage_posts_against_liability_and_updates_project_summary(): void
+    public function test_material_client_fund_usage_category_is_retired_and_project_summary_is_removed(): void
     {
         $this->disableErpMiddleware();
 
         $user = User::factory()->create();
         $project = $this->createProject();
         $cashAccount = $this->cashAccount();
-        $liabilityAccount = Account::query()->where('code', '2006')->firstOrFail();
-
-        $this
-            ->actingAs($user)
-            ->post(route('cash-in.store'), [
-                'project_id' => $project->id,
-                'cash_account_id' => $cashAccount->id,
-                'category' => 'dana_material_client',
-                'amount' => 1000000,
-                'date' => '2026-05-13',
-            ])
-            ->assertSessionHasNoErrors();
 
         $response = $this
             ->actingAs($user)
@@ -93,27 +69,12 @@ class ProjectCashAccountingCategoryTest extends TestCase
             ]);
 
         $response
-            ->assertSessionHasNoErrors()
+            ->assertSessionHasErrors('category')
             ->assertRedirect();
 
-        $cashOut = CashOut::query()->where('project_id', $project->id)->firstOrFail();
-
-        $this->assertDatabaseHas('journal_entries', [
-            'id' => $cashOut->journal_entry_id,
-            'source_module' => 'cash_out',
-            'source_reference' => $cashOut->id,
-        ]);
-        $this->assertDatabaseHas('journal_lines', [
-            'journal_entry_id' => $cashOut->journal_entry_id,
-            'account_id' => $liabilityAccount->id,
-            'debit' => '350000.00',
-            'credit' => '0.00',
-        ]);
-        $this->assertDatabaseHas('journal_lines', [
-            'journal_entry_id' => $cashOut->journal_entry_id,
-            'account_id' => $cashAccount->id,
-            'debit' => '0.00',
-            'credit' => '350000.00',
+        $this->assertDatabaseMissing('cash_out', [
+            'project_id' => $project->id,
+            'category' => 'pemakaian_dana_material_client',
         ]);
 
         $this
@@ -122,12 +83,18 @@ class ProjectCashAccountingCategoryTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Projects/Show')
-                ->where('project.summary.material_fund_received', 1000000)
-                ->where('project.summary.material_fund_used', 350000)
-                ->where('project.summary.material_fund_balance', 650000)
-                ->where('cash_category_options.labels.dana_material_client', 'Dana Material dari Client')
-                ->where('cash_category_options.labels.pemakaian_dana_material_client', 'Pemakaian Dana Material Client')
+                ->missing('project.summary.material_fund_received')
+                ->missing('project.summary.material_fund_used')
+                ->missing('project.summary.material_fund_balance')
+                ->missing('cash_category_options.in')
+                ->missing('cash_category_options.labels.dana_material_client')
+                ->missing('cash_category_options.labels.pemakaian_dana_material_client')
                 ->etc());
+
+        $this->assertFalse((bool) CashCategory::query()
+            ->where('domain', 'cash_out')
+            ->where('key', 'pemakaian_dana_material_client')
+            ->value('is_active'));
     }
 
     private function disableErpMiddleware(): void

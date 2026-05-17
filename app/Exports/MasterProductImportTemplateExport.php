@@ -24,7 +24,6 @@ class MasterProductImportTemplateExport implements FromArray, WithHeadings
             'min_stock',
             'low_stock_alert_enabled',
             'total_sold',
-            'lead_time_days',
             'warehouse_code',
         ];
     }
@@ -46,7 +45,6 @@ class MasterProductImportTemplateExport implements FromArray, WithHeadings
             '10',
             '1',
             '0',
-            '7',
             'TOKO',
         ]];
     }

@@ -54,7 +54,7 @@ watch(filters, (val) => {
 }, { deep: true });
 
 const typeBadgeClass = (type) => (type === 'in' ? 'badge-success' : 'badge-error');
-const typeLabel = (type) => (type === 'in' ? 'In' : 'Out');
+const typeLabel = (type) => (type === 'in' ? 'Masuk' : 'Keluar');
 const sourceLabel = (source) => {
   const found = (props.sourceOptions ?? []).find((opt) => opt.value === source);
   return found?.label ?? (source || 'Manual / Umum');
@@ -110,10 +110,10 @@ const openAddModal = () => {
   }
 
   form.reset();
-  form.type = 'in';
+  form.type = 'out';
   form.cash_account_id = props.cashAccounts?.[0]?.id ?? '';
   form.payment_method_id = '';
-  form.category = defaultInCategory.value;
+  form.category = defaultOutCategory.value;
   form.amount = 0;
   form.date = new Date().toISOString().slice(0, 10);
   form.recipient_name = '';
@@ -211,12 +211,12 @@ const confirmDestroyEntry = () => {
           <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Accounting Workspace</p>
-              <h1 class="ocn-panel__title mt-1">Cashflow</h1>
-              <p class="ocn-panel__desc mt-1">Kas masuk dan kas keluar dalam satu tabel interaktif.</p>
+              <h1 class="ocn-panel__title mt-1">Cashflow Accounting</h1>
+              <p class="ocn-panel__desc mt-1">Ringkasan arus kas dari invoice/termin, POS, pembayaran supplier, pembayaran anggota, dan expenses.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
               <div class="flex items-center gap-2">
-            <button v-if="canMutate" class="btn btn-primary btn-sm" @click="openAddModal">+ Input Transaksi</button>
+            <button v-if="canMutate" class="btn btn-primary btn-sm" @click="openAddModal">+ Input Manual Accounting</button>
             <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.accounting')">
             <ArrowLeftIcon class="h-4 w-4" />
             Back
@@ -229,13 +229,13 @@ const confirmDestroyEntry = () => {
 
       <div class="grid gap-3 md:grid-cols-3">
         <div class="ocn-panel">
-          <div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Total kas masuk</h2></div>
+          <div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Total masuk</h2></div>
           <div class="card-body py-4">
             <p class="text-xl font-bold text-success">{{ format(totals.cash_in || 0) }}</p>
           </div>
         </div>
         <div class="ocn-panel">
-          <div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Total kas keluar</h2></div>
+          <div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Total keluar / expenses</h2></div>
           <div class="card-body py-4">
             <p class="text-xl font-bold text-error">{{ format(totals.cash_out || 0) }}</p>
           </div>
@@ -283,7 +283,7 @@ const confirmDestroyEntry = () => {
 
       <div class="ocn-panel">
         <div class="ocn-panel__head flex items-center justify-between gap-2">
-          <h2 class="ocn-panel__title">Daftar cashflow</h2>
+          <h2 class="ocn-panel__title">Daftar cashflow accounting</h2>
           <span class="text-xs text-base-content/60">{{ entries.length }} transaksi</span>
         </div>
         <div class="overflow-x-auto">
@@ -293,7 +293,8 @@ const confirmDestroyEntry = () => {
                 <th class="w-10 text-center">#</th>
                 <th>Tanggal</th>
                 <th>Jenis</th>
-                <th>Sumber</th>
+                <th>Peruntukan</th>
+                <th>Sumber Dana</th>
                 <th>Project</th>
                 <th>Kategori</th>
                 <th class="text-right">Jumlah</th>
@@ -324,6 +325,10 @@ const confirmDestroyEntry = () => {
                     {{ entry.type === 'in' ? entry.payment_method_name : entry.recipient_name }}
                   </div>
                 </td>
+                <td>
+                  <div class="font-medium">{{ entry.cash_account_name || '-' }}</div>
+                  <div v-if="entry.payment_method_name" class="mt-0.5 text-xs text-base-content/40">{{ entry.payment_method_name }}</div>
+                </td>
                 <td class="font-medium">{{ entry.project_name }}</td>
                 <td><span class="badge badge-ghost">{{ categoryLabelMap[entry.category] ?? entry.category }}</span></td>
                 <td class="text-right tabular-nums whitespace-nowrap">
@@ -338,12 +343,12 @@ const confirmDestroyEntry = () => {
                 </td>
               </tr>
               <tr v-if="!entries.length">
-                <td colspan="9" class="py-16 text-center">
+                <td colspan="10" class="py-16 text-center">
                   <svg class="mx-auto h-12 w-12 text-base-content/20" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z" />
                   </svg>
                   <p class="mt-3 text-sm font-medium text-base-content/50">Belum ada transaksi</p>
-                  <p class="mt-1 text-xs text-base-content/40">Transaksi cashflow akan muncul di sini setelah Anda menambahkan data.</p>
+                  <p class="mt-1 text-xs text-base-content/40">Transaksi muncul dari invoice, POS, supplier payment, expenses, atau input manual accounting.</p>
                 </td>
               </tr>
             </tbody>
@@ -354,13 +359,13 @@ const confirmDestroyEntry = () => {
 
     <dialog id="modal-cashflow-entry" class="modal">
       <div class="modal-box max-w-xl">
-        <h3 class="font-bold text-lg">Input Transaksi Cashflow</h3>
+        <h3 class="font-bold text-lg">Input Manual Accounting</h3>
         <div class="mt-4 space-y-3">
           <div>
             <label class="label"><span class="label-text">Jenis Transaksi</span></label>
             <select v-model="form.type" class="select select-bordered w-full">
-              <option value="in">Kas Masuk</option>
-              <option value="out">Kas Keluar</option>
+              <option value="out">Keluar / Expense</option>
+              <option value="in">Masuk Manual</option>
             </select>
           </div>
           <div>
@@ -412,11 +417,11 @@ const confirmDestroyEntry = () => {
 
     <dialog id="modal-cashflow-detail" class="modal">
       <div class="modal-box max-w-2xl">
-        <h3 class="font-bold text-lg">Detail Transaksi Cashflow</h3>
+        <h3 class="font-bold text-lg">Detail Cashflow Accounting</h3>
         <div v-if="selectedEntry" class="mt-4 grid grid-cols-2 gap-3 text-sm">
           <div class="text-base-content/60">Tanggal</div><div>{{ selectedEntry.date }}</div>
           <div class="text-base-content/60">Jenis</div><div>{{ typeLabel(selectedEntry.type) }}</div>
-          <div class="text-base-content/60">Sumber</div><div>{{ selectedEntry.source_name || '-' }}</div>
+          <div class="text-base-content/60">Peruntukan</div><div>{{ selectedEntry.source_name || '-' }}</div>
           <div class="text-base-content/60">Referensi</div><div class="font-mono text-xs">{{ selectedEntry.reference_no || '-' }}</div>
           <div class="text-base-content/60">Project</div><div>{{ selectedEntry.project_name }}</div>
           <div class="text-base-content/60">Kategori</div><div>{{ categoryLabelMap[selectedEntry.category] ?? selectedEntry.category }}</div>
@@ -447,13 +452,13 @@ const confirmDestroyEntry = () => {
 
     <dialog id="modal-cashflow-edit" class="modal">
       <div class="modal-box max-w-xl">
-        <h3 class="font-bold text-lg">Edit Transaksi Cashflow</h3>
+        <h3 class="font-bold text-lg">Edit Cashflow Accounting</h3>
         <div class="mt-4 space-y-3">
           <div>
             <label class="label"><span class="label-text">Jenis Transaksi</span></label>
             <select v-model="editForm.type" class="select select-bordered w-full" disabled>
-              <option value="in">Kas Masuk</option>
-              <option value="out">Kas Keluar</option>
+              <option value="in">Masuk Manual</option>
+              <option value="out">Keluar / Expense</option>
             </select>
           </div>
           <div>

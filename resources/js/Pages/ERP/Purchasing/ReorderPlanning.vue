@@ -163,7 +163,7 @@ const canSubmitPlan = computed(
             <div>
               <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Purchasing Workspace</p>
               <h1 class="ocn-panel__title mt-1">Perencanaan Reorder</h1>
-              <p class="ocn-panel__desc mt-1">Klik baris untuk detail angka reorder, master produk, dan alur PO. Saran dari min stock, lead time, penjualan 30 hari, dan kekurangan material project (termasuk barang jadi / finished_goods dan material project).</p>
+              <p class="ocn-panel__desc mt-1">Klik baris untuk detail angka reorder, master produk, dan alur PO. Saran dari minimum stock, kekurangan material project, dan PO outstanding.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
               <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.purchasing')">
@@ -204,7 +204,7 @@ const canSubmitPlan = computed(
           <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 class="ocn-panel__title">Saran reorder</h2>
-              <p class="ocn-panel__desc">Produk di bawah minimum, masih kurang untuk project (material project atau finished_goods), atau mendekati lead time.</p>
+              <p class="ocn-panel__desc">Produk di bawah minimum atau masih kurang untuk project (material project atau finished_goods).</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
               <button type="button" class="btn btn-outline btn-xs" :disabled="!(reorderSuggestions?.length)" @click="toggleSelectAll">
@@ -232,7 +232,6 @@ const canSubmitPlan = computed(
                 <th>Produk</th>
                 <th>Stok</th>
                 <th>Min</th>
-                <th>Lead (hari)</th>
                 <th>Kurang Project</th>
                 <th>On Order</th>
                 <th>Saran Qty</th>
@@ -261,7 +260,6 @@ const canSubmitPlan = computed(
                 <td class="font-medium">{{ row.name }}</td>
                 <td>{{ row.stock }}</td>
                 <td>{{ row.min_stock }}</td>
-                <td>{{ row.lead_time_days }}</td>
                 <td>{{ row.project_shortage_qty }}</td>
                 <td>{{ row.on_order_qty }}</td>
                 <td @click.stop>

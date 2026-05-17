@@ -34,7 +34,6 @@ class CoaSeeder extends Seeder
             ['code' => '2003', 'name' => 'Hutang Gaji', 'type' => 'liability', 'normal_balance' => 'credit'],
             ['code' => '2004', 'name' => 'Hutang Bank', 'type' => 'liability', 'normal_balance' => 'credit'],
             ['code' => '2005', 'name' => 'Pendapatan Diterima Dimuka', 'type' => 'liability', 'normal_balance' => 'credit'],
-            ['code' => '2006', 'name' => 'Dana Titipan Material Client', 'type' => 'liability', 'normal_balance' => 'credit'],
             ['code' => '2090', 'name' => 'Hutang Biaya Channel POS (estimasi)', 'type' => 'liability', 'normal_balance' => 'credit'],
 
             // Equity (3xxx)
@@ -79,7 +78,6 @@ class CoaSeeder extends Seeder
             // Cash-in
             ['domain' => 'cash_in', 'key' => 'pendapatan_project', 'label' => 'Pendapatan Project', 'sort_order' => 10],
             ['domain' => 'cash_in', 'key' => 'uang_muka_project', 'label' => 'Uang Muka Project', 'sort_order' => 12],
-            ['domain' => 'cash_in', 'key' => 'dana_material_client', 'label' => 'Dana Material dari Client', 'sort_order' => 14],
             ['domain' => 'cash_in', 'key' => 'pendapatan_pos', 'label' => 'Pendapatan Penjualan POS', 'sort_order' => 20],
             ['domain' => 'cash_in', 'key' => 'pendapatan_jasa', 'label' => 'Pendapatan Jasa', 'sort_order' => 30],
             ['domain' => 'cash_in', 'key' => 'piutang_masuk', 'label' => 'Penerimaan Piutang', 'sort_order' => 40],
@@ -91,7 +89,6 @@ class CoaSeeder extends Seeder
             ['domain' => 'cash_out', 'key' => 'operasional', 'label' => 'Biaya Operasional', 'sort_order' => 10],
             ['domain' => 'cash_out', 'key' => 'gaji_karyawan', 'label' => 'Gaji Karyawan', 'sort_order' => 20],
             ['domain' => 'cash_out', 'key' => 'pembelian_material_project', 'label' => 'Pembelian Material Project', 'sort_order' => 25],
-            ['domain' => 'cash_out', 'key' => 'pemakaian_dana_material_client', 'label' => 'Pemakaian Dana Material Client', 'sort_order' => 26],
             ['domain' => 'cash_out', 'key' => 'pembelian_bahan', 'label' => 'Pembelian Bahan / Barang', 'sort_order' => 30],
             ['domain' => 'cash_out', 'key' => 'sewa_tempat', 'label' => 'Sewa Tempat', 'sort_order' => 40],
             ['domain' => 'cash_out', 'key' => 'listrik_air', 'label' => 'Listrik & Air', 'sort_order' => 50],
@@ -114,7 +111,6 @@ class CoaSeeder extends Seeder
             // Cash-in → Account
             ['domain' => 'cash_in', 'category' => 'pendapatan_project', 'account_code' => '4003'],
             ['domain' => 'cash_in', 'category' => 'uang_muka_project', 'account_code' => '2005'],
-            ['domain' => 'cash_in', 'category' => 'dana_material_client', 'account_code' => '2006'],
             ['domain' => 'cash_in', 'category' => 'pendapatan_pos', 'account_code' => '4002'],
             ['domain' => 'cash_in', 'category' => 'pendapatan_jasa', 'account_code' => '4001'],
             ['domain' => 'cash_in', 'category' => 'piutang_masuk', 'account_code' => '1101'],
@@ -126,7 +122,6 @@ class CoaSeeder extends Seeder
             ['domain' => 'cash_out', 'category' => 'operasional', 'account_code' => '5001'],
             ['domain' => 'cash_out', 'category' => 'gaji_karyawan', 'account_code' => '5002'],
             ['domain' => 'cash_out', 'category' => 'pembelian_material_project', 'account_code' => '5009'],
-            ['domain' => 'cash_out', 'category' => 'pemakaian_dana_material_client', 'account_code' => '2006'],
             ['domain' => 'cash_out', 'category' => 'pembelian_bahan', 'account_code' => '5009'],
             ['domain' => 'cash_out', 'category' => 'sewa_tempat', 'account_code' => '5003'],
             ['domain' => 'cash_out', 'category' => 'listrik_air', 'account_code' => '5004'],

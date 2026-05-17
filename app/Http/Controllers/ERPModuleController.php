@@ -14,9 +14,10 @@ class ERPModuleController extends Controller
             ['title' => 'CoA / Chart Of Account', 'description' => 'Daftar akun chart of accounts untuk semua posting akuntansi.', 'route' => 'erp.accounting.coa', 'icon' => 'book-open'],
             ['title' => 'Pengaturan COA', 'description' => 'Atur mapping akun untuk posting otomatis POS, invoice project, dan kategori cashflow.', 'route' => 'erp.accounting.coa-settings', 'icon' => 'cog-6-tooth'],
             ['title' => 'Utilitas Accounting', 'description' => 'Pindahkan transaksi jurnal accounting dari satu usaha ke usaha lain.', 'route' => 'erp.accounting.utilities', 'icon' => 'wrench'],
-            ['title' => 'Cashflow', 'description' => 'Submenu kas masuk dan kas keluar dalam satu tempat.', 'route' => 'erp.accounting.cashflow', 'icon' => 'arrows-right-left'],
-            ['title' => 'Operational', 'description' => 'Pencatatan biaya operasional umum (non-project) atau per project.', 'route' => 'erp.accounting.operational', 'icon' => 'arrow-up-circle'],
-            ['title' => 'Kategori Pengeluaran', 'description' => 'Mapping lama kategori kas keluar ke akun CoA.', 'route' => 'erp.accounting.expense-categories', 'icon' => 'book-open'],
+            ['title' => 'Expenses Tim / Project', 'description' => 'Input biaya tim, operasional, referral, dan pengeluaran project. Pemasukan project tetap dari invoice/termin.', 'route' => 'cash-out.index', 'icon' => 'arrow-up-circle'],
+            ['title' => 'Cashflow Accounting', 'description' => 'Ringkasan arus kas dari invoice, POS, supplier payment, dan expenses.', 'route' => 'erp.accounting.cashflow', 'icon' => 'arrows-right-left'],
+            ['title' => 'Operational', 'description' => 'View cepat untuk biaya operasional umum atau per project.', 'route' => 'erp.accounting.operational', 'icon' => 'arrow-up-circle'],
+            ['title' => 'Kategori Pengeluaran', 'description' => 'Mapping kategori expenses ke akun CoA.', 'route' => 'erp.accounting.expense-categories', 'icon' => 'book-open'],
             ['title' => 'Saldo Awal', 'description' => 'Input jurnal pembuka awal periode langsung ke General Ledger.', 'route' => 'erp.accounting.opening-balance', 'icon' => 'scale'],
             ['title' => 'Pembayaran', 'description' => 'Pusat proses pembayaran project dan tim.', 'route' => 'erp.accounting.payments', 'icon' => 'credit-card'],
             ['title' => 'Rekonsiliasi Kas', 'description' => 'Rekap mutasi kas/bank harian dan mingguan per sumber dana.', 'route' => 'erp.accounting.reconciliation', 'icon' => 'calendar-days'],
@@ -45,7 +46,7 @@ class ERPModuleController extends Controller
             ['title' => 'Manajemen Supplier', 'description' => 'Kelola data supplier dan performa lead time.', 'route' => 'erp.purchasing.suppliers', 'icon' => 'truck'],
             ['title' => 'Purchase Order', 'description' => 'Buat dan monitor PO pembelian barang.', 'route' => 'erp.purchasing.purchase-orders', 'icon' => 'clipboard-list'],
             ['title' => 'Penerimaan Barang', 'description' => 'Catat penerimaan barang dari supplier (GRN).', 'route' => 'erp.purchasing.goods-receipts', 'icon' => 'inbox-arrow-down'],
-            ['title' => 'Perencanaan Reorder', 'description' => 'Saran reorder dari min stock, lead time, penjualan, kekurangan project (material & finished goods), dan PO outstanding.', 'route' => 'erp.purchasing.reorder-planning', 'icon' => 'sparkles'],
+            ['title' => 'Perencanaan Reorder', 'description' => 'Saran reorder dari minimum stock, kekurangan project (material & finished goods), dan PO outstanding.', 'route' => 'erp.purchasing.reorder-planning', 'icon' => 'sparkles'],
         ]);
     }
 
@@ -71,7 +72,7 @@ class ERPModuleController extends Controller
             ['title' => 'Daftar Project', 'description' => 'Kelola proyek, status, dan termin pembayaran.', 'route' => 'projects.index', 'icon' => 'git-branch'],
             ['title' => 'Role Tim Project', 'description' => 'Master role global untuk assign tim project.', 'route' => 'erp.projects.team-roles.index', 'icon' => 'identification'],
             ['title' => 'Pembagian Tim', 'description' => 'Atur komposisi dan distribusi pembagian tim.', 'route' => 'team-distribution.calculator', 'icon' => 'users'],
-            ['title' => 'Pembayaran Anggota', 'description' => 'Lihat pembayaran anggota per project.', 'route' => 'reports.member-payments', 'icon' => 'user-circle'],
+            ['title' => 'Pembayaran Anggota', 'description' => 'Bayar distribusi tim dan pantau status pelunasan.', 'route' => 'erp.accounting.payments.member', 'icon' => 'user-circle'],
         ]);
     }
 

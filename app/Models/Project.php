@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\ERP\CRM\Models\CrmCustomer;
 use App\ERP\Shared\Concerns\Auditable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -16,6 +17,7 @@ class Project extends Model
         'name',
         'client_name',
         'client_contact',
+        'crm_customer_id',
         'project_type',
         'total_value',
         'status',
@@ -45,6 +47,11 @@ class Project extends Model
     public function payments()
     {
         return $this->hasMany(ProjectPayment::class)->orderBy('term_number');
+    }
+
+    public function crmCustomer()
+    {
+        return $this->belongsTo(CrmCustomer::class, 'crm_customer_id');
     }
 
     public function cashIns()

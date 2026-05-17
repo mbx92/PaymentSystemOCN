@@ -123,19 +123,11 @@ class MasterProductsImport implements ToCollection, WithHeadingRow
             $minStock = max(0, $this->toInt($data['min_stock'] ?? 0));
             $lowStockAlertEnabled = $this->toBool($data['low_stock_alert_enabled'] ?? true);
             $totalSold = max(0, $this->toInt($data['total_sold'] ?? 0));
-            $leadTime = $this->toInt($data['lead_time_days'] ?? 7);
-            if ($leadTime < 1) {
-                $leadTime = 7;
-            }
-            if ($leadTime > 365) {
-                $leadTime = 365;
-            }
             if ($productType === MasterProduct::PRODUCT_TYPE_SERVICE) {
                 $stock = 0;
                 $minStock = 0;
                 $lowStockAlertEnabled = false;
                 $totalSold = 0;
-                $leadTime = 1;
             }
 
             $warehouseCode = isset($data['warehouse_code']) ? strtoupper(trim((string) $data['warehouse_code'])) : '';
@@ -179,7 +171,6 @@ class MasterProductsImport implements ToCollection, WithHeadingRow
                 'min_stock' => $minStock,
                 'low_stock_alert_enabled' => $lowStockAlertEnabled,
                 'total_sold' => $totalSold,
-                'lead_time_days' => $leadTime,
                 'barcode' => $barcode,
             ];
 

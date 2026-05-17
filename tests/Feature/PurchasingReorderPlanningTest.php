@@ -195,7 +195,6 @@ class PurchasingReorderPlanningTest extends TestCase
             'stock' => 0,
             'min_stock' => 0,
             'total_sold' => 0,
-            'lead_time_days' => 1,
             'selling_price' => 250000,
         ]);
         $vendor = Vendor::query()->create([
@@ -245,7 +244,6 @@ class PurchasingReorderPlanningTest extends TestCase
             'stock' => 500,
             'min_stock' => 30,
             'total_sold' => 0,
-            'lead_time_days' => 7,
             'selling_price' => 10000,
         ]);
         MasterProductWarehouseStock::query()->create([
@@ -297,7 +295,6 @@ class PurchasingReorderPlanningTest extends TestCase
             'stock' => 0,
             'min_stock' => 10,
             'total_sold' => 0,
-            'lead_time_days' => 7,
             'selling_price' => 25000,
         ], $overrides));
     }

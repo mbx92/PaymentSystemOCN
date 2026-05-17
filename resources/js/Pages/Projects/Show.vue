@@ -44,6 +44,8 @@ const materialForm = useForm({
     master_product_id: '',
     warehouse_id: '',
     planned_qty: 1,
+    unit_cost: 0,
+    unit_price: 0,
     notes: '',
 });
 
@@ -109,6 +111,8 @@ const selectMaterialProduct = (product) => {
     materialForm.master_product_id = product.id;
     materialForm.warehouse_id = materialWarehouseFilter.value;
     materialForm.planned_qty = 1;
+    materialForm.unit_cost = 0;
+    materialForm.unit_price = Number(product.selling_price) || 0;
 };
 
 const selectedMaterialProduct = computed(() =>
@@ -146,7 +150,10 @@ const submitMaterial = () => {
     materialForm.post(route('projects.materials.store', props.project.id), {
         preserveScroll: true,
         onSuccess: () => {
-            materialForm.reset('master_product_id', 'warehouse_id', 'planned_qty', 'notes');
+            materialForm.reset('master_product_id', 'warehouse_id', 'planned_qty', 'unit_cost', 'unit_price', 'notes');
+            materialForm.planned_qty = 1;
+            materialForm.unit_cost = 0;
+            materialForm.unit_price = 0;
             materialSearch.value = '';
             document.getElementById('modal-add-material')?.close();
         },
@@ -160,7 +167,14 @@ const confirmDeleteMaterial = (id) => {
 
 const deleteMaterial = () => {
     if (!deletingMaterialId.value) return;
-    router.delete(route('projects.materials.destroy', { project: props.project.id, material: deletingMaterialId.value }));
+    router.delete(route('projects.materials.destroy', { project: props.project.id, material: deletingMaterialId.value }), {
+        preserveScroll: true,
+        preserveState: true,
+        onFinish: () => {
+            activeTab.value = 'materials';
+            deletingMaterialId.value = null;
+        },
+    });
 };
 
 const createLegalFolder = () => {
@@ -283,6 +297,30 @@ const taskCardClass = (status) => {
 };
 
 const canShowKanban = computed(() => props.project?.project_type === 'system_website_development');
+const isCctvProject = computed(() => props.project?.project_type === 'cctv_installation');
+const materialSummary = computed(() => {
+    const materials = props.project?.materials ?? [];
+
+    return {
+        itemCount: materials.length,
+        plannedQty: materials.reduce((sum, item) => sum + (Number(item.planned_qty) || 0), 0),
+        readyQty: materials.reduce((sum, item) => sum + (Number(item.reserved_qty) || 0), 0),
+    };
+});
+const cctvBudgetSummary = computed(() => props.project?.budget_summary ?? {});
+const cctvProjectValue = computed(() => {
+    const summaryPrice = Number(cctvBudgetSummary.value.total_price) || 0;
+    if (summaryPrice > 0) return summaryPrice;
+
+    return Number(props.project?.total_value) || 0;
+});
+const cctvEstimatedCost = computed(() => Number(cctvBudgetSummary.value.total_cost) || 0);
+const cctvEstimatedMargin = computed(() => {
+    const budgetMargin = Number(cctvBudgetSummary.value.total_margin);
+    if (budgetMargin || cctvProjectValue.value > 0 || cctvEstimatedCost.value > 0) return budgetMargin;
+
+    return Number(props.project?.summary?.profit) || 0;
+});
 const draggingTaskId = ref(null);
 const dropColumnKey = ref(null);
 
@@ -354,21 +392,12 @@ const ganttPhases = computed(() => {
     });
 });
 
-// Cash forms
+// Expense forms
 const defaultCashAccountId = computed(() => props.cash_accounts?.[0]?.id ?? '');
-const cashInCategories = computed(() => props.cash_category_options?.in ?? []);
 const cashOutCategories = computed(() => props.cash_category_options?.out ?? []);
 const cashCategoryLabels = computed(() => props.cash_category_options?.labels ?? {});
 const categoryLabel = (value) => cashCategoryLabels.value?.[value] ?? value;
 
-const cashInForm = useForm({
-    project_id: props.project.id,
-    cash_account_id: defaultCashAccountId.value,
-    category: 'pendapatan_project',
-    amount: 0,
-    date: new Date().toISOString().slice(0, 10),
-    note: '',
-});
 const cashOutForm = useForm({
     project_id: props.project.id,
     cash_account_id: defaultCashAccountId.value,
@@ -379,14 +408,11 @@ const cashOutForm = useForm({
     recipient_name: '',
 });
 
-const submitCashIn = () => cashInForm.post(route('cash-in.store'), { onSuccess: () => { cashInForm.reset('amount', 'note'); document.getElementById('modal-cash-in').close(); } });
 const submitCashOut = () => cashOutForm.post(route('cash-out.store'), { onSuccess: () => { cashOutForm.reset('amount', 'note', 'recipient_name'); document.getElementById('modal-cash-out').close(); } });
 
-const allCashEntries = computed(() => {
-    const ins = (props.project?.cash_ins ?? []).map((c) => ({ ...c, type: 'in' }));
-    const outs = (props.project?.cash_outs ?? []).map((c) => ({ ...c, type: 'out' }));
-    return [...ins, ...outs].sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''));
-});
+const expenseEntries = computed(() => (props.project?.cash_outs ?? [])
+    .map((c) => ({ ...c, type: 'out' }))
+    .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? '')));
 
 const canMoveToBerjalan = computed(() => props.project?.status === 'negosiasi');
 const canMoveToSelesai = computed(() => props.project?.status === 'berjalan');
@@ -465,7 +491,41 @@ const deleteProject = () => {
       </div>
 
             <!-- Ringkasan keuangan (panel kontras, bukan stats/base-100 halaman) -->
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div v-if="isCctvProject" class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                <article
+                    class="rounded-2xl border border-slate-700/40 bg-gradient-to-br from-slate-800 to-slate-950 p-5 text-white shadow-xl ring-1 ring-black/20"
+                >
+                    <p class="text-xs font-semibold uppercase tracking-wide text-white/55">Nilai Project CCTV</p>
+                    <p class="mt-3 text-xl font-bold tabular-nums tracking-tight sm:text-2xl">{{ format(cctvProjectValue) }}</p>
+                </article>
+                <article
+                    class="rounded-2xl border border-cyan-900/50 bg-gradient-to-br from-cyan-900 to-slate-950 p-5 text-white shadow-xl ring-1 ring-cyan-950/60"
+                >
+                    <p class="text-xs font-semibold uppercase tracking-wide text-cyan-100/70">Material / BOM</p>
+                    <p class="mt-3 text-2xl font-bold tabular-nums tracking-tight">{{ materialSummary.itemCount }}</p>
+                    <p class="mt-1 text-xs text-cyan-100/70">{{ materialSummary.readyQty }} / {{ materialSummary.plannedQty }} qty ready</p>
+                </article>
+                <article
+                    class="rounded-2xl border border-rose-900/50 bg-gradient-to-br from-rose-900 to-slate-950 p-5 text-white shadow-xl ring-1 ring-rose-950/60"
+                >
+                    <p class="text-xs font-semibold uppercase tracking-wide text-rose-100/70">Estimasi HPP</p>
+                    <p class="mt-3 text-xl font-bold tabular-nums tracking-tight sm:text-2xl">{{ format(cctvEstimatedCost) }}</p>
+                </article>
+                <article
+                    class="rounded-2xl border border-emerald-900/50 bg-gradient-to-br from-emerald-900 to-slate-950 p-5 text-white shadow-xl ring-1 ring-emerald-950/60"
+                >
+                    <p class="text-xs font-semibold uppercase tracking-wide text-emerald-100/70">Estimasi Margin</p>
+                    <p class="mt-3 text-xl font-bold tabular-nums tracking-tight sm:text-2xl">{{ format(cctvEstimatedMargin) }}</p>
+                </article>
+                <article
+                    class="rounded-2xl border border-indigo-800/50 bg-gradient-to-br from-indigo-800 to-violet-950 p-5 text-white shadow-xl ring-1 ring-indigo-950/50"
+                >
+                    <p class="text-xs font-semibold uppercase tracking-wide text-indigo-100/70">Expenses Project</p>
+                    <p class="mt-3 text-xl font-bold tabular-nums tracking-tight sm:text-2xl">{{ format(project.summary.total_cash_out) }}</p>
+                </article>
+            </div>
+
+            <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <article
                     class="rounded-2xl border border-slate-700/40 bg-gradient-to-br from-slate-800 to-slate-950 p-5 text-white shadow-xl ring-1 ring-black/20"
                 >
@@ -475,7 +535,7 @@ const deleteProject = () => {
                 <article
                     class="rounded-2xl border border-emerald-900/50 bg-gradient-to-br from-emerald-900 to-emerald-950 p-5 text-white shadow-xl ring-1 ring-emerald-950/60"
                 >
-                    <p class="text-xs font-semibold uppercase tracking-wide text-emerald-100/70">Kas masuk</p>
+                    <p class="text-xs font-semibold uppercase tracking-wide text-emerald-100/70">Pembayaran diterima</p>
                     <p class="mt-3 text-xl font-bold tabular-nums tracking-tight text-emerald-50 sm:text-2xl">
                         {{ format(project.summary.total_cash_in) }}
                     </p>
@@ -483,7 +543,7 @@ const deleteProject = () => {
                 <article
                     class="rounded-2xl border border-rose-900/50 bg-gradient-to-br from-rose-900 to-rose-950 p-5 text-white shadow-xl ring-1 ring-rose-950/60"
                 >
-                    <p class="text-xs font-semibold uppercase tracking-wide text-rose-100/70">Kas keluar</p>
+                    <p class="text-xs font-semibold uppercase tracking-wide text-rose-100/70">Expenses project</p>
                     <p class="mt-3 text-xl font-bold tabular-nums tracking-tight text-rose-50 sm:text-2xl">
                         {{ format(project.summary.total_cash_out) }}
                     </p>
@@ -514,7 +574,7 @@ const deleteProject = () => {
             <div class="tabs tabs-boxed bg-base-100">
                 <button :class="['tab', activeTab === 'info' ? 'tab-active' : '']" @click="activeTab = 'info'">Info & Termin</button>
                 <button :class="['tab', activeTab === 'materials' ? 'tab-active' : '']" @click="activeTab = 'materials'">Material / BOM</button>
-                <button :class="['tab', activeTab === 'kas' ? 'tab-active' : '']" @click="activeTab = 'kas'">Kas Masuk / Keluar</button>
+                <button :class="['tab', activeTab === 'kas' ? 'tab-active' : '']" @click="activeTab = 'kas'">Expenses</button>
                 <button :class="['tab', activeTab === 'tim' ? 'tab-active' : '']" @click="activeTab = 'tim'">Tim & Referral</button>
                 <button :class="['tab', activeTab === 'docs' ? 'tab-active' : '']" @click="activeTab = 'docs'">Dokumen & Invoice</button>
                 <button v-if="canShowKanban" :class="['tab', activeTab === 'kanban' ? 'tab-active' : '']" @click="activeTab = 'kanban'">Kanban Task</button>
@@ -597,62 +657,45 @@ const deleteProject = () => {
                     </div>
                     <div class="overflow-x-auto">
                         <table class="table table-sm">
-                            <thead><tr><th>SKU</th><th>Produk</th><th>Warehouse</th><th>Planned</th><th>Reserved</th><th>Issued</th><th>Status</th><th></th></tr></thead>
+                            <thead><tr><th>SKU</th><th>Produk</th><th>Warehouse</th><th>Planned</th><th class="text-right">HPP</th><th class="text-right">Harga Jual</th><th>Reserved</th><th>Issued</th><th>Status</th><th></th></tr></thead>
                             <tbody>
                                 <tr v-for="m in project.materials" :key="m.id">
                                     <td class="font-mono text-xs">{{ m.sku }}</td>
                                     <td>{{ m.product }}</td>
                                     <td>{{ m.warehouse }}</td>
                                     <td>{{ m.planned_qty }} {{ m.uom }}</td>
+                                    <td class="text-right tabular-nums">{{ format(m.subtotal_cost) }}</td>
+                                    <td class="text-right tabular-nums font-semibold">{{ format(m.subtotal_price) }}</td>
                                     <td>{{ m.reserved_qty }} {{ m.uom }}</td>
                                     <td>{{ m.issued_qty }} {{ m.uom }}</td>
                                     <td><span class="badge badge-sm" :class="materialStatusClass(m.status)">{{ materialStatusLabel(m.status) }}</span></td>
                                     <td class="text-right"><button class="btn btn-ghost btn-xs text-error" @click="confirmDeleteMaterial(m.id)">Hapus</button></td>
                                 </tr>
-                                <tr v-if="!project.materials.length"><td colspan="8" class="text-center py-6 text-base-content/50">Belum ada material project.</td></tr>
+                                <tr v-if="!project.materials.length"><td colspan="10" class="text-center py-6 text-base-content/50">Belum ada material project.</td></tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
             </div>
 
-            <!-- Tab: Kas -->
+            <!-- Tab: Expenses -->
             <div v-if="activeTab === 'kas'" class="space-y-4">
                 <div class="flex gap-2">
-                    <button class="btn btn-success btn-sm" onclick="document.getElementById('modal-cash-in').showModal()">+ Kas Masuk</button>
-                    <button class="btn btn-error btn-sm" onclick="document.getElementById('modal-cash-out').showModal()">+ Kas Keluar</button>
+                    <button class="btn btn-error btn-sm" onclick="document.getElementById('modal-cash-out').showModal()">+ Input Expense</button>
+                    <Link v-if="project.invoice?.show_url" class="btn btn-outline btn-sm" :href="project.invoice.show_url">
+                        Lihat invoice & pembayaran
+                    </Link>
                 </div>
-                <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
-                    <div class="stats shadow border border-base-300 bg-base-100">
-                        <div class="stat">
-                            <div class="stat-title">Dana Material Client</div>
-                            <div class="stat-value text-base">{{ format(project.summary.material_fund_received || 0) }}</div>
-                        </div>
-                    </div>
-                    <div class="stats shadow border border-base-300 bg-base-100">
-                        <div class="stat">
-                            <div class="stat-title">Terpakai Material</div>
-                            <div class="stat-value text-base">{{ format(project.summary.material_fund_used || 0) }}</div>
-                        </div>
-                    </div>
-                    <div class="stats shadow border border-base-300 bg-base-100">
-                        <div class="stat">
-                            <div class="stat-title">Sisa Dana Material</div>
-                            <div class="stat-value text-base">{{ format(project.summary.material_fund_balance || 0) }}</div>
-                        </div>
-                    </div>
-                </div>
-
                 <div class="ocn-panel">
                     <div class="ocn-panel__head">
-                        <h2 class="ocn-panel__title">Riwayat kas</h2>
+                        <h2 class="ocn-panel__title">Riwayat expenses project</h2>
+                        <p class="ocn-panel__desc">Pemasukan project dicatat dari termin/invoice. Halaman ini hanya untuk biaya tim dan pengeluaran project.</p>
                     </div>
                     <div class="overflow-x-auto">
                         <table class="table table-sm">
                             <thead>
                                 <tr>
                                     <th>Tanggal</th>
-                                    <th>Jenis</th>
                                     <th>Kategori</th>
                                     <th class="text-right">Jumlah</th>
                                     <th>Penerima / Oleh</th>
@@ -661,28 +704,20 @@ const deleteProject = () => {
                             </thead>
                             <tbody>
                                 <tr
-                                    v-for="c in allCashEntries"
-                                    :key="`${c.type}-${c.id}`"
-                                    :class="c.type === 'in' ? 'border-l-4 border-l-success' : 'border-l-4 border-l-error'"
+                                    v-for="c in expenseEntries"
+                                    :key="c.id"
+                                    class="border-l-4 border-l-error"
                                 >
                                     <td>{{ c.date }}</td>
-                                    <td>
-                                        <span
-                                            class="badge badge-sm font-semibold"
-                                            :class="c.type === 'in' ? 'badge-success text-success-content' : 'badge-error text-error-content'"
-                                        >
-                                            {{ c.type === 'in' ? 'Kas Masuk' : 'Kas Keluar' }}
-                                        </span>
-                                    </td>
                                     <td><span class="badge badge-sm badge-ghost">{{ categoryLabel(c.category) }}</span></td>
-                                    <td class="text-right font-semibold tabular-nums" :class="c.type === 'in' ? 'text-success' : 'text-error'">
-                                        {{ c.type === 'in' ? '+' : '-' }}{{ format(c.amount) }}
+                                    <td class="text-right font-semibold tabular-nums text-error">
+                                        -{{ format(c.amount) }}
                                     </td>
                                     <td class="text-sm text-base-content/70">{{ c.recipient_name ?? c.creator_name ?? '-' }}</td>
                                     <td class="text-sm text-base-content/70">{{ c.note ?? '-' }}</td>
                                 </tr>
-                                <tr v-if="allCashEntries.length === 0">
-                                    <td colspan="6" class="text-center py-6 text-base-content/50">Belum ada transaksi kas</td>
+                                <tr v-if="expenseEntries.length === 0">
+                                    <td colspan="5" class="text-center py-6 text-base-content/50">Belum ada expense project</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1014,48 +1049,10 @@ const deleteProject = () => {
             </div>
         </dialog>
 
-        <!-- Modal: Cash In -->
-        <dialog id="modal-cash-in" class="modal">
-            <div class="modal-box">
-                <h3 class="font-bold text-lg">Tambah Kas Masuk</h3>
-                <div class="space-y-3 mt-4">
-                    <div>
-                        <label class="label"><span class="label-text">Kategori</span></label>
-                        <select v-model="cashInForm.category" class="select select-bordered w-full">
-                            <option v-for="category in cashInCategories" :key="category.value" :value="category.value">{{ category.label }}</option>
-                        </select>
-                        <p v-if="cashInForm.errors.category" class="text-error text-xs mt-1">{{ cashInForm.errors.category }}</p>
-                    </div>
-                    <div>
-                        <label class="label"><span class="label-text">Akun Kas / Bank</span></label>
-                        <select v-model="cashInForm.cash_account_id" class="select select-bordered w-full">
-                            <option value="">Pilih akun kas/bank</option>
-                            <option v-for="account in cash_accounts" :key="account.id" :value="account.id">{{ account.code }} - {{ account.name }}</option>
-                        </select>
-                        <p v-if="cashInForm.errors.cash_account_id" class="text-error text-xs mt-1">{{ cashInForm.errors.cash_account_id }}</p>
-                    </div>
-                    <CurrencyInput v-model="cashInForm.amount" label="Jumlah" :required="true" :error="cashInForm.errors.amount" />
-                    <div>
-                        <label class="label"><span class="label-text">Tanggal</span></label>
-                        <input v-model="cashInForm.date" type="date" class="input input-bordered w-full" />
-                        <p v-if="cashInForm.errors.date" class="text-error text-xs mt-1">{{ cashInForm.errors.date }}</p>
-                    </div>
-                    <div>
-                        <label class="label"><span class="label-text">Keterangan</span></label>
-                        <input v-model="cashInForm.note" type="text" class="input input-bordered w-full" />
-                    </div>
-                </div>
-                <div class="modal-action">
-                    <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
-                    <button class="btn btn-success" :disabled="cashInForm.processing" @click="submitCashIn">Simpan</button>
-                </div>
-            </div>
-        </dialog>
-
-        <!-- Modal: Cash Out -->
+        <!-- Modal: Expense -->
         <dialog id="modal-cash-out" class="modal">
             <div class="modal-box">
-                <h3 class="font-bold text-lg">Tambah Kas Keluar</h3>
+                <h3 class="font-bold text-lg">Input Expense Project</h3>
                 <div class="space-y-3 mt-4">
                     <div>
                         <label class="label"><span class="label-text">Kategori</span></label>
@@ -1065,7 +1062,7 @@ const deleteProject = () => {
                         <p v-if="cashOutForm.errors.category" class="text-error text-xs mt-1">{{ cashOutForm.errors.category }}</p>
                     </div>
                     <div>
-                        <label class="label"><span class="label-text">Akun Kas / Bank</span></label>
+                        <label class="label"><span class="label-text">Sumber Dana Kas / Bank</span></label>
                         <select v-model="cashOutForm.cash_account_id" class="select select-bordered w-full">
                             <option value="">Pilih akun kas/bank</option>
                             <option v-for="account in cash_accounts" :key="account.id" :value="account.id">{{ account.code }} - {{ account.name }}</option>
@@ -1089,7 +1086,7 @@ const deleteProject = () => {
                 </div>
                 <div class="modal-action">
                     <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
-                    <button class="btn btn-error" :disabled="cashOutForm.processing" @click="submitCashOut">Simpan</button>
+                    <button class="btn btn-error" :disabled="cashOutForm.processing" @click="submitCashOut">Simpan Expense</button>
                 </div>
             </div>
         </dialog>
@@ -1166,7 +1163,7 @@ const deleteProject = () => {
                     <div class="overflow-x-auto max-h-[40vh] overflow-y-auto border rounded-lg">
                         <table class="table table-sm table-zebra">
                             <thead class="sticky top-0 bg-base-200 z-10">
-                                <tr><th>SKU</th><th>Produk</th><th>UoM</th><th class="text-right">Tersedia</th></tr>
+                                <tr><th>SKU</th><th>Produk</th><th>UoM</th><th class="text-right">Harga Jual</th><th class="text-right">Tersedia</th></tr>
                             </thead>
                             <tbody>
                                 <tr
@@ -1179,10 +1176,11 @@ const deleteProject = () => {
                                     <td class="font-mono text-xs">{{ p.sku }}</td>
                                     <td class="font-semibold">{{ p.name }}</td>
                                     <td class="uppercase">{{ p.uom }}</td>
+                                    <td class="text-right tabular-nums">{{ format(p.selling_price) }}</td>
                                     <td class="text-right tabular-nums font-medium text-success">{{ p.product_type === 'service' ? '-' : p.available }}</td>
                                 </tr>
                                 <tr v-if="filteredMaterialProducts.length === 0">
-                                    <td colspan="4" class="text-center py-6 text-base-content/50">
+                                    <td colspan="5" class="text-center py-6 text-base-content/50">
                                         Tidak ada material project aktif yang cocok dengan pencarian.
                                     </td>
                                 </tr>
@@ -1193,7 +1191,7 @@ const deleteProject = () => {
 
                 <div v-if="materialForm.master_product_id" class="mt-4 rounded-lg border border-primary/20 bg-primary/5 p-4">
                     <p class="text-sm font-semibold mb-3">Produk dipilih: <span class="text-primary">{{ selectedMaterialProduct?.sku }} — {{ selectedMaterialProduct?.name }}</span></p>
-                    <div class="grid grid-cols-2 gap-3">
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div>
                             <label class="label"><span class="label-text">Qty Kebutuhan <span class="text-error">*</span></span></label>
                             <input v-model.number="materialForm.planned_qty" type="number" min="1" step="1" class="input input-bordered w-full" />
@@ -1202,8 +1200,26 @@ const deleteProject = () => {
                             </p>
                         </div>
                         <div>
+                            <label class="label"><span class="label-text">HPP / Unit</span></label>
+                            <input v-model.number="materialForm.unit_cost" type="number" min="0" step="1000" class="input input-bordered w-full" />
+                            <p v-if="materialForm.errors.unit_cost" class="text-error text-xs mt-1">{{ materialForm.errors.unit_cost }}</p>
+                        </div>
+                        <div>
+                            <label class="label"><span class="label-text">Harga Jual / Unit</span></label>
+                            <input v-model.number="materialForm.unit_price" type="number" min="0" step="1000" class="input input-bordered w-full" />
+                            <p class="mt-1 text-xs text-base-content/60">Default mengikuti harga jual master product.</p>
+                            <p v-if="materialForm.errors.unit_price" class="text-error text-xs mt-1">{{ materialForm.errors.unit_price }}</p>
+                        </div>
+                        <div>
                             <label class="label"><span class="label-text">Catatan</span></label>
                             <input v-model="materialForm.notes" type="text" class="input input-bordered w-full" placeholder="Opsional" />
+                        </div>
+                        <div class="sm:col-span-2 rounded-lg bg-base-100 p-3 text-sm">
+                            <div class="flex flex-wrap justify-between gap-2">
+                                <span>Total HPP: <strong>{{ format((Number(materialForm.planned_qty) || 0) * (Number(materialForm.unit_cost) || 0)) }}</strong></span>
+                                <span>Total jual: <strong>{{ format((Number(materialForm.planned_qty) || 0) * (Number(materialForm.unit_price) || 0)) }}</strong></span>
+                                <span>Margin: <strong>{{ format((Number(materialForm.planned_qty) || 0) * ((Number(materialForm.unit_price) || 0) - (Number(materialForm.unit_cost) || 0))) }}</strong></span>
+                            </div>
                         </div>
                     </div>
                 </div>

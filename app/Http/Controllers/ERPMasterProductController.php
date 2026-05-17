@@ -64,15 +64,12 @@ class ERPMasterProductController extends Controller
             'description' => 'nullable|string',
             'selling_price' => 'required|numeric|min:0',
             'stock' => 'required|integer|min:0',
-            'lead_time_days' => 'nullable|integer|min:1|max:365',
         ]);
 
-        $validated['lead_time_days'] = $validated['lead_time_days'] ?? 7;
         if ($validated['product_type'] === MasterProduct::PRODUCT_TYPE_SERVICE) {
             $validated['stock'] = 0;
             $validated['min_stock'] = 0;
             $validated['total_sold'] = 0;
-            $validated['lead_time_days'] = 1;
             $validated['low_stock_alert_enabled'] = false;
         }
 
@@ -227,15 +224,12 @@ class ERPMasterProductController extends Controller
             'description' => 'nullable|string',
             'selling_price' => 'required|numeric|min:0',
             'stock' => 'required|integer|min:0',
-            'lead_time_days' => 'nullable|integer|min:1|max:365',
         ]);
 
-        $validated['lead_time_days'] = $validated['lead_time_days'] ?? $masterProduct->lead_time_days ?? 7;
         if ($validated['product_type'] === MasterProduct::PRODUCT_TYPE_SERVICE) {
             $validated['stock'] = 0;
             $validated['min_stock'] = 0;
             $validated['total_sold'] = 0;
-            $validated['lead_time_days'] = 1;
             $validated['low_stock_alert_enabled'] = false;
         }
         $masterProduct->update($validated);

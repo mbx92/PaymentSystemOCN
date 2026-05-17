@@ -16,6 +16,7 @@ use App\Models\CategoryCoaMapping;
 use App\Models\PaymentMethod;
 use App\Models\PosSale;
 use App\Models\Project;
+use App\Models\TeamDistribution;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -58,6 +59,7 @@ class CashflowController extends Controller
             'categoryOptions' => [
                 'in' => CashCategory::query()
                     ->where('domain', 'cash_in')
+                    ->whereNotIn('key', CashCategory::retiredKeysFor('cash_in'))
                     ->where('is_active', true)
                     ->orderBy('sort_order')
                     ->orderBy('label')
@@ -66,6 +68,7 @@ class CashflowController extends Controller
                     ->values(),
                 'out' => CashCategory::query()
                     ->where('domain', 'cash_out')
+                    ->whereNotIn('key', CashCategory::retiredKeysFor('cash_out'))
                     ->where('is_active', true)
                     ->orderBy('sort_order')
                     ->orderBy('label')
@@ -163,8 +166,16 @@ class CashflowController extends Controller
     {
         $source = $this->sourceFilter($request);
         $companyId = ErpCompanyResolver::resolveForReporting($request);
+        $memberPaymentCashOutIds = TeamDistribution::query()
+            ->whereNotNull('cash_out_id')
+            ->pluck('cash_out_id');
+        $memberPaymentByCashOutId = TeamDistribution::query()
+            ->with(['user:id,name', 'project:id,name'])
+            ->whereIn('cash_out_id', $memberPaymentCashOutIds)
+            ->get()
+            ->keyBy('cash_out_id');
 
-        $cashIns = in_array($source, ['pos', 'supplier_payment'], true)
+        $cashIns = in_array($source, ['pos', 'supplier_payment', 'member_payment'], true)
             ? collect()
             : CashIn::query()
                 ->with(['project:id,name', 'creator:id,name', 'paymentMethod:id,name', 'cashAccount:id,code,name'])
@@ -182,7 +193,7 @@ class CashflowController extends Controller
                     'source' => $entry->project_id ? 'project' : 'manual',
                     'source_name' => $entry->project_payment_id
                         ? 'Termin Project'
-                        : ($entry->category === 'pendapatan_project' ? 'Invoice Project' : 'Kas Masuk'),
+                        : ($entry->category === 'pendapatan_project' ? 'Invoice Project' : 'Masuk Manual'),
                     'reference_no' => $entry->project_payment_id ? 'TERM-'.$entry->project_payment_id : (string) $entry->id,
                     'date' => $entry->date?->format('Y-m-d'),
                     'project_name' => $entry->project?->name ?? '-',
@@ -207,19 +218,30 @@ class CashflowController extends Controller
             : CashOut::query()
                 ->with(['project:id,name', 'creator:id,name', 'cashAccount:id,code,name'])
                 ->when($companyId, fn ($q) => $q->whereHas('journalEntry', fn ($jq) => $jq->where('company_id', $companyId)))
-                ->when($source === 'project', fn ($q) => $q->whereNotNull('project_id'))
-                ->when($source === 'manual', fn ($q) => $q->whereNull('project_id'))
+                ->when($source === 'member_payment', fn ($q) => $q->whereIn('id', $memberPaymentCashOutIds))
+                ->when($source === 'project', fn ($q) => $q
+                    ->whereNotNull('project_id')
+                    ->whereNotIn('id', $memberPaymentCashOutIds))
+                ->when($source === 'manual', fn ($q) => $q
+                    ->whereNull('project_id')
+                    ->whereNotIn('id', $memberPaymentCashOutIds))
                 ->when($request->filled('project_id') && Str::isUuid($request->string('project_id')->toString()), fn ($q) => $q->where('project_id', $request->string('project_id')->toString()))
                 ->when($request->filled('category'), fn ($q) => $q->where('category', $request->string('category')->toString()))
                 ->when($request->filled('date_from'), fn ($q) => $q->whereDate('date', '>=', $request->date('date_from')))
                 ->when($request->filled('date_to'), fn ($q) => $q->whereDate('date', '<=', $request->date('date_to')))
                 ->get()
-                ->map(fn (CashOut $entry) => [
+                ->map(function (CashOut $entry) use ($memberPaymentByCashOutId) {
+                    $distribution = $memberPaymentByCashOutId->get($entry->id);
+                    $isMemberPayment = $distribution !== null;
+
+                    return [
                     'id' => $entry->id,
                     'type' => 'out',
-                    'source' => $entry->project_id ? 'project' : 'manual',
-                    'source_name' => 'Kas Keluar',
-                    'reference_no' => (string) $entry->id,
+                    'source' => $isMemberPayment ? 'member_payment' : ($entry->project_id ? 'project' : 'manual'),
+                    'source_name' => $isMemberPayment ? 'Pembayaran Anggota' : 'Expense',
+                    'reference_no' => $isMemberPayment
+                        ? 'ANGGOTA-'.strtoupper(substr((string) $distribution->id, 0, 8))
+                        : (string) $entry->id,
                     'date' => $entry->date?->format('Y-m-d'),
                     'project_name' => $entry->project?->name ?? '-',
                     'project_id' => $entry->project_id,
@@ -234,9 +256,10 @@ class CashflowController extends Controller
                     'creator_name' => $entry->creator?->name ?? '-',
                     'document_status' => $entry->document_status,
                     'journal_entry_id' => $entry->journal_entry_id,
-                    'mutable' => true,
+                    'mutable' => ! $isMemberPayment,
                     'created_at' => optional($entry->created_at)->timestamp ?? 0,
-                ]);
+                ];
+                });
 
         $supplierPayments = $source !== '' && $source !== 'supplier_payment'
             ? collect()
@@ -319,7 +342,7 @@ class CashflowController extends Controller
     private function buildPosEntries(Request $request, Account $posCashAccount): Collection
     {
         $source = $this->sourceFilter($request);
-        if ($request->filled('project_id') || in_array($source, ['project', 'manual'], true)) {
+        if ($request->filled('project_id') || in_array($source, ['project', 'manual', 'member_payment'], true)) {
             return collect();
         }
 
@@ -406,6 +429,7 @@ class CashflowController extends Controller
             ['value' => 'pos', 'label' => 'POS'],
             ['value' => 'manual', 'label' => 'Manual / Umum'],
             ['value' => 'supplier_payment', 'label' => 'Pembayaran Supplier'],
+            ['value' => 'member_payment', 'label' => 'Pembayaran Anggota'],
         ];
     }
 
@@ -413,7 +437,7 @@ class CashflowController extends Controller
     {
         $source = $request->string('source')->toString();
 
-        return in_array($source, ['project', 'pos', 'manual', 'supplier_payment'], true) ? $source : '';
+        return in_array($source, ['project', 'pos', 'manual', 'supplier_payment', 'member_payment'], true) ? $source : '';
     }
 
     private function storeCashInEntry(Request $request, array $validated): void
@@ -496,6 +520,12 @@ class CashflowController extends Controller
 
     private function assertCategoryExists(string $domain, string $category): void
     {
+        if (CashCategory::isRetired($domain, $category)) {
+            throw ValidationException::withMessages([
+                'category' => 'Kategori ini sudah tidak digunakan untuk transaksi baru.',
+            ]);
+        }
+
         $exists = CashCategory::query()
             ->where('domain', $domain)
             ->where('key', $category)

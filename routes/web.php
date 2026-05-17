@@ -102,6 +102,8 @@ Route::middleware('auth')->group(function () {
         Route::post('erp/accounting/coa-settings/categories', [ERPAccountingCoaSettingsController::class, 'storeCategory'])->name('erp.accounting.coa-settings.categories.store');
         Route::post('erp/accounting/coa-settings/apply-defaults', [ERPAccountingCoaSettingsController::class, 'applyDefaults'])->name('erp.accounting.coa-settings.apply-defaults');
         Route::get('erp/accounting/payments', [ERPAccountingPaymentController::class, 'index'])->name('erp.accounting.payments');
+        Route::get('erp/accounting/payments/member', [ERPAccountingPaymentController::class, 'memberPayments'])->name('erp.accounting.payments.member');
+        Route::post('erp/accounting/payments/member/{teamDistribution}', [ERPAccountingPaymentController::class, 'storeMemberPayment'])->name('erp.accounting.payments.member.store');
         Route::post('erp/accounting/payments/supplier/{payable}', [ERPAccountingPaymentController::class, 'storeSupplierPayment'])->name('erp.accounting.payments.supplier.store');
         Route::get('erp/accounting/reconciliation', [ReconciliationController::class, 'index'])->name('erp.accounting.reconciliation');
         Route::get('erp/sales', [ERPModuleController::class, 'sales'])->name('erp.sales');
@@ -253,7 +255,7 @@ Route::middleware('auth')->group(function () {
         // Reports
         Route::get('laporan/project-profit', [ReportController::class, 'projectProfit'])->name('reports.project-profit');
         Route::get('laporan/bulanan', [ReportController::class, 'monthly'])->name('reports.monthly');
-        Route::get('laporan/anggota', [ReportController::class, 'memberPayments'])->name('reports.member-payments');
+        Route::get('laporan/anggota', fn () => redirect()->route('erp.accounting.payments.member', request()->query()))->name('reports.member-payments');
         Route::get('erp/accounting/chart-of-accounts', [ERPReportingController::class, 'chartOfAccounts'])->name('erp.accounting.coa');
         Route::post('erp/accounting/chart-of-accounts', [ERPReportingController::class, 'storeChartOfAccount'])->name('erp.accounting.coa.store');
         Route::patch('erp/accounting/chart-of-accounts/{account}', [ERPReportingController::class, 'updateChartOfAccount'])->name('erp.accounting.coa.update');

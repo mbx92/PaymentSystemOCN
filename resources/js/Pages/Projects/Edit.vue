@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
 import { useForm, Link } from '@inertiajs/vue3';
@@ -10,12 +10,14 @@ const props = defineProps({
     project: Object,
     payments: { type: Array, default: () => [] },
     can_edit_payments: { type: Boolean, default: false },
+    crm_customers: { type: Array, default: () => [] },
 });
 
 const { format } = useCurrency();
 
 const form = useForm({
     name: props.project.name,
+    crm_customer_id: props.project.crm_customer_id ?? '',
     client_name: props.project.client_name,
     client_contact: props.project.client_contact ?? '',
     project_type: props.project.project_type ?? 'system_website_development',
@@ -29,6 +31,18 @@ const form = useForm({
         ? props.payments.map((p) => ({ percentage: p.percentage, note: p.note ?? '' }))
         : [],
 });
+
+const selectedCustomer = computed(() =>
+    props.crm_customers.find((customer) => Number(customer.id) === Number(form.crm_customer_id)),
+);
+
+const syncSelectedCustomer = () => {
+    if (!selectedCustomer.value) return;
+    form.client_name = selectedCustomer.value.display_name ?? '';
+    form.client_contact = selectedCustomer.value.contact ?? '';
+};
+
+watch(() => form.crm_customer_id, syncSelectedCustomer);
 
 const previewAmounts = computed(() => {
     const tv = Number(form.total_value) || 0;
@@ -91,8 +105,6 @@ const submit = () => {
                             <ArrowLeftIcon class="h-4 w-4" />
                             Kembali
                         </Link>
-                        <Link :href="route('erp.projects')" class="btn btn-ghost btn-sm shrink-0 gap-1.5"><ArrowLeftIcon class="h-4 w-4" />
-                            Back</Link>
                     </div>
             </div>
           </div>
@@ -110,13 +122,23 @@ const submit = () => {
                             <input v-model="form.name" type="text" class="input input-bordered w-full" :class="form.errors.name ? 'input-error' : ''" />
                             <p v-if="form.errors.name" class="text-error text-xs mt-1">{{ form.errors.name }}</p>
                         </div>
+                        <div class="sm:col-span-2">
+                            <label class="label"><span class="label-text font-medium">Customer CRM <span class="text-error">*</span></span></label>
+                            <select v-model="form.crm_customer_id" class="select select-bordered w-full" :class="form.errors.crm_customer_id ? 'select-error' : ''">
+                                <option value="">Pilih customer</option>
+                                <option v-for="customer in crm_customers" :key="customer.id" :value="customer.id">
+                                    {{ customer.code }} - {{ customer.display_name }}
+                                </option>
+                            </select>
+                            <p v-if="form.errors.crm_customer_id" class="text-error text-xs mt-1">{{ form.errors.crm_customer_id }}</p>
+                        </div>
                         <div>
-                            <label class="label"><span class="label-text font-medium">Nama Klien <span class="text-error">*</span></span></label>
-                            <input v-model="form.client_name" type="text" class="input input-bordered w-full" />
+                            <label class="label"><span class="label-text font-medium">Nama Klien</span></label>
+                            <input v-model="form.client_name" type="text" class="input input-bordered w-full bg-base-200" readonly />
                         </div>
                         <div>
                             <label class="label"><span class="label-text font-medium">Kontak Klien</span></label>
-                            <input v-model="form.client_contact" type="text" class="input input-bordered w-full" />
+                            <input v-model="form.client_contact" type="text" class="input input-bordered w-full bg-base-200" readonly />
                         </div>
                         <div>
                             <label class="label"><span class="label-text font-medium">Tipe Project</span></label>
@@ -283,7 +305,7 @@ const submit = () => {
                         <Link :href="route('projects.show', project.id)" class="btn btn-ghost">Batal</Link>
                         <button
                             class="btn btn-primary"
-                            :disabled="form.processing || (can_edit_payments && !percentOk)"
+                            :disabled="form.processing || (can_edit_payments && form.payments.length > 0 && !percentOk)"
                             @click="submit"
                         >
                             <span v-if="form.processing" class="loading loading-spinner loading-sm" />

@@ -3,11 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\ERP\Accounting\Models\Account;
+use App\ERP\CRM\Models\CrmCustomer;
 use App\ERP\Inventory\Models\Warehouse;
 use App\Models\CashCategory;
 use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
 use App\Models\Project;
+use App\Models\ProjectBudget;
 use App\Models\ProjectMaterial;
 use App\Models\ProjectPayment;
 use App\Models\ProjectTask;
@@ -49,45 +51,61 @@ class ProjectController extends Controller
         return Inertia::render('Projects/Index', [
             'projects' => $projects,
             'filters' => $this->filtersWithPerPage($request, ['search', 'status', 'project_type']),
+            'crm_customers' => $this->crmCustomerOptions(),
         ]);
     }
 
     public function create()
     {
-        return Inertia::render('Projects/Create');
+        return Inertia::render('Projects/Create', [
+            'crm_customers' => $this->crmCustomerOptions(),
+        ]);
     }
 
     public function store(Request $request)
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'client_name' => 'required|string|max:255',
-            'client_contact' => 'nullable|string|max:255',
+            'crm_customer_id' => 'required|exists:crm_customers,id',
             'project_type' => 'nullable|in:cctv_installation,system_website_development',
-            'total_value' => 'required|numeric|min:0.01',
+            'total_value' => 'nullable|numeric|min:0',
             'status' => 'required|in:negosiasi,berjalan,selesai,dibatalkan',
             'started_at' => 'nullable|date',
             'finished_at' => 'nullable|date|after_or_equal:started_at',
             'description' => 'nullable|string',
             'payment_scheme' => 'nullable|in:terms,final',
-            'payments' => 'required|array|min:1|max:20',
+            'payments' => 'nullable|array|min:1|max:20',
             'payments.*.percentage' => 'required|numeric|min:0.01|max:100',
             'payments.*.note' => 'nullable|string|max:500',
         ]);
 
-        if (($validated['payment_scheme'] ?? 'terms') === 'final') {
-            $validated['payments'] = [[
-                'percentage' => 100,
-                'note' => 'Pelunasan di akhir',
-            ]];
-        }
+        $validated['total_value'] = (float) ($validated['total_value'] ?? 0);
+        if ($validated['total_value'] > 0) {
+            if (($validated['payment_scheme'] ?? 'terms') === 'final') {
+                $validated['payments'] = [[
+                    'percentage' => 100,
+                    'note' => 'Pelunasan di akhir',
+                ]];
+            }
 
-        $this->assertPaymentsTotalHundredPercent($validated['payments']);
+            if (empty($validated['payments'])) {
+                throw ValidationException::withMessages([
+                    'payments' => 'Jadwal termin wajib diisi jika project memiliki nilai kontrak.',
+                ]);
+            }
+
+            $this->assertPaymentsTotalHundredPercent($validated['payments']);
+        } else {
+            $validated['payments'] = [];
+        }
         $validated['project_type'] = $validated['project_type'] ?? 'system_website_development';
+        $validated = array_merge($validated, $this->projectClientSnapshot((int) $validated['crm_customer_id']));
 
         DB::transaction(function () use ($validated) {
             $project = Project::create(collect($validated)->except('payments')->all());
-            $this->createPaymentRows($project, $validated['payments']);
+            if (! empty($validated['payments'])) {
+                $this->createPaymentRows($project, $validated['payments']);
+            }
         });
 
         return redirect()->route('projects.index')->with('flash', ['type' => 'success', 'message' => 'Project berhasil ditambahkan.']);
@@ -109,13 +127,19 @@ class ProjectController extends Controller
 
         $legalVaultRelativePath = $this->existingLegalVaultRelativePath($project);
         $legalVaultFolderExists = $legalVaultRelativePath !== null && $this->legalVaultPathExists($legalVaultRelativePath);
-        $cashInCategories = $this->cashCategoryOptions('cash_in');
         $cashOutCategories = $this->cashCategoryOptions('cash_out');
-        $cashCategoryLabels = $cashInCategories
-            ->concat($cashOutCategories)
-            ->pluck('label', 'value');
-        $materialFundReceived = (float) $project->cashIns->where('category', 'dana_material_client')->sum('amount');
-        $materialFundUsed = (float) $project->cashOuts->where('category', 'pemakaian_dana_material_client')->sum('amount');
+        $cashCategoryLabels = $cashOutCategories->pluck('label', 'value');
+        $convertedBudget = ProjectBudget::query()
+            ->with('items')
+            ->where('converted_project_id', $project->id)
+            ->first();
+        $budgetItems = $convertedBudget?->items ?? collect();
+        $materialItems = $project->materials;
+        $directMaterialTotalCost = (float) $materialItems->sum(fn ($item) => (float) $item->planned_qty * (float) $item->unit_cost);
+        $directMaterialTotalPrice = (float) $materialItems->sum(fn ($item) => (float) $item->planned_qty * (float) $item->unit_price);
+        $budgetTotalCost = (float) $budgetItems->sum(fn ($item) => (float) $item->qty * (float) $item->unit_cost);
+        $budgetTotalPrice = (float) $budgetItems->sum(fn ($item) => (float) $item->qty * (float) $item->unit_price);
+        $hasBudgetItems = $budgetItems->isNotEmpty();
 
         return Inertia::render('Projects/Show', [
             'project' => [
@@ -123,6 +147,7 @@ class ProjectController extends Controller
                 'name' => $project->name,
                 'client_name' => $project->client_name,
                 'client_contact' => $project->client_contact,
+                'crm_customer_id' => $project->crm_customer_id,
                 'project_type' => $project->project_type,
                 'total_value' => (float) $project->total_value,
                 'status' => $project->status,
@@ -188,9 +213,14 @@ class ProjectController extends Controller
                     'total_referral_commission' => $project->total_referral_commission,
                     'total_operational' => $project->total_operational,
                     'net_team_value' => $project->net_team_value,
-                    'material_fund_received' => $materialFundReceived,
-                    'material_fund_used' => $materialFundUsed,
-                    'material_fund_balance' => $materialFundReceived - $materialFundUsed,
+                ],
+                'budget_summary' => [
+                    'budget_id' => $convertedBudget?->id,
+                    'source' => $hasBudgetItems ? 'budget' : 'materials',
+                    'item_count' => $hasBudgetItems ? $budgetItems->count() : $materialItems->count(),
+                    'total_cost' => $hasBudgetItems ? $budgetTotalCost : $directMaterialTotalCost,
+                    'total_price' => $hasBudgetItems ? $budgetTotalPrice : $directMaterialTotalPrice,
+                    'total_margin' => $hasBudgetItems ? ($budgetTotalPrice - $budgetTotalCost) : ($directMaterialTotalPrice - $directMaterialTotalCost),
                 ],
                 'materials' => $project->materials->map(fn ($m) => [
                     'id' => $m->id,
@@ -201,6 +231,11 @@ class ProjectController extends Controller
                     'planned_qty' => (float) $m->planned_qty,
                     'reserved_qty' => (float) $m->reserved_qty,
                     'issued_qty' => (float) $m->issued_qty,
+                    'unit_cost' => (float) $m->unit_cost,
+                    'unit_price' => (float) $m->unit_price,
+                    'subtotal_cost' => (float) $m->planned_qty * (float) $m->unit_cost,
+                    'subtotal_price' => (float) $m->planned_qty * (float) $m->unit_price,
+                    'margin_amount' => ((float) $m->planned_qty * (float) $m->unit_price) - ((float) $m->planned_qty * (float) $m->unit_cost),
                     'status' => $m->status,
                     'notes' => $m->notes,
                 ]),
@@ -223,7 +258,7 @@ class ProjectController extends Controller
                 ->where('status', 'active')
                 ->whereIn('sales_channel', ['project', 'both'])
                 ->orderBy('name')
-                ->get(['id', 'sku', 'name', 'category', 'uom', 'sales_channel', 'product_type']),
+                ->get(['id', 'sku', 'name', 'category', 'uom', 'sales_channel', 'product_type', 'selling_price']),
             'warehouses' => Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']),
             'warehouse_stocks' => MasterProductWarehouseStock::query()
                 ->get(['master_product_id', 'warehouse_id', 'qty', 'reserved_qty'])
@@ -244,7 +279,6 @@ class ProjectController extends Controller
                 ->orderBy('code')
                 ->get(['id', 'code', 'name']),
             'cash_category_options' => [
-                'in' => $cashInCategories,
                 'out' => $cashOutCategories,
                 'labels' => $cashCategoryLabels,
             ],
@@ -371,6 +405,7 @@ class ProjectController extends Controller
                 'name' => $project->name,
                 'client_name' => $project->client_name,
                 'client_contact' => $project->client_contact,
+                'crm_customer_id' => $project->crm_customer_id,
                 'project_type' => $project->project_type,
                 'total_value' => (float) $project->total_value,
                 'status' => $project->status,
@@ -389,6 +424,7 @@ class ProjectController extends Controller
                 'paid_at' => $p->paid_at?->format('Y-m-d'),
             ]),
             'can_edit_payments' => $canEditPayments,
+            'crm_customers' => $this->crmCustomerOptions(),
         ]);
     }
 
@@ -404,10 +440,9 @@ class ProjectController extends Controller
 
         $rules = [
             'name' => 'required|string|max:255',
-            'client_name' => 'required|string|max:255',
-            'client_contact' => 'nullable|string|max:255',
+            'crm_customer_id' => 'required|exists:crm_customers,id',
             'project_type' => 'nullable|in:cctv_installation,system_website_development',
-            'total_value' => 'required|numeric|min:0.01',
+            'total_value' => 'required|numeric|min:0',
             'status' => 'required|in:negosiasi,berjalan,selesai,dibatalkan',
             'started_at' => 'nullable|date',
             'finished_at' => 'nullable|date|after_or_equal:started_at',
@@ -416,13 +451,15 @@ class ProjectController extends Controller
         ];
 
         if ($canEditPayments) {
-            $rules['payments'] = 'required|array|min:1|max:20';
+            $rules['payments'] = 'nullable|array|min:1|max:20';
             $rules['payments.*.percentage'] = 'required|numeric|min:0.01|max:100';
             $rules['payments.*.note'] = 'nullable|string|max:500';
         }
 
         $validated = $request->validate($rules);
+        $validated['total_value'] = (float) $validated['total_value'];
         $validated['project_type'] = $validated['project_type'] ?? $project->project_type ?? 'system_website_development';
+        $validated = array_merge($validated, $this->projectClientSnapshot((int) $validated['crm_customer_id']));
 
         $legalRaw = $request->input('legal_vault_path');
         if ($legalRaw === null || (is_string($legalRaw) && trim($legalRaw) === '')) {
@@ -438,7 +475,17 @@ class ProjectController extends Controller
         }
 
         if ($canEditPayments) {
-            $this->assertPaymentsTotalHundredPercent($validated['payments']);
+            if ($validated['total_value'] > 0) {
+                if (empty($validated['payments'])) {
+                    throw ValidationException::withMessages([
+                        'payments' => 'Jadwal termin wajib diisi jika project memiliki nilai kontrak.',
+                    ]);
+                }
+
+                $this->assertPaymentsTotalHundredPercent($validated['payments']);
+            } else {
+                $validated['payments'] = [];
+            }
         }
 
         DB::transaction(function () use ($project, $validated, $canEditPayments) {
@@ -527,6 +574,8 @@ class ProjectController extends Controller
             ],
             'warehouse_id' => 'required|exists:warehouses,id',
             'planned_qty' => 'required|numeric|min:0.01',
+            'unit_cost' => 'nullable|numeric|min:0',
+            'unit_price' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string|max:500',
         ]);
 
@@ -549,6 +598,10 @@ class ProjectController extends Controller
             }
             $plannedQty = (float) $validated['planned_qty'];
             $toReserve = min($plannedQty, $available);
+            $unitCost = (float) ($validated['unit_cost'] ?? 0);
+            $unitPrice = array_key_exists('unit_price', $validated)
+                ? (float) $validated['unit_price']
+                : (float) $product->selling_price;
 
             $material = ProjectMaterial::query()->firstOrNew([
                 'project_id' => $project->id,
@@ -563,8 +616,16 @@ class ProjectController extends Controller
                 $material->status = 'reserved';
             }
 
-            $material->planned_qty = (float) $material->planned_qty + $plannedQty;
+            $previousQty = (float) $material->planned_qty;
+            $newTotalQty = $previousQty + $plannedQty;
+            $material->planned_qty = $newTotalQty;
             $material->reserved_qty = (float) $material->reserved_qty + $toReserve;
+            $material->unit_cost = $newTotalQty > 0
+                ? (($previousQty * (float) $material->unit_cost) + ($plannedQty * $unitCost)) / $newTotalQty
+                : $unitCost;
+            $material->unit_price = $newTotalQty > 0
+                ? (($previousQty * (float) $material->unit_price) + ($plannedQty * $unitPrice)) / $newTotalQty
+                : $unitPrice;
             $material->notes = $validated['notes'] ?? $material->notes;
             $material->status = $product->isStockTracked()
                 ? $this->projectMaterialStatus($material)
@@ -606,7 +667,7 @@ class ProjectController extends Controller
                 });
             })
             ->orderBy('name')
-            ->get(['id', 'sku', 'name', 'category', 'uom', 'sales_channel', 'product_type'])
+            ->get(['id', 'sku', 'name', 'category', 'uom', 'sales_channel', 'product_type', 'selling_price'])
             ->map(function (MasterProduct $product) use ($stocks): array {
                 $stock = $stocks->get($product->id);
 
@@ -618,6 +679,7 @@ class ProjectController extends Controller
                     'uom' => $product->uom,
                     'sales_channel' => $product->sales_channel,
                     'product_type' => $product->product_type,
+                    'selling_price' => (float) $product->selling_price,
                     'available' => $product->isStockTracked() && $stock ? max((float) $stock->qty - (float) $stock->reserved_qty, 0) : null,
                 ];
             })
@@ -700,6 +762,7 @@ class ProjectController extends Controller
     {
         return CashCategory::query()
             ->where('domain', $domain)
+            ->whereNotIn('key', CashCategory::retiredKeysFor($domain))
             ->where('is_active', true)
             ->orderBy('sort_order')
             ->orderBy('label')
@@ -709,6 +772,36 @@ class ProjectController extends Controller
                 'label' => $category->label,
             ])
             ->values();
+    }
+
+    private function crmCustomerOptions()
+    {
+        return CrmCustomer::query()
+            ->where('is_active', true)
+            ->orderBy('company')
+            ->orderBy('name')
+            ->get(['id', 'code', 'name', 'company', 'email', 'phone'])
+            ->map(fn (CrmCustomer $customer): array => [
+                'id' => $customer->id,
+                'code' => $customer->code,
+                'name' => $customer->name,
+                'company' => $customer->company,
+                'email' => $customer->email,
+                'phone' => $customer->phone,
+                'display_name' => $customer->company ?: $customer->name,
+                'contact' => collect([$customer->phone, $customer->email])->filter()->implode(' / '),
+            ])
+            ->values();
+    }
+
+    private function projectClientSnapshot(int $customerId): array
+    {
+        $customer = CrmCustomer::query()->findOrFail($customerId);
+
+        return [
+            'client_name' => $customer->company ?: $customer->name,
+            'client_contact' => collect([$customer->phone, $customer->email])->filter()->implode(' / ') ?: null,
+        ];
     }
 
     protected function assertPaymentsTotalHundredPercent(array $payments): void

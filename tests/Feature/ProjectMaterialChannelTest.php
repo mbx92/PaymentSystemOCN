@@ -116,6 +116,72 @@ class ProjectMaterialChannelTest extends TestCase
         ]);
     }
 
+    public function test_direct_cctv_project_material_prices_feed_project_summary(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $project = $this->createProject();
+        $project->update([
+            'project_type' => 'cctv_installation',
+            'total_value' => 0,
+        ]);
+        $warehouse = Warehouse::create([
+            'code' => 'WH-01',
+            'name' => 'Main',
+            'is_active' => true,
+        ]);
+        $projectProduct = MasterProduct::create([
+            'sku' => 'CAM-DIRECT-01',
+            'name' => 'Kamera Direct',
+            'category' => 'CCTV',
+            'uom' => 'unit',
+            'sales_channel' => 'project',
+            'product_type' => 'project_material',
+            'status' => 'active',
+            'selling_price' => 750000,
+        ]);
+        MasterProductWarehouseStock::create([
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 10,
+            'reserved_qty' => 0,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->post(route('projects.materials.store', $project), [
+                'master_product_id' => $projectProduct->id,
+                'warehouse_id' => $warehouse->id,
+                'planned_qty' => 2,
+                'unit_cost' => 500000,
+                'unit_price' => 800000,
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('project_materials', [
+            'project_id' => $project->id,
+            'master_product_id' => $projectProduct->id,
+            'unit_cost' => '500000.00',
+            'unit_price' => '800000.00',
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->get(route('projects.show', $project))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Projects/Show')
+                ->where('project.budget_summary.source', 'materials')
+                ->where('project.budget_summary.total_cost', 1000000)
+                ->where('project.budget_summary.total_price', 1600000)
+                ->where('project.budget_summary.total_margin', 600000)
+                ->where('project.materials.0.subtotal_cost', 1000000)
+                ->where('project.materials.0.subtotal_price', 1600000)
+                ->etc());
+    }
+
     public function test_can_plan_project_material_when_stock_is_empty(): void
     {
         $this->disableErpMiddleware();
@@ -179,7 +245,6 @@ class ProjectMaterialChannelTest extends TestCase
             'status' => 'active',
             'stock' => 0,
             'min_stock' => 0,
-            'lead_time_days' => 1,
         ]);
 
         $response = $this
@@ -413,7 +478,6 @@ class ProjectMaterialChannelTest extends TestCase
             'stock' => 0,
             'min_stock' => 0,
             'total_sold' => 0,
-            'lead_time_days' => 1,
         ]);
 
         ProjectMaterial::create([

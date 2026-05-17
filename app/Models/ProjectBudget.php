@@ -27,5 +27,9 @@ class ProjectBudget extends Model
             'deal_at' => 'datetime',
         ];
     }
-}
 
+    public function items()
+    {
+        return $this->hasMany(ProjectBudgetItem::class)->orderBy('sort_order')->orderBy('id');
+    }
+}

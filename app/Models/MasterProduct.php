@@ -30,7 +30,6 @@ class MasterProduct extends Model
         'min_stock',
         'low_stock_alert_enabled',
         'total_sold',
-        'lead_time_days',
     ];
 
     protected function casts(): array
@@ -41,7 +40,6 @@ class MasterProduct extends Model
             'min_stock' => 'int',
             'low_stock_alert_enabled' => 'bool',
             'total_sold' => 'int',
-            'lead_time_days' => 'int',
         ];
     }
 

@@ -166,10 +166,13 @@ class ERPPurchasingController extends Controller
             'order_date' => 'required|date',
             'notes' => 'nullable|string',
         ]);
+        $validatedLines = $this->validatePurchaseOrderLines($request);
 
         $vendor = Vendor::query()->where('code', $baseValidated['vendor_code'])->firstOrFail();
+        $lines = $this->buildPurchaseOrderLines($validatedLines['lines']);
+        $totalAmount = (float) $lines->sum('line_total');
 
-        $poNumber = DB::transaction(function () use ($baseValidated, $vendor): string {
+        $poNumber = DB::transaction(function () use ($baseValidated, $vendor, $lines, $totalAmount): string {
             $number = $this->documentNumberService->next('purchasing', 'purchase_order', [
                 'prefix' => 'PO',
                 'padding_length' => 6,
@@ -179,10 +182,13 @@ class ERPPurchasingController extends Controller
                 'vendor_id' => $vendor->id,
                 'order_date' => $baseValidated['order_date'],
                 'eta_date' => $baseValidated['eta_date'] ?? null,
-                'total_amount' => 0,
+                'total_amount' => $totalAmount,
                 'status' => DocumentStatus::Draft,
                 'notes' => $baseValidated['notes'] ?? null,
             ]);
+            foreach ($lines as $line) {
+                $po->lines()->create($line);
+            }
 
             return $po->number;
         });
@@ -240,47 +246,10 @@ class ERPPurchasingController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        $validatedLines = $request->validate([
-            'lines' => 'required|array|min:1',
-            'lines.*.product_id' => [
-                'required',
-                'integer',
-                Rule::exists('master_products', 'id')->where(fn ($query) => $query->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)),
-            ],
-            'lines.*.qty' => 'required|numeric|min:0.01',
-            'lines.*.unit_price' => 'required|numeric|min:0.01',
-        ]);
+        $validatedLines = $this->validatePurchaseOrderLines($request);
 
         $vendor = Vendor::query()->where('code', $baseValidated['vendor_code'])->firstOrFail();
-        $lines = collect($validatedLines['lines'])
-            ->map(function (array $line): array {
-                $product = MasterProduct::query()
-                    ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
-                    ->findOrFail((int) $line['product_id']);
-                $qty = (float) $line['qty'];
-                $unitPrice = (float) $line['unit_price'];
-                $lineTotal = $qty * $unitPrice;
-
-                return [
-                    'master_product_id' => $product->id,
-                    'qty' => $qty,
-                    'line_total' => $lineTotal,
-                ];
-            })
-            ->groupBy('master_product_id')
-            ->map(function ($group) {
-                $qty = (float) $group->sum('qty');
-                $lineTotal = (float) $group->sum('line_total');
-                $unitPrice = $qty > 0 ? $lineTotal / $qty : 0;
-
-                return [
-                    'master_product_id' => $group->first()['master_product_id'],
-                    'qty' => $qty,
-                    'unit_price' => $unitPrice,
-                    'line_total' => $lineTotal,
-                ];
-            })
-            ->values();
+        $lines = $this->buildPurchaseOrderLines($validatedLines['lines']);
 
         $totalAmount = (float) $lines->sum('line_total');
 
@@ -300,6 +269,53 @@ class ERPPurchasingController extends Controller
         });
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Data Purchase Order berhasil diperbarui.']);
+    }
+
+    private function validatePurchaseOrderLines(Request $request): array
+    {
+        return $request->validate([
+            'lines' => 'required|array|min:1',
+            'lines.*.product_id' => [
+                'required',
+                'integer',
+                Rule::exists('master_products', 'id')->where(fn ($query) => $query->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)),
+            ],
+            'lines.*.qty' => 'required|numeric|min:0.01',
+            'lines.*.unit_price' => 'required|numeric|min:0.01',
+        ]);
+    }
+
+    private function buildPurchaseOrderLines(array $lineInputs): Collection
+    {
+        return collect($lineInputs)
+            ->map(function (array $line): array {
+                $product = MasterProduct::query()
+                    ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
+                    ->findOrFail((int) $line['product_id']);
+                $qty = (float) $line['qty'];
+                $unitPrice = (float) $line['unit_price'];
+                $lineTotal = $qty * $unitPrice;
+
+                return [
+                    'master_product_id' => $product->id,
+                    'qty' => $qty,
+                    'line_total' => $lineTotal,
+                ];
+            })
+            ->groupBy('master_product_id')
+            ->map(function (Collection $group): array {
+                $qty = (float) $group->sum('qty');
+                $lineTotal = (float) $group->sum('line_total');
+                $unitPrice = $qty > 0 ? $lineTotal / $qty : 0;
+
+                return [
+                    'master_product_id' => $group->first()['master_product_id'],
+                    'qty' => $qty,
+                    'unit_price' => $unitPrice,
+                    'line_total' => $lineTotal,
+                ];
+            })
+            ->values();
     }
 
     public function goodsReceipts(Request $request): Response
@@ -504,9 +520,7 @@ class ERPPurchasingController extends Controller
         $reorderSuggestions = $products
             ->map(function (MasterProduct $item) use ($projectShortages, $onOrderQty, $onHandById) {
                 $onHand = $onHandById[$item->id] ?? (float) $item->stock;
-                $dailyUsage = $item->total_sold > 0 ? $item->total_sold / 30 : 0;
-                $leadDemand = (int) ceil($dailyUsage * max($item->lead_time_days, 1));
-                $targetStock = $item->min_stock + $leadDemand;
+                $targetStock = $item->min_stock;
                 $stockSuggestion = max($targetStock - $onHand, 0);
                 $projectShortageQty = (float) ($projectShortages[$item->id] ?? 0);
                 $onOrder = (float) ($onOrderQty[$item->id] ?? 0);
@@ -518,7 +532,6 @@ class ERPPurchasingController extends Controller
                     'name' => $item->name,
                     'stock' => $onHand,
                     'min_stock' => $item->min_stock,
-                    'lead_time_days' => $item->lead_time_days,
                     'total_sold' => $item->total_sold,
                     'suggested_qty' => $suggestedQty,
                     'stock_suggestion_qty' => $stockSuggestion,
@@ -546,8 +559,7 @@ class ERPPurchasingController extends Controller
         abort_if($item->product_type === MasterProduct::PRODUCT_TYPE_SERVICE, 404);
         $onHand = $this->onHandByProductIdForReorder(collect([$item]))[$item->id] ?? (float) $item->stock;
         $dailyUsage = $item->total_sold > 0 ? $item->total_sold / 30 : 0;
-        $leadDemand = (int) ceil($dailyUsage * max($item->lead_time_days, 1));
-        $targetStock = $item->min_stock + $leadDemand;
+        $targetStock = $item->min_stock;
         $stockSuggestion = max($targetStock - $onHand, 0);
         $projectShortageQty = (float) ProjectMaterial::query()
             ->where('master_product_id', $item->id)
@@ -572,7 +584,6 @@ class ERPPurchasingController extends Controller
             'name' => $item->name,
             'stock' => $onHand,
             'min_stock' => $item->min_stock,
-            'lead_time_days' => $item->lead_time_days,
             'total_sold' => $item->total_sold,
             'uom' => $item->uom,
             'suggested_qty' => $suggestedQty,

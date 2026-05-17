@@ -3,8 +3,10 @@
 namespace App\ERP\CRM\Models;
 
 use App\Models\User;
+use App\Models\Project;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class CrmCustomer extends Model
 {
@@ -41,5 +43,10 @@ class CrmCustomer extends Model
     public function lead(): BelongsTo
     {
         return $this->belongsTo(CrmLead::class, 'converted_from_lead_id');
+    }
+
+    public function projects(): HasMany
+    {
+        return $this->hasMany(Project::class, 'crm_customer_id');
     }
 }

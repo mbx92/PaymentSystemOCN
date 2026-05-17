@@ -203,7 +203,6 @@ class ERPAccountingCoaSettingsController extends Controller
         $categoryDefaults = [
             ['domain' => 'cash_in', 'category' => 'pendapatan_project', 'account_code' => '4003'],
             ['domain' => 'cash_in', 'category' => 'uang_muka_project', 'account_code' => '2005'],
-            ['domain' => 'cash_in', 'category' => 'dana_material_client', 'account_code' => '2006'],
             ['domain' => 'cash_in', 'category' => 'pendapatan_pos', 'account_code' => '4002'],
             ['domain' => 'cash_in', 'category' => 'penjualan_pos', 'account_code' => '4002'],
             ['domain' => 'cash_in', 'category' => 'pendapatan_jasa', 'account_code' => '4001'],
@@ -217,7 +216,6 @@ class ERPAccountingCoaSettingsController extends Controller
             ['domain' => 'cash_out', 'category' => 'komisi_referral', 'account_code' => '5014'],
             ['domain' => 'cash_out', 'category' => 'gaji_karyawan', 'account_code' => '5002'],
             ['domain' => 'cash_out', 'category' => 'pembelian_material_project', 'account_code' => '5009'],
-            ['domain' => 'cash_out', 'category' => 'pemakaian_dana_material_client', 'account_code' => '2006'],
             ['domain' => 'cash_out', 'category' => 'pembelian_bahan', 'account_code' => '5009'],
             ['domain' => 'cash_out', 'category' => 'sewa_tempat', 'account_code' => '5003'],
             ['domain' => 'cash_out', 'category' => 'listrik_air', 'account_code' => '5004'],
@@ -269,7 +267,6 @@ class ERPAccountingCoaSettingsController extends Controller
             'cash_in' => [
                 'pendapatan_project' => 'Dipakai untuk pembayaran invoice dan termin project.',
                 'uang_muka_project' => 'Dipakai untuk kas masuk uang muka project sebagai pendapatan diterima dimuka.',
-                'dana_material_client' => 'Dipakai untuk dana titipan client yang khusus membiayai material project.',
                 'pendapatan_jasa' => 'Dipakai untuk kas masuk manual kategori jasa.',
                 'penjualan_pos' => 'Dipakai untuk klasifikasi arus kas penjualan POS.',
                 'lainnya' => 'Dipakai untuk kas masuk manual lain-lain.',
@@ -280,7 +277,6 @@ class ERPAccountingCoaSettingsController extends Controller
                 'komisi_referral' => 'Dipakai untuk komisi referral.',
                 'operasional' => 'Dipakai untuk biaya operasional umum.',
                 'pembelian_material_project' => 'Dipakai untuk pembelian material project dari dana internal perusahaan.',
-                'pemakaian_dana_material_client' => 'Dipakai untuk realisasi pemakaian dana titipan material client.',
                 'lainnya' => 'Dipakai untuk kas keluar manual lain-lain.',
             ],
         ];

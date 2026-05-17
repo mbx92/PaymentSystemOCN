@@ -44,7 +44,6 @@ const productForm = useForm({
   description: '',
   selling_price: 0,
   stock: 0,
-  lead_time_days: 7,
 });
 
 const channelLabel = (value) => {
@@ -63,7 +62,6 @@ const typeLabel = (value) => {
 watch(() => productForm.product_type, (type) => {
   if (type === 'service') {
     productForm.stock = 0;
-    productForm.lead_time_days = 1;
   }
 });
 
@@ -228,7 +226,6 @@ const openEditProductModal = () => {
   productForm.description = props.product.description ?? '';
   productForm.selling_price = Number(props.product.selling_price ?? 0);
   productForm.stock = Number(props.product.stock ?? 0);
-  productForm.lead_time_days = Number(props.product.lead_time_days ?? 7);
   document.getElementById('modal-edit-product')?.showModal();
 };
 
@@ -412,10 +409,6 @@ const regenerateEditBarcode = async () => {
               <div class="rounded-lg border border-base-300 bg-base-200/40 p-3">
                 <p class="text-[11px] uppercase text-base-content/50">Stok Saat Ini</p>
                 <p class="mt-1 font-semibold">{{ product.stock }} {{ product.uom }}</p>
-              </div>
-              <div class="rounded-lg border border-base-300 bg-base-200/40 p-3">
-                <p class="text-[11px] uppercase text-base-content/50">Lead Time</p>
-                <p class="mt-1 font-semibold">{{ product.lead_time_days || 7 }} hari</p>
               </div>
               <div class="rounded-lg border border-base-300 bg-base-200/40 p-3">
                 <p class="text-[11px] uppercase text-base-content/50">UoM Dasar</p>
@@ -867,11 +860,6 @@ const regenerateEditBarcode = async () => {
               <label class="label"><span class="label-text">Stok</span></label>
               <input v-model.number="productForm.stock" type="number" min="0" class="input input-bordered w-full" :disabled="productForm.product_type === 'service'" />
               <p v-if="productForm.errors.stock" class="text-xs text-error mt-1">{{ productForm.errors.stock }}</p>
-            </div>
-            <div>
-              <label class="label"><span class="label-text">Lead Time (hari)</span></label>
-              <input v-model.number="productForm.lead_time_days" type="number" min="1" max="365" class="input input-bordered w-full" :disabled="productForm.product_type === 'service'" />
-              <p v-if="productForm.errors.lead_time_days" class="text-xs text-error mt-1">{{ productForm.errors.lead_time_days }}</p>
             </div>
             <div class="md:col-span-2">
               <label class="label"><span class="label-text">Deskripsi</span></label>

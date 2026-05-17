@@ -5,8 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\CashIn;
 use App\Models\CashOut;
 use App\Models\Project;
-use App\Models\TeamDistribution;
-use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -89,36 +87,6 @@ class ReportController extends Controller
             ]),
             'selectedMonth' => (int) $month,
             'selectedYear'  => (int) $year,
-            'years'         => range(now()->year, now()->year - 4),
-        ]);
-    }
-
-    public function memberPayments(Request $request)
-    {
-        $members = User::role(['anggota', 'manajer'])->orderBy('name')->get(['id', 'name']);
-
-        $userId = $request->get('user_id');
-
-        $distributions = TeamDistribution::with(['project', 'user'])
-            ->when($userId, fn ($q) => $q->where('user_id', $userId))
-            ->when($request->year, fn ($q) => $q->whereYear('created_at', $request->year))
-            ->get()
-            ->map(fn ($d) => [
-                'user_name'       => $d->user->name,
-                'project_name'    => $d->project->name,
-                'project_status'  => $d->project->status,
-                'role_in_project' => $d->role_in_project,
-                'percentage'      => (float) $d->percentage,
-                'base_pay'        => (float) $d->base_pay,
-                'bonus'           => (float) $d->bonus,
-                'total_pay'       => (float) $d->total_pay,
-            ]);
-
-        return Inertia::render('Reports/MemberPayments', [
-            'members'       => $members,
-            'distributions' => $distributions,
-            'totalPay'      => (float) $distributions->sum('total_pay'),
-            'filters'       => $request->only(['user_id', 'year']),
             'years'         => range(now()->year, now()->year - 4),
         ]);
     }

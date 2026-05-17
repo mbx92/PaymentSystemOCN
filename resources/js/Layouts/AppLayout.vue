@@ -31,7 +31,7 @@ const chatInputRef = ref(null);
 const CHAT_STORAGE_KEY = 'erp_chat_history';
 const WELCOME_MSG = {
     role: 'assistant',
-    text: 'Halo! 👋 Saya asisten ERP Anda.\nSaya bisa bantu cek **stok**, **harga**, **penjualan**, **cashflow**, **invoice**, dan lainnya.\n\nKetik **bantuan** atau klik chip di bawah untuk mulai.',
+    text: 'Halo! 👋 Saya asisten ERP Anda.\nSaya bisa bantu cek **stok**, **harga**, **penjualan**, **cashflow**, **invoice**, **expenses**, dan lainnya.\n\nKetik **bantuan** atau klik chip di bawah untuk mulai.',
     ts: Date.now(),
 };
 
@@ -40,6 +40,7 @@ const quickReplies = [
     'pos hari ini',
     'pos kemarin',
     'cashflow hari ini',
+    'pengeluaran',
     'stok rendah',
     'produk terlaris',
     'invoice belum dibayar',
@@ -215,10 +216,12 @@ const topbarContext = computed(() => {
 
     if (pathname.includes('/erp/sales/pos')) return { label: 'POS Workspace', subtitle: 'Mode kasir cepat untuk penjualan produk.' };
     if (pathname.includes('/laporan')) return { label: 'Reporting Workspace', subtitle: 'Analisis laporan keuangan dan operasional real-time.' };
-    if (pathname.includes('/erp/accounting/cashflow')) return { label: 'Cashflow Workspace', subtitle: 'Akses kas masuk dan kas keluar dalam satu submenu.' };
-    if (pathname.includes('/erp/accounting/payments')) return { label: 'Pembayaran Workspace', subtitle: 'Pusat pembayaran project dan tim.' };
+    if (pathname.includes('/erp/accounting/cashflow')) return { label: 'Cashflow Accounting', subtitle: 'Ringkasan arus kas dari invoice, POS, supplier, anggota, dan expenses.' };
+    if (pathname.includes('/erp/accounting/payments/member')) return { label: 'Pembayaran Anggota', subtitle: 'Bayar distribusi tim dan lacak status di cashflow.' };
+    if (pathname.includes('/erp/accounting/payments')) return { label: 'Pembayaran Workspace', subtitle: 'Pusat pembayaran project, tim, dan supplier.' };
     if (pathname.includes('/erp/accounting/reconciliation')) return { label: 'Rekonsiliasi Workspace', subtitle: 'Kontrol mutasi kas/bank harian dan mingguan.' };
-    if (pathname.includes('/kas-masuk') || pathname.includes('/kas-keluar')) return { label: 'Accounting Workspace', subtitle: 'Kelola transaksi kas dan posting jurnal terintegrasi.' };
+    if (pathname.includes('/kas-keluar')) return { label: 'Expenses Workspace', subtitle: 'Input biaya tim, operasional, referral, dan pengeluaran project.' };
+    if (pathname.includes('/kas-masuk')) return { label: 'Accounting Workspace', subtitle: 'Kas masuk legacy; gunakan invoice/termin untuk pemasukan project.' };
     if (pathname.includes('/projects')) return { label: 'Projects Workspace', subtitle: 'Pantau proyek, termin pembayaran, dan profitabilitas.' };
     if (pathname.includes('/erp/hr/legal')) return { label: 'Legal Workspace', subtitle: 'File manager dokumen legal di server.' };
     if (pathname.includes('/erp/calendar')) return { label: 'Calendar Workspace', subtitle: 'Jadwal event project, PO, pipeline, dan follow-up.' };

@@ -1,79 +1,35 @@
 <script setup>
 import { computed, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
-import CurrencyInput from '@/Components/CurrencyInput.vue';
 import { useForm, Link } from '@inertiajs/vue3';
-import { ArrowLeftIcon, PlusIcon, TrashIcon } from '@heroicons/vue/24/outline';
-import { useCurrency } from '@/composables/useCurrency';
+import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 
-const { format } = useCurrency();
+const props = defineProps({
+    crm_customers: { type: Array, default: () => [] },
+});
 
 const form = useForm({
     name: '',
+    crm_customer_id: '',
     client_name: '',
     client_contact: '',
     project_type: 'system_website_development',
-    total_value: 0,
     status: 'negosiasi',
     started_at: '',
     finished_at: '',
     description: '',
-    payment_scheme: 'terms',
-    payments: [
-        { percentage: 30, note: '' },
-        { percentage: 40, note: '' },
-        { percentage: 30, note: '' },
-    ],
 });
 
-const isFinalPayment = computed(() => form.payment_scheme === 'final');
-
-watch(
-    () => form.payment_scheme,
-    (scheme) => {
-        if (scheme === 'final') {
-            form.payments = [{ percentage: 100, note: 'Pelunasan di akhir' }];
-        } else if (!form.payments?.length) {
-            form.payments = [{ percentage: 100, note: '' }];
-        }
-    },
+const selectedCustomer = computed(() =>
+    props.crm_customers.find((customer) => Number(customer.id) === Number(form.crm_customer_id)),
 );
 
-/** Preview jumlah per termin (sama logika dengan server: pembulatan per baris, sisa ke termin terakhir) */
-const previewAmounts = computed(() => {
-    const tv = Number(form.total_value) || 0;
-    const rows = form.payments;
-    const n = rows.length;
-    if (!n || !tv) return rows.map(() => 0);
-
-    let assigned = 0;
-    return rows.map((row, i) => {
-        const pct = Number(row.percentage) || 0;
-        if (i === n - 1) {
-            return Math.round((tv - assigned) * 100) / 100;
-        }
-        const amt = Math.round(tv * (pct / 100) * 100) / 100;
-        assigned += amt;
-        return amt;
-    });
-});
-
-const totalPercent = computed(() =>
-    form.payments.reduce((s, row) => s + (Number(row.percentage) || 0), 0),
-);
-
-const percentOk = computed(() => Math.abs(totalPercent.value - 100) < 0.02);
-
-const addTerm = () => {
-    if (isFinalPayment.value) return;
-    form.payments.push({ percentage: 0, note: '' });
+const syncSelectedCustomer = () => {
+    form.client_name = selectedCustomer.value?.display_name ?? '';
+    form.client_contact = selectedCustomer.value?.contact ?? '';
 };
 
-const removeTerm = (index) => {
-    if (isFinalPayment.value) return;
-    if (form.payments.length <= 1) return;
-    form.payments.splice(index, 1);
-};
+watch(() => form.crm_customer_id, syncSelectedCustomer);
 
 const submit = () => form.post(route('projects.store'));
 </script>
@@ -87,7 +43,7 @@ const submit = () => form.post(route('projects.store'));
             <div>
               <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Projects Workspace</p>
               <h1 class="ocn-panel__title mt-1">Tambah Project Baru</h1>
-              <p class="ocn-panel__desc mt-1">Isi data awal project beserta skema termin pembayaran.</p>
+              <p class="ocn-panel__desc mt-1">Isi data awal project. Nilai kontrak diambil dari budget/deal bila tersedia.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
               <div class="flex flex-wrap items-center gap-2">
@@ -95,16 +51,13 @@ const submit = () => form.post(route('projects.store'));
                             <ArrowLeftIcon class="h-4 w-4" />
                             Kembali
                         </Link>
-                        <Link :href="route('erp.projects')" class="btn btn-ghost btn-sm shrink-0 gap-1.5"><ArrowLeftIcon class="h-4 w-4" />
-                            Back</Link>
                     </div>
             </div>
           </div>
         </div>
       </div>
 
-            <div class="grid grid-cols-1 gap-5 lg:grid-cols-2 lg:items-start">
-                <!-- Kiri: data project baru -->
+            <div class="max-w-3xl">
                 <div class="ocn-panel">
                     <div class="ocn-panel__head">
                         <h2 class="ocn-panel__title">Data project baru</h2>
@@ -117,15 +70,25 @@ const submit = () => form.post(route('projects.store'));
                                 <p v-if="form.errors.name" class="text-error text-xs mt-1">{{ form.errors.name }}</p>
                             </div>
 
+                            <div class="sm:col-span-2">
+                                <label class="label"><span class="label-text font-medium">Customer CRM <span class="text-error">*</span></span></label>
+                                <select v-model="form.crm_customer_id" class="select select-bordered w-full" :class="form.errors.crm_customer_id ? 'select-error' : ''">
+                                    <option value="">Pilih customer</option>
+                                    <option v-for="customer in crm_customers" :key="customer.id" :value="customer.id">
+                                        {{ customer.code }} - {{ customer.display_name }}
+                                    </option>
+                                </select>
+                                <p v-if="form.errors.crm_customer_id" class="text-error text-xs mt-1">{{ form.errors.crm_customer_id }}</p>
+                            </div>
+
                             <div>
-                                <label class="label"><span class="label-text font-medium">Nama Klien <span class="text-error">*</span></span></label>
-                                <input v-model="form.client_name" type="text" class="input input-bordered w-full" :class="form.errors.client_name ? 'input-error' : ''" />
-                                <p v-if="form.errors.client_name" class="text-error text-xs mt-1">{{ form.errors.client_name }}</p>
+                                <label class="label"><span class="label-text font-medium">Nama Klien</span></label>
+                                <input v-model="form.client_name" type="text" class="input input-bordered w-full bg-base-200" readonly placeholder="Terisi dari CRM Customer" />
                             </div>
 
                             <div>
                                 <label class="label"><span class="label-text font-medium">Kontak Klien</span></label>
-                                <input v-model="form.client_contact" type="text" class="input input-bordered w-full" placeholder="08xx / email" />
+                                <input v-model="form.client_contact" type="text" class="input input-bordered w-full bg-base-200" readonly placeholder="Terisi dari CRM Customer" />
                             </div>
 
                             <div>
@@ -135,10 +98,6 @@ const submit = () => form.post(route('projects.store'));
                                     <option value="cctv_installation">CCTV Installation</option>
                                 </select>
                                 <p v-if="form.errors.project_type" class="text-error text-xs mt-1">{{ form.errors.project_type }}</p>
-                            </div>
-
-                            <div>
-                                <CurrencyInput v-model="form.total_value" label="Nilai Kontrak" :required="true" :error="form.errors.total_value" />
                             </div>
 
                             <div>
@@ -169,95 +128,11 @@ const submit = () => form.post(route('projects.store'));
                     </div>
                 </div>
 
-                <!-- Kanan: termin project -->
-                <div class="ocn-panel">
-                    <div class="ocn-panel__head">
-                        <h2 class="ocn-panel__title">Termin project</h2>
-                        <p class="ocn-panel__desc">Skema pembayaran mengikuti kesepakatan dengan klien (termin atau pelunasan di akhir).</p>
-                    </div>
-                    <div class="card-body space-y-4">
-                        <div class="flex flex-wrap items-center justify-between gap-2">
-                            <p class="text-sm font-semibold">Skema pembayaran</p>
-                            <div class="flex flex-wrap items-center gap-2">
-                                <select v-model="form.payment_scheme" class="select select-bordered select-sm">
-                                    <option value="terms">Termin (custom)</option>
-                                    <option value="final">Tanpa termin — lunas di akhir</option>
-                                </select>
-                                <button v-if="!isFinalPayment" type="button" class="btn btn-outline btn-sm gap-1" @click="addTerm">
-                                    <PlusIcon class="w-4 h-4" /> Tambah termin
-                                </button>
-                            </div>
-                        </div>
-
-                        <div v-if="form.errors.payments" class="alert alert-error text-sm">
-                            {{ typeof form.errors.payments === 'string' ? form.errors.payments : form.errors.payments[0] }}
-                        </div>
-
-                        <div class="overflow-x-auto rounded-xl border border-base-300">
-                            <table class="table table-sm">
-                                <thead>
-                                    <tr>
-                                        <th class="w-12">#</th>
-                                        <th>Persentase (%)</th>
-                                        <th>Jumlah (preview)</th>
-                                        <th>Catatan</th>
-                                        <th class="w-12" />
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="(row, index) in form.payments" :key="index">
-                                        <td class="font-mono text-base-content/70">{{ index + 1 }}</td>
-                                        <td>
-                                            <input
-                                                v-model.number="row.percentage"
-                                                type="number"
-                                                min="0"
-                                                max="100"
-                                                step="0.5"
-                                                class="input input-bordered input-sm w-full max-w-[8rem]"
-                                                :class="form.errors[`payments.${index}.percentage`] ? 'input-error' : ''"
-                                                :disabled="isFinalPayment"
-                                            />
-                                            <p v-if="form.errors[`payments.${index}.percentage`]" class="text-error text-xs mt-1">
-                                                {{ form.errors[`payments.${index}.percentage`] }}
-                                            </p>
-                                        </td>
-                                        <td class="font-semibold whitespace-nowrap">{{ format(previewAmounts[index]) }}</td>
-                                        <td>
-                                            <input v-model="row.note" type="text" class="input input-bordered input-sm w-full min-w-[8rem]" placeholder="Opsional" :disabled="isFinalPayment" />
-                                        </td>
-                                        <td>
-                                            <button
-                                                type="button"
-                                                class="btn btn-ghost btn-xs text-error"
-                                                :disabled="form.payments.length <= 1"
-                                                @click="removeTerm(index)"
-                                            >
-                                                <TrashIcon class="w-4 h-4" />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <div class="flex flex-wrap items-center justify-between gap-2 text-sm">
-                            <span>
-                                Total persentase:
-                                <strong :class="percentOk ? 'text-success' : 'text-error'">{{ totalPercent.toFixed(2) }}%</strong>
-                                <span v-if="!percentOk" class="text-error"> — harus 100%</span>
-                            </span>
-                            <span class="text-base-content/60">
-                                Total preview: <strong>{{ format(previewAmounts.reduce((a, b) => a + b, 0)) }}</strong>
-                            </span>
-                        </div>
-                    </div>
-                </div>
             </div>
 
             <div class="flex flex-wrap justify-end gap-3 rounded-2xl border border-base-200 bg-base-100/80 px-4 py-4 sm:px-6">
                 <Link :href="route('projects.index')" class="btn btn-ghost">Batal</Link>
-                <button class="btn btn-primary" :disabled="form.processing || !percentOk" @click="submit">
+                <button class="btn btn-primary" :disabled="form.processing" @click="submit">
                     <span v-if="form.processing" class="loading loading-spinner loading-sm" />
                     Simpan Project
                 </button>

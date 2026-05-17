@@ -49,9 +49,9 @@ const doDelete = () => { router.delete(route('cash-out.destroy', deletingId.valu
     <AppLayout>
         <div class="space-y-5">
             <div class="flex items-center justify-between">
-                <h1 class="text-2xl font-bold">Kas Keluar</h1>
+                <h1 class="text-2xl font-bold">Expenses Tim / Project</h1>
                 <div class="flex flex-wrap items-center gap-2">
-                    <button class="btn btn-error btn-sm" onclick="document.getElementById('modal-add-cash-out').showModal()">+ Tambah</button>
+                    <button class="btn btn-error btn-sm" onclick="document.getElementById('modal-add-cash-out').showModal()">+ Input Expense</button>
                     <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.accounting.cashflow')">
                         <ArrowLeftIcon class="h-4 w-4" />
                         Back
@@ -78,8 +78,8 @@ const doDelete = () => { router.delete(route('cash-out.destroy', deletingId.valu
             </div>
             <div class="ocn-panel">
                 <div class="ocn-panel__head">
-                    <h2 class="ocn-panel__title">Daftar kas keluar</h2>
-                    <p class="ocn-panel__desc">Transaksi sesuai filter di atas.</p>
+                    <h2 class="ocn-panel__title">Daftar expenses</h2>
+                    <p class="ocn-panel__desc">Biaya tim, operasional, referral, dan pengeluaran project sesuai filter.</p>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="table table-zebra">
@@ -114,7 +114,7 @@ const doDelete = () => { router.delete(route('cash-out.destroy', deletingId.valu
         <!-- Modal: Add -->
         <dialog id="modal-add-cash-out" class="modal">
             <div class="modal-box">
-                <h3 class="font-bold text-lg">Tambah Kas Keluar</h3>
+                <h3 class="font-bold text-lg">Input Expense</h3>
                 <div class="space-y-3 mt-4">
                     <div>
                         <label class="label"><span class="label-text">Project (Opsional)</span></label>
@@ -154,7 +154,7 @@ const doDelete = () => { router.delete(route('cash-out.destroy', deletingId.valu
                 </div>
                 <div class="modal-action">
                     <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
-                    <button class="btn btn-error" :disabled="form.processing" @click="submitAdd">Simpan</button>
+                    <button class="btn btn-error" :disabled="form.processing" @click="submitAdd">Simpan Expense</button>
                 </div>
             </div>
         </dialog>
@@ -162,7 +162,7 @@ const doDelete = () => { router.delete(route('cash-out.destroy', deletingId.valu
         <!-- Modal: Edit -->
         <dialog id="modal-edit-cash-out" class="modal">
             <div class="modal-box">
-                <h3 class="font-bold text-lg">Edit Kas Keluar</h3>
+                <h3 class="font-bold text-lg">Edit Expense</h3>
                 <div class="space-y-3 mt-4">
                     <div>
                         <label class="label"><span class="label-text">Project (Opsional)</span></label>
@@ -207,6 +207,6 @@ const doDelete = () => { router.delete(route('cash-out.destroy', deletingId.valu
             </div>
         </dialog>
 
-        <ConfirmModal id="modal-delete-cash-out" title="Hapus Kas Keluar" message="Hapus data kas keluar ini?" @confirm="doDelete" />
+        <ConfirmModal id="modal-delete-cash-out" title="Hapus Expense" message="Hapus data expense ini?" @confirm="doDelete" />
     </AppLayout>
 </template>

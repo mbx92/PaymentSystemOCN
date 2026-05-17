@@ -2,7 +2,7 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
 import { Head, Link, useForm, router } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 import {ArrowLeftIcon,
   MagnifyingGlassIcon} from '@heroicons/vue/24/outline';
@@ -29,12 +29,23 @@ const filteredBudgets = computed(() => {
 });
 
 const summary = computed(() => ({
-    total: props.budgets.length,
-    draft: props.budgets.filter((b) => b.status === 'draft').length,
-    deal: props.budgets.filter((b) => b.status === 'deal').length,
-    converted: props.budgets.filter((b) => b.status === 'converted').length,
-    totalValue: props.budgets.reduce((sum, b) => sum + (Number(b.estimated_value) || 0), 0),
+    total: filteredBudgets.value.length,
+    draft: filteredBudgets.value.filter((b) => b.status === 'draft').length,
+    deal: filteredBudgets.value.filter((b) => b.status === 'deal').length,
+    converted: filteredBudgets.value.filter((b) => b.status === 'converted').length,
+    itemCount: filteredBudgets.value.reduce((sum, b) => sum + (b.project_type === 'cctv_installation' ? (b.cctv_items?.length ?? 0) : 0), 0),
+    totalCost: filteredBudgets.value.reduce((sum, b) => sum + (Number(b.total_cost) || 0), 0),
+    totalMargin: filteredBudgets.value.reduce((sum, b) => sum + (Number(b.total_margin) || 0), 0),
+    totalValue: filteredBudgets.value.reduce((sum, b) => sum + (Number(b.estimated_value) || 0), 0),
 }));
+
+const isCctvSummary = computed(() => projectTypeFilter.value === 'cctv_installation');
+
+const statusBadgeClass = (status) => ({
+    draft: 'badge-info',
+    deal: 'badge-warning',
+    converted: 'badge-success',
+}[status] ?? 'badge-ghost');
 
 const form = useForm({
     name: '',
@@ -44,6 +55,15 @@ const form = useForm({
     estimated_value: 0,
     description: '',
 });
+
+watch(
+    () => form.project_type,
+    (type) => {
+        if (type === 'cctv_installation') {
+            form.estimated_value = 0;
+        }
+    },
+);
 
 const openAddModal = () => document.getElementById('modal-add-budget')?.showModal();
 const submit = () => {
@@ -80,7 +100,30 @@ const submit = () => {
         </div>
       </div>
 
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            <div v-if="isCctvSummary" class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                <article class="rounded-2xl border border-slate-700/40 bg-gradient-to-br from-slate-800 to-slate-950 p-5 text-white shadow-xl ring-1 ring-black/20">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-white/55">Budget CCTV</p>
+                    <p class="mt-3 text-2xl font-bold tabular-nums tracking-tight">{{ summary.total }}</p>
+                </article>
+                <article class="rounded-2xl border border-cyan-900/50 bg-gradient-to-br from-cyan-900 to-slate-950 p-5 text-white shadow-xl ring-1 ring-cyan-950/60">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-cyan-100/70">Item CCTV</p>
+                    <p class="mt-3 text-2xl font-bold tabular-nums tracking-tight">{{ summary.itemCount }}</p>
+                </article>
+                <article class="rounded-2xl border border-rose-900/50 bg-gradient-to-br from-rose-900 to-slate-950 p-5 text-white shadow-xl ring-1 ring-rose-950/60">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-rose-100/70">Estimasi HPP</p>
+                    <p class="mt-3 text-xl font-bold tabular-nums tracking-tight">{{ format(summary.totalCost) }}</p>
+                </article>
+                <article class="rounded-2xl border border-emerald-900/50 bg-gradient-to-br from-emerald-900 to-slate-950 p-5 text-white shadow-xl ring-1 ring-emerald-950/60">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-emerald-100/70">Estimasi Margin</p>
+                    <p class="mt-3 text-xl font-bold tabular-nums tracking-tight">{{ format(summary.totalMargin) }}</p>
+                </article>
+                <article class="rounded-2xl border border-indigo-800/50 bg-gradient-to-br from-indigo-800 to-violet-950 p-5 text-white shadow-xl ring-1 ring-indigo-950/50">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-indigo-100/70">Total Nilai CCTV</p>
+                    <p class="mt-3 text-xl font-bold tabular-nums tracking-tight">{{ format(summary.totalValue) }}</p>
+                </article>
+            </div>
+
+            <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
                 <article class="rounded-2xl border border-slate-700/40 bg-gradient-to-br from-slate-800 to-slate-950 p-5 text-white shadow-xl ring-1 ring-black/20">
                     <p class="text-xs font-semibold uppercase tracking-wide text-white/55">Total Budget</p>
                     <p class="mt-3 text-2xl font-bold tabular-nums tracking-tight">{{ summary.total }}</p>
@@ -152,7 +195,7 @@ const submit = () => {
                                 <td>{{ budget.project_type === 'system_website_development' ? 'System/Website Development' : 'CCTV Installation' }}</td>
                                 <td>{{ budget.project_type === 'cctv_installation' ? (budget.cctv_items?.length ?? 0) : '-' }}</td>
                                 <td>{{ format(budget.estimated_value) }}</td>
-                                <td><span class="badge badge-ghost badge-sm">{{ budget.status }}</span></td>
+                                <td><span class="badge badge-sm capitalize" :class="statusBadgeClass(budget.status)">{{ budget.status }}</span></td>
                             </tr>
                             <tr v-if="!filteredBudgets.length"><td colspan="6" class="text-center py-6 text-base-content/50">Tidak ada budget yang cocok dengan filter.</td></tr>
                         </tbody>
@@ -169,9 +212,12 @@ const submit = () => {
                     <div><label class="label"><span class="label-text">Nama Klien</span></label><input v-model="form.client_name" type="text" class="input input-bordered w-full" /><p v-if="form.errors.client_name" class="text-error text-xs mt-1">{{ form.errors.client_name }}</p></div>
                     <div><label class="label"><span class="label-text">Kontak Klien</span></label><input v-model="form.client_contact" type="text" class="input input-bordered w-full" /></div>
                     <div><label class="label"><span class="label-text">Tipe Project</span></label><select v-model="form.project_type" class="select select-bordered w-full"><option value="system_website_development">System/Website Development</option><option value="cctv_installation">CCTV Installation</option></select></div>
-                    <div>
+                    <div v-if="form.project_type !== 'cctv_installation'">
                         <CurrencyInput v-model="form.estimated_value" label="Estimasi Nilai Budget" :required="true" :error="form.errors.estimated_value" />
-                        <p class="text-xs text-base-content/60 mt-1">Untuk CCTV, rincian item produk diisi setelah budget tersimpan, di halaman detail.</p>
+                    </div>
+                    <div v-else class="rounded-lg border border-base-300 bg-base-200/40 p-3 text-sm text-base-content/70">
+                        Nilai budget CCTV dihitung dari produk, material, dan jasa di halaman detail setelah budget dibuat.
+                        <p v-if="form.errors.estimated_value" class="text-error text-xs mt-1">{{ form.errors.estimated_value }}</p>
                     </div>
                     <div class="md:col-span-2"><label class="label"><span class="label-text">Deskripsi</span></label><textarea v-model="form.description" class="textarea textarea-bordered w-full" rows="3" /></div>
                 </div>

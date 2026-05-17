@@ -103,4 +103,100 @@ class PosSalesChannelPriceTest extends TestCase
             'line_total' => 8000,
         ]);
     }
+
+    public function test_marketplace_checkout_requires_and_stores_order_code(): void
+    {
+        $this->withoutMiddleware([
+            ErpMaintenanceMode::class,
+            LogErpActivity::class,
+            RoleMiddleware::class,
+        ]);
+
+        $user = User::factory()->create();
+        $paymentMethod = PaymentMethod::query()->create([
+            'code' => 'transfer',
+            'name' => 'Transfer',
+            'status' => 'active',
+        ]);
+        Warehouse::query()->create([
+            'code' => 'WH-POS',
+            'name' => 'POS',
+            'is_active' => true,
+        ]);
+        Account::query()->updateOrCreate(['code' => '1001'], ['name' => 'Kas', 'type' => 'asset', 'normal_balance' => 'debit', 'is_active' => true]);
+        Account::query()->updateOrCreate(['code' => '4002'], ['name' => 'Penjualan POS', 'type' => 'revenue', 'normal_balance' => 'credit', 'is_active' => true]);
+
+        $product = MasterProduct::query()->create([
+            'sku' => 'MP-ORDER-001',
+            'name' => 'Produk Marketplace',
+            'category' => 'General',
+            'uom' => 'pcs',
+            'sales_channel' => 'pos',
+            'product_type' => 'finished_goods',
+            'status' => 'active',
+            'selling_price' => 25000,
+            'stock' => 5,
+        ]);
+
+        $payload = [
+            'sales_channel' => 'marketplace',
+            'payment_method_id' => $paymentMethod->id,
+            'cash_paid' => 25000,
+            'items' => [[
+                'master_product_id' => $product->id,
+                'sku' => $product->sku,
+                'uom' => 'pcs',
+                'qty' => 1,
+                'unit_price' => 25000,
+                'discount_percent' => 0,
+                'multiplier' => 1,
+                'price_operation' => 'multiply',
+            ]],
+        ];
+
+        $this
+            ->actingAs($user)
+            ->postJson(route('erp.sales.pos.checkout'), $payload)
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('marketplace_order_code');
+
+        $response = $this
+            ->actingAs($user)
+            ->postJson(route('erp.sales.pos.checkout'), $payload + [
+                'marketplace_order_code' => 'MP-TRACK-20260516-001',
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('sales_channel', 'marketplace')
+            ->assertJsonPath('marketplace_order_code', 'MP-TRACK-20260516-001');
+
+        $this->assertDatabaseHas('pos_sales', [
+            'sales_channel' => 'marketplace',
+            'marketplace_order_code' => 'MP-TRACK-20260516-001',
+            'grand_total' => 25000,
+        ]);
+
+        $saleId = \App\Models\PosSale::query()
+            ->where('marketplace_order_code', 'MP-TRACK-20260516-001')
+            ->value('id');
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.sales.pos.transactions', ['q' => 'MP-TRACK-20260516-001']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Sales/Transactions')
+                ->where('transactions.data.0.marketplace_order_code', 'MP-TRACK-20260516-001')
+                ->etc());
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.sales.pos.transactions.show', $saleId))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Sales/TransactionShow')
+                ->where('detail.marketplace_order_code', 'MP-TRACK-20260516-001')
+                ->etc());
+    }
 }
