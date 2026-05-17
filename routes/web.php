@@ -84,6 +84,7 @@ Route::middleware('auth')->group(function () {
         Route::post('erp/accounting/opening-balance', [ERPAccountingOpeningBalanceController::class, 'store'])->name('erp.accounting.opening-balance.store');
         Route::post('erp/accounting/utilities/move-journals', [ERPAccountingUtilityController::class, 'moveJournalEntries'])->name('erp.accounting.utilities.move-journals');
         Route::post('erp/accounting/utilities/correct-pos-channel-payable', [ERPAccountingUtilityController::class, 'correctPosChannelPayable'])->name('erp.accounting.utilities.correct-pos-channel-payable');
+        Route::post('erp/accounting/utilities/backfill-cash-accounts', [ERPAccountingUtilityController::class, 'backfillCashAccountIds'])->name('erp.accounting.utilities.backfill-cash-accounts');
     });
 
     // Projects (Admin + Manajer)

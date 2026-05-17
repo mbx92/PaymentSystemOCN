@@ -13,7 +13,7 @@ class ERPModuleController extends Controller
             ['title' => 'Master perusahaan', 'description' => 'Kelola entitas usaha (nama legal, NPWP) untuk jurnal dan laporan per perusahaan.', 'route' => 'erp.admin.companies', 'icon' => 'building-office-2'],
             ['title' => 'CoA / Chart Of Account', 'description' => 'Daftar akun chart of accounts untuk semua posting akuntansi.', 'route' => 'erp.accounting.coa', 'icon' => 'book-open'],
             ['title' => 'Pengaturan COA', 'description' => 'Atur mapping akun untuk posting otomatis POS, invoice project, dan kategori cashflow.', 'route' => 'erp.accounting.coa-settings', 'icon' => 'cog-6-tooth'],
-            ['title' => 'Utilitas Accounting', 'description' => 'Pindahkan transaksi jurnal accounting dari satu usaha ke usaha lain.', 'route' => 'erp.accounting.utilities', 'icon' => 'wrench'],
+            ['title' => 'Utilitas Accounting', 'description' => 'Pindahkan jurnal antar usaha, koreksi COA POS, dan lengkapi akun kas transaksi lama.', 'route' => 'erp.accounting.utilities', 'icon' => 'wrench'],
             ['title' => 'Expenses Tim / Project', 'description' => 'Input biaya tim, operasional, referral, dan pengeluaran project. Pemasukan project tetap dari invoice/termin.', 'route' => 'cash-out.index', 'icon' => 'arrow-up-circle'],
             ['title' => 'Cashflow Accounting', 'description' => 'Ringkasan arus kas dari invoice, POS, supplier payment, dan expenses.', 'route' => 'erp.accounting.cashflow', 'icon' => 'arrows-right-left'],
             ['title' => 'Operational', 'description' => 'View cepat untuk biaya operasional umum atau per project.', 'route' => 'erp.accounting.operational', 'icon' => 'arrow-up-circle'],

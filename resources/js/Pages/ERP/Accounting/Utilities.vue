@@ -12,6 +12,7 @@ const props = defineProps({
   companySummaries: Array,
   filters: Object,
   posChannelCorrection: Object,
+  cashAccountBackfill: Object,
 });
 
 const { formatDate } = useDateFormat();
@@ -31,6 +32,14 @@ const moveForm = useForm({
 const correctionForm = useForm({
   journal_entry_ids: [],
 });
+const backfillForm = useForm({});
+
+const backfillReadyTotal = computed(
+  () => (props.cashAccountBackfill?.cash_in_ready ?? 0) + (props.cashAccountBackfill?.cash_out_ready ?? 0),
+);
+const backfillPendingTotal = computed(
+  () => (props.cashAccountBackfill?.cash_in_pending ?? 0) + (props.cashAccountBackfill?.cash_out_pending ?? 0),
+);
 
 const format = (n) =>
   new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n || 0);
@@ -121,6 +130,13 @@ const submitPosChannelCorrection = () => {
     },
   });
 };
+
+const submitCashAccountBackfill = () => {
+  if (!window.confirm(`Lengkapi akun kas pada ${backfillReadyTotal.value} transaksi dari jurnal yang sudah diposting? Jurnal tidak diubah.`)) {
+    return;
+  }
+  backfillForm.post(route('erp.accounting.utilities.backfill-cash-accounts'), { preserveScroll: true });
+};
 </script>
 
 <template>
@@ -133,7 +149,7 @@ const submitPosChannelCorrection = () => {
             <div>
               <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Accounting Workspace</p>
               <h1 class="ocn-panel__title mt-1">Utilitas Accounting</h1>
-              <p class="ocn-panel__desc mt-1">Pindahkan jurnal accounting dari satu usaha ke usaha lain tanpa mengubah debit-kredit.</p>
+              <p class="ocn-panel__desc mt-1">Perbaikan data accounting dari browser: pindah jurnal antar usaha, koreksi COA POS, dan lengkapi akun kas transaksi lama.</p>
             </div>
             <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.accounting')">
               <ArrowLeftIcon class="h-4 w-4" />
@@ -259,6 +275,81 @@ const submitPosChannelCorrection = () => {
           :paginator="entries"
           @update:per-page="(n) => router.get(route('erp.accounting.utilities'), { ...filters, per_page: n }, { preserveState: true, replace: true })"
         />
+      </div>
+
+      <div class="ocn-panel">
+        <div class="ocn-panel__head flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 class="ocn-panel__title">Lengkapi akun kas transaksi lama</h2>
+            <p class="ocn-panel__desc mt-1">
+              Untuk kas masuk/keluar yang sudah punya jurnal tetapi kolom akun kas masih kosong (mis. pembayaran invoice lama).
+              Nilai diambil dari baris debit/kredit jurnal — jurnal GL tidak diubah.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="btn btn-primary btn-sm"
+            :disabled="backfillReadyTotal === 0 || backfillForm.processing"
+            @click="submitCashAccountBackfill"
+          >
+            {{ backfillForm.processing ? 'Memproses...' : `Perbaiki ${backfillReadyTotal} transaksi` }}
+          </button>
+        </div>
+        <div class="card-body pt-0">
+          <div class="grid gap-3 md:grid-cols-4">
+            <div class="rounded-lg border border-base-300 bg-base-100 p-3">
+              <p class="text-xs uppercase tracking-wide text-base-content/50">Siap diperbaiki</p>
+              <p class="mt-1 text-sm font-semibold">{{ backfillReadyTotal }} transaksi</p>
+              <p class="mt-1 text-xs text-base-content/60">{{ cashAccountBackfill?.cash_in_ready ?? 0 }} masuk · {{ cashAccountBackfill?.cash_out_ready ?? 0 }} keluar</p>
+            </div>
+            <div class="rounded-lg border border-base-300 bg-base-100 p-3">
+              <p class="text-xs uppercase tracking-wide text-base-content/50">Masih kosong</p>
+              <p class="mt-1 text-sm font-semibold">{{ backfillPendingTotal }} baris</p>
+            </div>
+            <div class="rounded-lg border border-base-300 bg-base-100 p-3">
+              <p class="text-xs uppercase tracking-wide text-base-content/50">Tanpa jurnal</p>
+              <p class="mt-1 text-sm font-semibold">
+                {{ cashAccountBackfill?.cash_in_without_journal ?? 0 }} masuk ·
+                {{ cashAccountBackfill?.cash_out_without_journal ?? 0 }} keluar
+              </p>
+              <p class="mt-1 text-xs text-base-content/60">Perlu input manual di cashflow</p>
+            </div>
+            <div class="rounded-lg border border-base-300 bg-base-100 p-3">
+              <p class="text-xs uppercase tracking-wide text-base-content/50">Tidak bisa dari jurnal</p>
+              <p class="mt-1 text-sm font-semibold">{{ (cashAccountBackfill?.cash_in_skipped ?? 0) + (cashAccountBackfill?.cash_out_skipped ?? 0) }}</p>
+            </div>
+          </div>
+          <p v-if="backfillReadyTotal === 0 && backfillPendingTotal === 0" class="mt-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-base-content/70">
+            Semua transaksi kas masuk/keluar sudah memiliki akun kas.
+          </p>
+          <p v-else-if="backfillReadyTotal === 0 && backfillPendingTotal > 0" class="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-base-content/70">
+            Ada transaksi tanpa akun kas, tetapi belum bisa diisi otomatis (belum ada jurnal atau struktur jurnal tidak standar).
+          </p>
+          <div v-if="cashAccountBackfill?.samples?.length" class="mt-4 overflow-x-auto rounded-lg border border-base-300">
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Jenis</th>
+                  <th>Tanggal</th>
+                  <th>Kategori</th>
+                  <th>Catatan</th>
+                  <th class="text-right">Nominal</th>
+                  <th>Akun dari jurnal</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in cashAccountBackfill.samples" :key="`${row.domain}-${row.id}`">
+                  <td><span class="badge badge-ghost badge-sm">{{ row.domain === 'cash_in' ? 'Masuk' : 'Keluar' }}</span></td>
+                  <td class="whitespace-nowrap">{{ formatDate(row.date) }}</td>
+                  <td>{{ row.category || '-' }}</td>
+                  <td class="max-w-xs truncate">{{ row.note || '-' }}</td>
+                  <td class="text-right font-semibold">{{ format(row.amount) }}</td>
+                  <td class="text-sm">{{ row.resolved_account }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       <div class="ocn-panel">

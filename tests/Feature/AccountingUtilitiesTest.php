@@ -6,6 +6,7 @@ use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\CoaSetting;
 use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Core\Models\Company;
+use App\Models\CashIn;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -67,6 +68,69 @@ class AccountingUtilitiesTest extends TestCase
         $this->assertDatabaseHas('journal_entries', [
             'id' => $entry->id,
             'company_id' => $companyB->id,
+        ]);
+    }
+
+    public function test_accounting_utilities_can_backfill_cash_account_ids_from_journal(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $cash = Account::query()->updateOrCreate(['code' => '1101'], [
+            'name' => 'Kas Utama',
+            'type' => 'asset',
+            'normal_balance' => 'debit',
+            'is_active' => true,
+        ]);
+        $revenue = Account::query()->updateOrCreate(['code' => '4003'], [
+            'name' => 'Pendapatan Project',
+            'type' => 'revenue',
+            'normal_balance' => 'credit',
+            'is_active' => true,
+        ]);
+
+        $entry = JournalEntry::query()->create([
+            'entry_no' => 'JE-INV-001',
+            'entry_date' => '2026-05-14',
+            'description' => 'Pembayaran invoice',
+            'status' => 'posted',
+            'source_module' => 'project_invoice_payment',
+            'source_reference' => 'pay-1',
+        ]);
+        $entry->lines()->createMany([
+            ['account_id' => $cash->id, 'debit' => 500000, 'credit' => 0],
+            ['account_id' => $revenue->id, 'debit' => 0, 'credit' => 500000],
+        ]);
+
+        $cashIn = CashIn::query()->create([
+            'amount' => 500000,
+            'date' => '2026-05-14',
+            'category' => 'project_payment',
+            'journal_entry_id' => $entry->id,
+            'cash_account_id' => null,
+            'created_by' => $user->id,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.accounting.utilities'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Accounting/Utilities')
+                ->where('cashAccountBackfill.cash_in_ready', 1)
+                ->where('cashAccountBackfill.cash_in_pending', 1)
+                ->has('cashAccountBackfill.samples', 1)
+                ->etc());
+
+        $this
+            ->actingAs($user)
+            ->post(route('erp.accounting.utilities.backfill-cash-accounts'))
+            ->assertSessionHasNoErrors()
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('cash_in', [
+            'id' => $cashIn->id,
+            'cash_account_id' => $cash->id,
         ]);
     }
 

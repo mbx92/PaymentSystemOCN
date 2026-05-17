@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\JournalLine;
+use App\ERP\Accounting\Services\CashAccountIdBackfillService;
 use App\ERP\Accounting\Services\CoaSettingService;
 use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Core\Models\Company;
@@ -90,6 +91,21 @@ class ERPAccountingUtilityController extends Controller
             'companySummaries' => $companySummaries,
             'filters' => $this->filtersWithPerPage($request, ['company_id', 'date_from', 'date_to', 'q']),
             'posChannelCorrection' => $this->posChannelCorrectionSummary($request),
+            'cashAccountBackfill' => app(CashAccountIdBackfillService::class)->summary(),
+        ]);
+    }
+
+    public function backfillCashAccountIds(): RedirectResponse
+    {
+        $result = app(CashAccountIdBackfillService::class)->apply();
+
+        $total = $result['cash_in_updated'] + $result['cash_out_updated'];
+
+        return back()->with('flash', [
+            'type' => $total > 0 ? 'success' : 'info',
+            'message' => $total > 0
+                ? "Akun kas diperbarui: {$result['cash_in_updated']} kas masuk, {$result['cash_out_updated']} kas keluar."
+                : 'Tidak ada transaksi kas masuk/keluar yang perlu diperbaiki.',
         ]);
     }
 
