@@ -7,7 +7,9 @@ import {ArrowLeftIcon,
   ArrowsRightLeftIcon,
   ClipboardDocumentListIcon,
   ArrowTrendingUpIcon,
-  Squares2X2Icon,} from '@heroicons/vue/24/outline';
+  Squares2X2Icon,
+  TagIcon,
+  WalletIcon,} from '@heroicons/vue/24/outline';
 import { computed } from 'vue';
 
 const props = defineProps({
@@ -18,6 +20,8 @@ const page = usePage();
 
 const iconMap = {
   'chart-bar': ChartBarIcon,
+  'wallet': WalletIcon,
+  'tag': TagIcon,
   'arrows-right-left': ArrowsRightLeftIcon,
   'clipboard-list': ClipboardDocumentListIcon,
   'arrow-trending-up': ArrowTrendingUpIcon,

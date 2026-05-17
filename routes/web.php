@@ -283,7 +283,14 @@ Route::middleware('auth')->group(function () {
         Route::post('personal/transactions', [PersonalFinanceController::class, 'storeTransaction'])->name('personal.transactions.store');
         Route::patch('personal/transactions/{transaction}', [PersonalFinanceController::class, 'updateTransaction'])->name('personal.transactions.update');
         Route::delete('personal/transactions/{transaction}', [PersonalFinanceController::class, 'destroyTransaction'])->name('personal.transactions.destroy');
+        Route::get('personal/categories', [PersonalFinanceController::class, 'categories'])->name('personal.categories');
         Route::post('personal/categories', [PersonalFinanceController::class, 'storeCategory'])->name('personal.categories.store');
+        Route::patch('personal/categories/{category}', [PersonalFinanceController::class, 'updateCategory'])->name('personal.categories.update');
+        Route::delete('personal/categories/{category}', [PersonalFinanceController::class, 'destroyCategory'])->name('personal.categories.destroy');
+        Route::get('personal/wallets', [PersonalFinanceController::class, 'wallets'])->name('personal.wallets');
+        Route::post('personal/wallets', [PersonalFinanceController::class, 'storeWallet'])->name('personal.wallets.store');
+        Route::patch('personal/wallets/{wallet}', [PersonalFinanceController::class, 'updateWallet'])->name('personal.wallets.update');
+        Route::delete('personal/wallets/{wallet}', [PersonalFinanceController::class, 'destroyWallet'])->name('personal.wallets.destroy');
         Route::get('personal/budgets', [PersonalFinanceController::class, 'budgets'])->name('personal.budgets');
         Route::post('personal/budgets', [PersonalFinanceController::class, 'storeBudget'])->name('personal.budgets.store');
         Route::get('personal/investments', [PersonalFinanceController::class, 'investments'])->name('personal.investments');

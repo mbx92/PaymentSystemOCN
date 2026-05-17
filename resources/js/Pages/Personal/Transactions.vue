@@ -19,23 +19,6 @@ const money = (n) => `Rp ${Number(n ?? 0).toLocaleString('id-ID')}`;
 const incomeCategories = computed(() => (props.categories ?? []).filter((c) => c.type === 'income'));
 const expenseCategories = computed(() => (props.categories ?? []).filter((c) => c.type === 'expense'));
 
-const categoryForm = useForm({
-    name: '',
-    type: 'expense',
-    color: '',
-});
-
-const submitCategory = () => {
-    categoryForm.post(route('personal.categories.store'), {
-        preserveScroll: true,
-        onSuccess: () => {
-            categoryForm.reset('name', 'color');
-            categoryForm.type = 'expense';
-            document.getElementById('modal-add-category')?.close();
-        },
-    });
-};
-
 const txForm = useForm({
     wallet_id: '',
     category_id: '',
@@ -49,6 +32,7 @@ const openAddTx = () => {
     txForm.clearErrors();
     txForm.reset('wallet_id', 'category_id', 'amount', 'note');
     txForm.type = 'expense';
+    txForm.wallet_id = defaultWalletId.value;
     txForm.occurred_on = new Date().toISOString().slice(0, 10);
     document.getElementById('modal-add-transaction')?.showModal();
 };
@@ -124,6 +108,12 @@ const doDeleteTx = () => {
 
 const categoryOptions = computed(() => (txForm.type === 'income' ? incomeCategories.value : expenseCategories.value));
 const editCategoryOptions = computed(() => (editForm.type === 'income' ? incomeCategories.value : expenseCategories.value));
+
+const defaultWalletId = computed(() => {
+    const list = props.wallets ?? [];
+    const def = list.find((w) => w.is_default) ?? list[0];
+    return def ? String(def.id) : '';
+});
 </script>
 
 <template>
@@ -136,11 +126,12 @@ const editCategoryOptions = computed(() => (editForm.type === 'income' ? incomeC
             <div>
               <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Personal</p>
               <h1 class="ocn-panel__title mt-1">Pemasukan &amp; pengeluaran</h1>
-              <p class="ocn-panel__desc mt-1">Transaksi terbaru (200 entri) dan kategori kustom.</p>
+              <p class="ocn-panel__desc mt-1">Transaksi terbaru (200 entri). Atur <Link :href="route('personal.wallets')" class="link link-primary">dompet</Link> dan <Link :href="route('personal.categories')" class="link link-primary">kategori</Link> di master data.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
               <div class="flex flex-wrap gap-2">
-            <button type="button" class="btn btn-outline btn-sm" @click="document.getElementById('modal-add-category')?.showModal()">+ Kategori</button>
+            <Link :href="route('personal.categories')" class="btn btn-outline btn-sm">Kategori</Link>
+            <Link :href="route('personal.wallets')" class="btn btn-outline btn-sm">Dompet</Link>
             <button type="button" class="btn btn-primary btn-sm" @click="openAddTx">+ Transaksi</button>
             <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('personal')">
             <ArrowLeftIcon class="h-4 w-4" />
@@ -193,38 +184,6 @@ const editCategoryOptions = computed(() => (editForm.type === 'income' ? incomeC
       </div>
     </div>
 
-    <dialog id="modal-add-category" class="modal">
-      <div class="modal-box max-w-md">
-        <h3 class="font-bold text-lg">Tambah kategori</h3>
-        <div class="mt-4 space-y-3">
-          <div>
-            <label class="label"><span class="label-text">Nama</span></label>
-            <input v-model="categoryForm.name" type="text" class="input input-bordered w-full" />
-            <p v-if="categoryForm.errors.name" class="text-error text-xs mt-1">{{ categoryForm.errors.name }}</p>
-          </div>
-          <div>
-            <label class="label"><span class="label-text">Tipe</span></label>
-            <select v-model="categoryForm.type" class="select select-bordered w-full">
-              <option value="income">Pemasukan</option>
-              <option value="expense">Pengeluaran</option>
-            </select>
-          </div>
-          <div>
-            <label class="label"><span class="label-text">Warna (opsional)</span></label>
-            <input v-model="categoryForm.color" type="text" class="input input-bordered w-full" placeholder="#3b82f6" />
-          </div>
-        </div>
-        <div class="modal-action">
-          <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
-          <button
-            class="btn"
-            :class="categoryForm.processing ? 'btn-secondary' : 'btn-primary'"
-            :disabled="categoryForm.processing"
-            @click="submitCategory"
-          >Simpan</button>
-        </div>
-      </div>
-    </dialog>
 
     <dialog id="modal-add-transaction" class="modal">
       <div class="modal-box max-w-lg">

@@ -97,7 +97,12 @@ class PersonalFinanceController extends Controller
         $userId = (int) $request->user()->id;
         $this->ensureDefaults($userId);
 
-        $wallets = PersonalWallet::query()->where('user_id', $userId)->orderBy('name')->get(['id', 'name', 'currency']);
+        $wallets = PersonalWallet::query()
+            ->where('user_id', $userId)
+            ->orderByDesc('is_default')
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get(['id', 'name', 'currency', 'is_default']);
         $categories = PersonalCategory::query()->where('user_id', $userId)->orderBy('type')->orderBy('name')->get(['id', 'name', 'type', 'color']);
 
         $transactions = PersonalTransaction::query()
@@ -201,6 +206,23 @@ class PersonalFinanceController extends Controller
         return back()->with('flash', ['type' => 'success', 'message' => 'Transaksi dihapus.']);
     }
 
+    public function categories(Request $request): Response
+    {
+        $userId = (int) $request->user()->id;
+        $this->ensureDefaults($userId);
+
+        $categories = PersonalCategory::query()
+            ->where('user_id', $userId)
+            ->orderBy('type')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (PersonalCategory $c) => $this->mapCategoryRow($c));
+
+        return Inertia::render('Personal/Categories', [
+            'categories' => $categories,
+        ]);
+    }
+
     public function storeCategory(Request $request): RedirectResponse
     {
         $userId = (int) $request->user()->id;
@@ -212,16 +234,204 @@ class PersonalFinanceController extends Controller
             'color' => 'nullable|string|max:16',
         ]);
 
-        PersonalCategory::query()->firstOrCreate(
-            [
-                'user_id' => $userId,
-                'name' => trim($validated['name']),
-                'type' => $validated['type'],
-            ],
-            ['color' => $validated['color'] ?? null]
-        );
+        $name = trim($validated['name']);
+
+        $exists = PersonalCategory::query()
+            ->where('user_id', $userId)
+            ->where('type', $validated['type'])
+            ->where('name', $name)
+            ->exists();
+
+        if ($exists) {
+            return back()->with('flash', ['type' => 'error', 'message' => 'Kategori dengan nama dan tipe yang sama sudah ada.']);
+        }
+
+        PersonalCategory::query()->create([
+            'user_id' => $userId,
+            'name' => $name,
+            'type' => $validated['type'],
+            'color' => $validated['color'] ?? null,
+        ]);
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Kategori ditambahkan.']);
+    }
+
+    public function updateCategory(Request $request, PersonalCategory $category): RedirectResponse
+    {
+        $this->assertCategoryOwner($request, $category);
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:120',
+            'type' => ['required', Rule::in(['income', 'expense'])],
+            'color' => 'nullable|string|max:16',
+        ]);
+
+        $name = trim($validated['name']);
+        $userId = (int) $category->user_id;
+
+        $duplicate = PersonalCategory::query()
+            ->where('user_id', $userId)
+            ->where('type', $validated['type'])
+            ->where('name', $name)
+            ->where('id', '!=', $category->id)
+            ->exists();
+
+        if ($duplicate) {
+            return back()->with('flash', ['type' => 'error', 'message' => 'Kategori dengan nama dan tipe yang sama sudah ada.']);
+        }
+
+        if ($category->type !== $validated['type']) {
+            $hasTransactions = PersonalTransaction::query()
+                ->where('category_id', $category->id)
+                ->exists();
+            if ($hasTransactions) {
+                return back()->with('flash', ['type' => 'error', 'message' => 'Tipe kategori tidak bisa diubah karena sudah dipakai transaksi.']);
+            }
+            $hasBudgets = PersonalBudget::query()
+                ->where('category_id', $category->id)
+                ->exists();
+            if ($hasBudgets) {
+                return back()->with('flash', ['type' => 'error', 'message' => 'Tipe kategori tidak bisa diubah karena sudah dipakai anggaran.']);
+            }
+        }
+
+        $category->update([
+            'name' => $name,
+            'type' => $validated['type'],
+            'color' => $validated['color'] ?? null,
+        ]);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Kategori diperbarui.']);
+    }
+
+    public function destroyCategory(Request $request, PersonalCategory $category): RedirectResponse
+    {
+        $this->assertCategoryOwner($request, $category);
+        $category->delete();
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Kategori dihapus.']);
+    }
+
+    public function wallets(Request $request): Response
+    {
+        $userId = (int) $request->user()->id;
+        $this->ensureDefaults($userId);
+
+        $wallets = PersonalWallet::query()
+            ->where('user_id', $userId)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (PersonalWallet $w) => $this->mapWalletRow($w));
+
+        return Inertia::render('Personal/Wallets', [
+            'wallets' => $wallets,
+            'currencies' => [
+                ['value' => 'IDR', 'label' => 'IDR — Rupiah'],
+            ],
+        ]);
+    }
+
+    public function storeWallet(Request $request): RedirectResponse
+    {
+        $userId = (int) $request->user()->id;
+        $this->ensureDefaults($userId);
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:120',
+            'currency' => 'required|string|size:3',
+            'sort_order' => 'nullable|integer|min:0|max:9999',
+            'is_default' => 'required|boolean',
+        ]);
+
+        $isDefault = (bool) $validated['is_default'];
+        if (! PersonalWallet::query()->where('user_id', $userId)->exists()) {
+            $isDefault = true;
+        }
+
+        if ($isDefault) {
+            PersonalWallet::query()->where('user_id', $userId)->update(['is_default' => false]);
+        }
+
+        PersonalWallet::query()->create([
+            'user_id' => $userId,
+            'name' => trim($validated['name']),
+            'currency' => strtoupper(trim($validated['currency'])),
+            'sort_order' => (int) ($validated['sort_order'] ?? 0),
+            'is_default' => $isDefault,
+        ]);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Dompet ditambahkan.']);
+    }
+
+    public function updateWallet(Request $request, PersonalWallet $wallet): RedirectResponse
+    {
+        $this->assertWalletOwner($request, $wallet);
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:120',
+            'currency' => 'required|string|size:3',
+            'sort_order' => 'nullable|integer|min:0|max:9999',
+            'is_default' => 'required|boolean',
+        ]);
+
+        $isDefault = (bool) $validated['is_default'];
+        if ($isDefault) {
+            PersonalWallet::query()
+                ->where('user_id', $wallet->user_id)
+                ->where('id', '!=', $wallet->id)
+                ->update(['is_default' => false]);
+        } elseif ($wallet->is_default) {
+            $other = PersonalWallet::query()
+                ->where('user_id', $wallet->user_id)
+                ->where('id', '!=', $wallet->id)
+                ->orderBy('sort_order')
+                ->orderBy('name')
+                ->first();
+            if ($other) {
+                $other->update(['is_default' => true]);
+            } else {
+                $isDefault = true;
+            }
+        }
+
+        $wallet->update([
+            'name' => trim($validated['name']),
+            'currency' => strtoupper(trim($validated['currency'])),
+            'sort_order' => (int) ($validated['sort_order'] ?? 0),
+            'is_default' => $isDefault,
+        ]);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Dompet diperbarui.']);
+    }
+
+    public function destroyWallet(Request $request, PersonalWallet $wallet): RedirectResponse
+    {
+        $this->assertWalletOwner($request, $wallet);
+
+        $walletCount = PersonalWallet::query()->where('user_id', $wallet->user_id)->count();
+        if ($walletCount <= 1) {
+            return back()->with('flash', ['type' => 'error', 'message' => 'Minimal harus ada satu dompet.']);
+        }
+
+        if (PersonalTransaction::query()->where('wallet_id', $wallet->id)->exists()) {
+            return back()->with('flash', ['type' => 'error', 'message' => 'Dompet tidak bisa dihapus karena masih memiliki transaksi.']);
+        }
+
+        $wasDefault = $wallet->is_default;
+        $userId = (int) $wallet->user_id;
+        $wallet->delete();
+
+        if ($wasDefault) {
+            $next = PersonalWallet::query()
+                ->where('user_id', $userId)
+                ->orderBy('sort_order')
+                ->orderBy('name')
+                ->first();
+            $next?->update(['is_default' => true]);
+        }
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Dompet dihapus.']);
     }
 
     public function budgets(Request $request): Response
@@ -495,5 +705,59 @@ class PersonalFinanceController extends Controller
         if ((int) $investment->user_id !== (int) $request->user()->id) {
             abort(404);
         }
+    }
+
+    private function assertCategoryOwner(Request $request, PersonalCategory $category): void
+    {
+        if ((int) $category->user_id !== (int) $request->user()->id) {
+            abort(404);
+        }
+    }
+
+    private function assertWalletOwner(Request $request, PersonalWallet $wallet): void
+    {
+        if ((int) $wallet->user_id !== (int) $request->user()->id) {
+            abort(404);
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function mapCategoryRow(PersonalCategory $c): array
+    {
+        $txCount = PersonalTransaction::query()->where('category_id', $c->id)->count();
+        $budgetCount = PersonalBudget::query()->where('category_id', $c->id)->count();
+
+        return [
+            'id' => $c->id,
+            'name' => $c->name,
+            'type' => $c->type,
+            'color' => $c->color,
+            'transaction_count' => $txCount,
+            'budget_count' => $budgetCount,
+            'can_delete' => $txCount === 0 && $budgetCount === 0,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function mapWalletRow(PersonalWallet $w): array
+    {
+        $in = (float) PersonalTransaction::query()->where('wallet_id', $w->id)->where('type', 'income')->sum('amount');
+        $out = (float) PersonalTransaction::query()->where('wallet_id', $w->id)->where('type', 'expense')->sum('amount');
+        $txCount = PersonalTransaction::query()->where('wallet_id', $w->id)->count();
+
+        return [
+            'id' => $w->id,
+            'name' => $w->name,
+            'currency' => $w->currency,
+            'sort_order' => $w->sort_order,
+            'is_default' => (bool) $w->is_default,
+            'balance' => round($in - $out, 2),
+            'transaction_count' => $txCount,
+            'can_delete' => $txCount === 0,
+        ];
     }
 }

@@ -18,6 +18,18 @@ class PersonalModuleController extends Controller
                     'icon' => 'chart-bar',
                 ],
                 [
+                    'title' => 'Dompet',
+                    'description' => 'Kelola rekening, tunai, e-wallet — tentukan alur uang Anda.',
+                    'route' => 'personal.wallets',
+                    'icon' => 'wallet',
+                ],
+                [
+                    'title' => 'Master kategori',
+                    'description' => 'Kategori pemasukan & pengeluaran untuk transaksi dan anggaran.',
+                    'route' => 'personal.categories',
+                    'icon' => 'tag',
+                ],
+                [
                     'title' => 'Pemasukan & pengeluaran',
                     'description' => 'Catat transaksi harian: gaji, tagihan, belanja, tabungan.',
                     'route' => 'personal.transactions',
