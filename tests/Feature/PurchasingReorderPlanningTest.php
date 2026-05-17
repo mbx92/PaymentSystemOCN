@@ -54,6 +54,42 @@ class PurchasingReorderPlanningTest extends TestCase
                 ->etc());
     }
 
+    public function test_purchase_order_store_without_lines_creates_draft_header_only(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $vendor = Vendor::query()->create([
+            'code' => 'SUP-001',
+            'name' => 'Supplier Aktif',
+            'lead_time_days' => 7,
+            'is_active' => true,
+        ]);
+
+        $response = $this
+            ->actingAs($user)
+            ->post(route('erp.purchasing.purchase-orders.store'), [
+                'vendor_code' => $vendor->code,
+                'order_date' => '2026-05-13',
+                'eta_date' => '2026-05-20',
+                'notes' => 'Header only',
+            ]);
+
+        $purchaseOrder = PurchaseOrder::query()->firstOrFail();
+
+        $response
+            ->assertSessionHasNoErrors()
+            ->assertRedirect(route('erp.purchasing.purchase-orders.show', $purchaseOrder));
+
+        $this->assertDatabaseHas('purchase_orders', [
+            'id' => $purchaseOrder->id,
+            'vendor_id' => $vendor->id,
+            'total_amount' => '0.00',
+            'status' => 'draft',
+        ]);
+        $this->assertDatabaseCount('purchase_order_lines', 0);
+    }
+
     public function test_purchase_order_store_redirects_to_created_po_detail(): void
     {
         $this->disableErpMiddleware();

@@ -208,7 +208,7 @@ const confirmDestroyEntry = () => {
             <div>
               <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Accounting Workspace</p>
               <h1 class="ocn-panel__title mt-1">Cashflow Accounting</h1>
-              <p class="ocn-panel__desc mt-1">Ringkasan arus kas dari invoice/termin, POS, pembayaran supplier, pembayaran anggota, dan expenses.</p>
+              <p class="ocn-panel__desc mt-1">Ringkasan arus kas dari invoice/termin, POS, pembayaran supplier, pembayaran anggota, pembelian inventaris, dan expenses.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
               <div class="flex items-center gap-2">
@@ -226,20 +226,20 @@ const confirmDestroyEntry = () => {
       <div class="grid gap-3 md:grid-cols-3">
         <div class="ocn-panel">
           <div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Total masuk</h2></div>
-          <div class="card-body py-4">
-            <p class="text-xl font-bold text-success">{{ format(totals.cash_in || 0) }}</p>
+          <div class="card-body py-3">
+            <p class="text-lg font-bold tabular-nums text-success">{{ format(totals.cash_in || 0) }}</p>
           </div>
         </div>
         <div class="ocn-panel">
           <div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Total keluar / expenses</h2></div>
-          <div class="card-body py-4">
-            <p class="text-xl font-bold text-error">{{ format(totals.cash_out || 0) }}</p>
+          <div class="card-body py-3">
+            <p class="text-lg font-bold tabular-nums text-error">{{ format(totals.cash_out || 0) }}</p>
           </div>
         </div>
         <div class="ocn-panel">
           <div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Net cashflow</h2></div>
-          <div class="card-body py-4">
-            <p :class="['text-xl font-bold', (totals.net || 0) >= 0 ? 'text-primary' : 'text-error']">{{ format(totals.net || 0) }}</p>
+          <div class="card-body py-3">
+            <p :class="['text-lg font-bold tabular-nums', (totals.net || 0) >= 0 ? 'text-primary' : 'text-error']">{{ format(totals.net || 0) }}</p>
           </div>
         </div>
       </div>
@@ -283,19 +283,19 @@ const confirmDestroyEntry = () => {
           <span class="text-xs text-base-content/60">{{ entries.length }} transaksi</span>
         </div>
         <div class="overflow-x-auto">
-          <table class="table">
-            <thead class="sticky top-0 z-10">
-              <tr>
-                <th class="w-10 text-center">#</th>
-                <th>Tanggal</th>
+          <table class="table table-xs table-zebra cashflow-table">
+            <thead class="sticky top-0 z-10 bg-base-100">
+              <tr class="text-[11px] uppercase tracking-wide text-base-content/55">
+                <th class="w-8 text-center">#</th>
+                <th class="whitespace-nowrap">Tgl</th>
                 <th>Jenis</th>
-                <th>Peruntukan</th>
-                <th>Sumber Dana</th>
+                <th class="min-w-[7rem]">Peruntukan</th>
+                <th class="min-w-[6rem]">Kas/Bank</th>
                 <th>Project</th>
                 <th>Kategori</th>
                 <th class="text-right">Jumlah</th>
-                <th>Status</th>
-                <th>Keterangan</th>
+                <th>St</th>
+                <th class="max-w-[10rem]">Ket.</th>
               </tr>
             </thead>
             <tbody>
@@ -303,44 +303,46 @@ const confirmDestroyEntry = () => {
                 v-for="(entry, index) in entries"
                 :key="`${entry.type}-${entry.id}`"
                 :class="['cursor-pointer transition-colors hover:bg-primary/5',
-                  entry.type === 'in' ? 'border-l-4 border-l-success' : 'border-l-4 border-l-error']"
+                  entry.type === 'in' ? 'border-l-2 border-l-success' : 'border-l-2 border-l-error']"
                 @click="openDetailModal(entry)"
               >
-                <td class="text-center text-xs text-base-content/40 font-mono">{{ index + 1 }}</td>
-                <td class="whitespace-nowrap">
-                  <span class="font-medium">{{ formatDate(entry.date) }}</span>
+                <td class="text-center font-mono text-base-content/45">{{ index + 1 }}</td>
+                <td class="whitespace-nowrap tabular-nums">{{ formatDate(entry.date) }}</td>
+                <td>
+                  <span class="badge badge-xs" :class="typeBadgeClass(entry.type)">{{ typeLabel(entry.type) }}</span>
                 </td>
                 <td>
-                  <span class="badge" :class="typeBadgeClass(entry.type)">{{ typeLabel(entry.type) }}</span>
-                </td>
-                <td>
-                  <div class="font-medium">{{ entry.source_name || '-' }}</div>
-                  <div class="mt-0.5 text-xs text-base-content/40">{{ sourceLabel(entry.source) }}</div>
-                  <div v-if="entry.type === 'in' ? entry.payment_method_name : entry.recipient_name"
-                       class="text-xs text-base-content/40 mt-0.5">
-                    {{ entry.type === 'in' ? entry.payment_method_name : entry.recipient_name }}
+                  <div class="max-w-[11rem] truncate font-medium leading-tight" :title="entry.source_name">{{ entry.source_name || '-' }}</div>
+                  <div class="truncate text-[10px] leading-tight text-base-content/45">
+                    {{ sourceLabel(entry.source) }}
+                    <template v-if="entry.type === 'in' ? entry.payment_method_name : entry.recipient_name">
+                      · {{ entry.type === 'in' ? entry.payment_method_name : entry.recipient_name }}
+                    </template>
                   </div>
                 </td>
                 <td>
-                  <div class="font-medium">{{ entry.cash_account_name || '-' }}</div>
-                  <div v-if="entry.payment_method_name" class="mt-0.5 text-xs text-base-content/40">{{ entry.payment_method_name }}</div>
+                  <div class="max-w-[9rem] truncate leading-tight" :title="entry.cash_account_name">{{ entry.cash_account_name || '-' }}</div>
                 </td>
-                <td class="font-medium">{{ entry.project_name }}</td>
-                <td><span class="badge badge-ghost">{{ categoryLabelMap[entry.category] ?? entry.category }}</span></td>
+                <td class="max-w-[8rem] truncate" :title="entry.project_name">{{ entry.project_name }}</td>
+                <td>
+                  <span class="badge badge-ghost badge-xs max-w-[7rem] truncate" :title="categoryLabelMap[entry.category] ?? entry.category">
+                    {{ categoryLabelMap[entry.category] ?? entry.category }}
+                  </span>
+                </td>
                 <td class="text-right tabular-nums whitespace-nowrap">
                   <span :class="['font-semibold', entry.type === 'in' ? 'text-success' : 'text-error']">
                     {{ entry.type === 'in' ? '+' : '-' }}{{ format(entry.amount) }}
                   </span>
                 </td>
-                <td><StatusBadge :status="entry.document_status" size="" /></td>
-                <td class="max-w-xs">
-                  <div class="truncate text-sm">{{ entry.note || '-' }}</div>
-                  <div class="text-xs text-base-content/40 mt-0.5">{{ entry.creator_name }}</div>
+                <td><StatusBadge :status="entry.document_status" size="badge-xs" /></td>
+                <td class="max-w-[10rem]">
+                  <div class="truncate leading-tight" :title="entry.note">{{ entry.note || '—' }}</div>
+                  <div class="truncate text-[10px] leading-tight text-base-content/45">{{ entry.creator_name }}</div>
                 </td>
               </tr>
               <tr v-if="!entries.length">
-                <td colspan="10" class="py-16 text-center">
-                  <svg class="mx-auto h-12 w-12 text-base-content/20" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor">
+                <td colspan="10" class="py-10 text-center">
+                  <svg class="mx-auto h-8 w-8 text-base-content/20" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z" />
                   </svg>
                   <p class="mt-3 text-sm font-medium text-base-content/50">Belum ada transaksi</p>
@@ -498,3 +500,16 @@ const confirmDestroyEntry = () => {
     </dialog>
   </AppLayout>
 </template>
+
+<style scoped>
+.cashflow-table :is(th, td) {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.25;
+  vertical-align: middle;
+}
+.cashflow-table thead th {
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+</style>

@@ -217,6 +217,7 @@ const topbarContext = computed(() => {
     if (pathname.includes('/erp/sales/pos')) return { label: 'POS Workspace', subtitle: 'Mode kasir cepat untuk penjualan produk.' };
     if (pathname.includes('/laporan')) return { label: 'Reporting Workspace', subtitle: 'Analisis laporan keuangan dan operasional real-time.' };
     if (pathname.includes('/erp/accounting/mutasi-kas-bank')) return { label: 'Mutasi Kas/Bank', subtitle: 'Transfer dana antar akun kas/bank tanpa mempengaruhi laba rugi.' };
+    if (pathname.includes('/erp/accounting/inventaris')) return { label: 'Inventaris', subtitle: 'Pencatatan pembelian inventaris ke akun aset (default Peralatan) dan kas/bank.' };
     if (pathname.includes('/erp/accounting/cashflow')) return { label: 'Cashflow Accounting', subtitle: 'Ringkasan arus kas dari invoice, POS, supplier, anggota, dan expenses.' };
     if (pathname.includes('/erp/accounting/payments/member')) return { label: 'Pembayaran Anggota', subtitle: 'Bayar distribusi tim dan lacak status di cashflow.' };
     if (pathname.includes('/erp/accounting/payments')) return { label: 'Pembayaran Workspace', subtitle: 'Pusat pembayaran project, tim, dan supplier.' };

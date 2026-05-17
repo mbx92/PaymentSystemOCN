@@ -1,5 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import CurrencyInput from '@/Components/CurrencyInput.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
@@ -17,6 +18,8 @@ const { formatDate } = useDateFormat();
 
 const { format } = useCurrency();
 const selectedPayable = ref(null);
+/** Nilai nominal modal (terpisah dari useForm agar format ribuan sinkron saat buka). */
+const modalAmount = ref(0);
 
 const paymentForm = useForm({
   payment_date: new Date().toISOString().slice(0, 10),
@@ -26,22 +29,26 @@ const paymentForm = useForm({
 });
 
 const openPayablePayment = (payable) => {
-  selectedPayable.value = payable;
+  const amount = Number(payable.outstanding_amount || 0);
+  modalAmount.value = amount;
   paymentForm.reset();
   paymentForm.payment_date = new Date().toISOString().slice(0, 10);
-  paymentForm.amount = Number(payable.outstanding_amount || 0);
+  paymentForm.amount = amount;
   paymentForm.cash_account_id = props.cashAccounts?.[0]?.id ?? '';
   paymentForm.note = '';
+  selectedPayable.value = payable;
   document.getElementById('modal-pay-supplier')?.showModal();
 };
 
 const submitSupplierPayment = () => {
   if (!selectedPayable.value) return;
+  paymentForm.amount = Number(modalAmount.value) || 0;
   paymentForm.post(route('erp.accounting.payments.supplier.store', selectedPayable.value.id), {
     preserveScroll: true,
     onSuccess: () => {
       paymentForm.reset();
       selectedPayable.value = null;
+      modalAmount.value = 0;
       document.getElementById('modal-pay-supplier')?.close();
     },
   });
@@ -238,15 +245,14 @@ const paidPayables = computed(() => (props.payables ?? []).filter((row) => Numbe
               <p v-if="paymentForm.errors.cash_account_id" class="mt-1 text-xs text-error">{{ paymentForm.errors.cash_account_id }}</p>
             </div>
             <div>
-              <label class="label"><span class="label-text">Nominal</span></label>
-              <input
-                v-model.number="paymentForm.amount"
-                type="number"
-                min="0.01"
-                step="0.01"
-                class="input input-bordered w-full"
+              <CurrencyInput
+                v-if="selectedPayable"
+                :key="selectedPayable.id"
+                v-model="modalAmount"
+                label="Nominal"
+                :required="true"
+                :error="paymentForm.errors.amount"
               />
-              <p v-if="paymentForm.errors.amount" class="mt-1 text-xs text-error">{{ paymentForm.errors.amount }}</p>
             </div>
             <div>
               <label class="label"><span class="label-text">Catatan</span></label>

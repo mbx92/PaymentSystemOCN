@@ -1,5 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import CurrencyInput from '@/Components/CurrencyInput.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import {
@@ -341,15 +342,12 @@ const totalPayable = computed(() => (
               <p v-if="paymentForm.errors.cash_account_id" class="mt-1 text-xs text-error">{{ paymentForm.errors.cash_account_id }}</p>
             </div>
             <div>
-              <label class="label"><span class="label-text">Nominal</span></label>
-              <input
-                v-model.number="paymentForm.amount"
-                type="number"
-                min="0.01"
-                step="0.01"
-                class="input input-bordered w-full"
+              <CurrencyInput
+                v-model="paymentForm.amount"
+                label="Nominal"
+                :required="true"
+                :error="paymentForm.errors.amount"
               />
-              <p v-if="paymentForm.errors.amount" class="mt-1 text-xs text-error">{{ paymentForm.errors.amount }}</p>
             </div>
             <div>
               <label class="label"><span class="label-text">Catatan</span></label>

@@ -53,6 +53,58 @@ class Account extends Model
         }
     }
 
+    /**
+     * Akun aset untuk pencatatan inventaris (peralatan, kendaraan, persediaan, dll.).
+     */
+    public static function inventoryAssetOptions(): Collection
+    {
+        return static::query()
+            ->where('type', 'asset')
+            ->where('normal_balance', 'debit')
+            ->where('is_active', true)
+            ->where('is_cash_bank', false)
+            ->where('name', 'not like', '%Akumulasi%')
+            ->orderBy('code')
+            ->get(['id', 'code', 'name']);
+    }
+
+    /**
+     * @return array<int, mixed>
+     */
+    public static function inventoryAssetIdValidationRules(): array
+    {
+        $ids = static::inventoryAssetOptions()->pluck('id')->all();
+
+        if ($ids === []) {
+            return ['required', 'integer', 'exists:accounts,id'];
+        }
+
+        return ['required', 'integer', Rule::in($ids)];
+    }
+
+    public static function defaultInventoryAssetAccount(): ?self
+    {
+        $peralatan = static::query()
+            ->where('is_active', true)
+            ->where('code', '1401')
+            ->first();
+
+        if ($peralatan) {
+            return $peralatan;
+        }
+
+        return static::query()
+            ->where('is_active', true)
+            ->where('type', 'asset')
+            ->where('normal_balance', 'debit')
+            ->where('is_cash_bank', false)
+            ->where('name', 'like', '%Peralatan%')
+            ->where('name', 'not like', '%Akumulasi%')
+            ->orderBy('code')
+            ->first()
+            ?? static::inventoryAssetOptions()->first();
+    }
+
     public function displayLabel(): string
     {
         return $this->code.' - '.$this->name;

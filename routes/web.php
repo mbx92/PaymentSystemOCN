@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AccountingInventoryController;
 use App\Http\Controllers\CashBankTransferController;
 use App\Http\Controllers\CashflowController;
 use App\Http\Controllers\CashInController;
@@ -75,6 +76,7 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/accounting/opening-balance', [ERPAccountingOpeningBalanceController::class, 'index'])->name('erp.accounting.opening-balance');
         Route::get('erp/accounting/utilities', [ERPAccountingUtilityController::class, 'index'])->name('erp.accounting.utilities');
         Route::get('erp/accounting/mutasi-kas-bank', [CashBankTransferController::class, 'index'])->name('erp.accounting.cash-bank-transfer');
+        Route::get('erp/accounting/inventaris', [AccountingInventoryController::class, 'index'])->name('erp.accounting.inventaris');
     });
 
     Route::middleware('role_or_permission:admin|manajer|finance|erp.accounting.post-journal')->group(function () {
@@ -89,6 +91,7 @@ Route::middleware('auth')->group(function () {
         Route::post('erp/accounting/utilities/backfill-cash-accounts', [ERPAccountingUtilityController::class, 'backfillCashAccountIds'])->name('erp.accounting.utilities.backfill-cash-accounts');
         Route::post('erp/accounting/utilities/reassign-cash-accounts', [ERPAccountingUtilityController::class, 'reassignCashAccounts'])->name('erp.accounting.utilities.reassign-cash-accounts');
         Route::post('erp/accounting/mutasi-kas-bank', [CashBankTransferController::class, 'store'])->name('erp.accounting.cash-bank-transfer.store');
+        Route::post('erp/accounting/inventaris', [AccountingInventoryController::class, 'store'])->name('erp.accounting.inventaris.store');
     });
 
     // Projects (Admin + Manajer)

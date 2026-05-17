@@ -1,5 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import CurrencyInput from '@/Components/CurrencyInput.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
@@ -13,12 +14,10 @@ const props = defineProps({
   cashAccounts: Array,
 });
 
-const { format, parse, formatInput } = useCurrency();
+const { format } = useCurrency();
 const { formatDate } = useDateFormat();
 const paymentSearch = ref('');
-const paymentAmountInput = ref('');
 const editingPayment = ref(null);
-const editPaymentAmountInput = ref('');
 
 const paymentProgress = computed(() => {
   const amount = Number(props.invoice?.amount || 0);
@@ -45,16 +44,12 @@ const paymentForm = useForm({
   cash_account_id: props.cashAccounts?.[0]?.id ?? '',
   note: '',
 });
-paymentAmountInput.value = formatInput(String(paymentForm.amount || 0));
-
 const submitPayment = () => {
-  paymentForm.amount = parse(paymentAmountInput.value);
   paymentForm.post(route('erp.sales.project-invoices.payments.store', props.invoice.id), {
     preserveScroll: true,
     onSuccess: () => {
       paymentForm.reset('note');
       paymentForm.amount = 0;
-      paymentAmountInput.value = '';
       document.getElementById('modal-add-invoice-payment')?.close();
     },
   });
@@ -75,13 +70,11 @@ const openEditPaymentModal = (payment) => {
   editPaymentForm.payment_method_id = payment.payment_method_id || props.paymentMethods?.[0]?.id || '';
   editPaymentForm.cash_account_id = payment.cash_account_id || props.cashAccounts?.[0]?.id || '';
   editPaymentForm.note = payment.note || '';
-  editPaymentAmountInput.value = formatInput(String(editPaymentForm.amount || 0));
   document.getElementById('modal-edit-invoice-payment')?.showModal();
 };
 
 const submitEditPayment = () => {
   if (!editingPayment.value) return;
-  editPaymentForm.amount = parse(editPaymentAmountInput.value);
   editPaymentForm.patch(route('erp.sales.project-invoices.payments.update', {
     project: props.invoice.id,
     cashIn: editingPayment.value.id,
@@ -90,14 +83,12 @@ const submitEditPayment = () => {
     onSuccess: () => {
       document.getElementById('modal-edit-invoice-payment')?.close();
       editingPayment.value = null;
-      editPaymentAmountInput.value = '';
     },
   });
 };
 
 const openPaymentModal = () => {
   paymentForm.amount = props.invoice.remaining_amount || props.invoice.amount || 0;
-  paymentAmountInput.value = formatInput(String(paymentForm.amount || 0));
   paymentForm.date = new Date().toISOString().slice(0, 10);
   paymentForm.payment_method_id = props.paymentMethods?.[0]?.id ?? '';
   paymentForm.cash_account_id = props.cashAccounts?.[0]?.id ?? '';
@@ -296,18 +287,13 @@ const downloadReceipt = (payment) => window.open(route('erp.sales.project-invoic
             <input v-model="paymentForm.date" type="date" class="input input-bordered w-full" />
             <p v-if="paymentForm.errors.date" class="text-error text-xs mt-1">{{ paymentForm.errors.date }}</p>
           </div>
-          <div>
-            <label class="label"><span class="label-text">Jumlah</span></label>
-            <input
-              :value="paymentAmountInput"
-              type="text"
-              class="input input-bordered w-full"
-              placeholder="Contoh: 1.500.000"
-              @input="paymentAmountInput = formatInput($event.target.value)"
-            />
-            <p class="text-xs text-base-content/60 mt-1">Sisa tagihan: {{ format(invoice.remaining_amount) }}</p>
-            <p v-if="paymentForm.errors.amount" class="text-error text-xs mt-1">{{ paymentForm.errors.amount }}</p>
-          </div>
+          <CurrencyInput
+            v-model="paymentForm.amount"
+            label="Jumlah"
+            :required="true"
+            :error="paymentForm.errors.amount"
+          />
+          <p class="text-xs text-base-content/60 -mt-1">Sisa tagihan: {{ format(invoice.remaining_amount) }}</p>
           <div>
             <label class="label"><span class="label-text">Akun Kas/Bank</span></label>
             <select v-model="paymentForm.cash_account_id" class="select select-bordered w-full" :disabled="!(cashAccounts || []).length">
@@ -350,15 +336,12 @@ const downloadReceipt = (payment) => window.open(route('erp.sales.project-invoic
             <p v-if="editPaymentForm.errors.date" class="text-error text-xs mt-1">{{ editPaymentForm.errors.date }}</p>
           </div>
           <div>
-            <label class="label"><span class="label-text">Jumlah</span></label>
-            <input
-              :value="editPaymentAmountInput"
-              type="text"
-              class="input input-bordered w-full"
-              placeholder="Contoh: 1.500.000"
-              @input="editPaymentAmountInput = formatInput($event.target.value)"
+            <CurrencyInput
+              v-model="editPaymentForm.amount"
+              label="Jumlah"
+              :required="true"
+              :error="editPaymentForm.errors.amount"
             />
-            <p v-if="editPaymentForm.errors.amount" class="text-error text-xs mt-1">{{ editPaymentForm.errors.amount }}</p>
           </div>
           <div>
             <label class="label"><span class="label-text">Akun Kas/Bank</span></label>

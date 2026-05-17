@@ -6,7 +6,7 @@ import { computed } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 import { useDateFormat } from '@/composables/useDateFormat';
 
-const { format } = useCurrency();
+const { format, parse, formatInput } = useCurrency();
 
 const blankLine = () => ({
   account_id: '',
@@ -202,10 +202,28 @@ const submit = () => {
                     </select>
                   </td>
                   <td>
-                    <input v-model.number="line.debit" type="number" min="0" step="0.01" class="input input-bordered input-sm w-full text-right" />
+                    <label class="input input-bordered input-sm w-full validator">
+                      <span class="text-base-content/50 text-xs">Rp</span>
+                      <input
+                        type="text"
+                        inputmode="numeric"
+                        :value="formatInput(line.debit || 0)"
+                        class="grow text-right"
+                        @input="line.debit = parse($event.target.value)"
+                      />
+                    </label>
                   </td>
                   <td>
-                    <input v-model.number="line.credit" type="number" min="0" step="0.01" class="input input-bordered input-sm w-full text-right" />
+                    <label class="input input-bordered input-sm w-full validator">
+                      <span class="text-base-content/50 text-xs">Rp</span>
+                      <input
+                        type="text"
+                        inputmode="numeric"
+                        :value="formatInput(line.credit || 0)"
+                        class="grow text-right"
+                        @input="line.credit = parse($event.target.value)"
+                      />
+                    </label>
                   </td>
                   <td>
                     <input v-model="line.description" type="text" class="input input-bordered input-sm w-full" placeholder="Opsional" />

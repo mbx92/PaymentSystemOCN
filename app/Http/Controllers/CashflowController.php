@@ -11,6 +11,7 @@ use App\ERP\Accounting\Services\CoaSettingService;
 use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Core\Services\ErpCompanyResolver;
 use App\ERP\Shared\Enums\DocumentStatus;
+use App\Models\AccountingInventoryRecord;
 use App\Models\CashCategory;
 use App\Models\CashIn;
 use App\Models\CashOut;
@@ -172,7 +173,7 @@ class CashflowController extends Controller
             ->get()
             ->keyBy('cash_out_id');
 
-        $cashIns = in_array($source, ['pos', 'supplier_payment', 'member_payment'], true)
+        $cashIns = in_array($source, ['pos', 'supplier_payment', 'member_payment', 'inventaris'], true)
             ? collect()
             : CashIn::query()
                 ->with(['project:id,name', 'creator:id,name', 'paymentMethod:id,name', 'cashAccount:id,code,name'])
@@ -217,7 +218,7 @@ class CashflowController extends Controller
                     'created_at' => optional($entry->created_at)->timestamp ?? 0,
                 ]);
 
-        $cashOuts = in_array($source, ['pos', 'supplier_payment'], true)
+        $cashOuts = in_array($source, ['pos', 'supplier_payment', 'inventaris'], true)
             ? collect()
             : CashOut::query()
                 ->with(['project:id,name', 'creator:id,name', 'cashAccount:id,code,name'])
@@ -311,11 +312,47 @@ class CashflowController extends Controller
                     'created_at' => optional($payment->created_at)->timestamp ?? 0,
                 ]);
 
+        $inventoryOutflows = $source !== '' && $source !== 'inventaris'
+            ? collect()
+            : AccountingInventoryRecord::query()
+                ->with(['cashAccount:id,code,name', 'assetAccount:id,code,name', 'creator:id,name'])
+                ->when($companyId, fn ($q) => $q->whereHas('journalEntry', fn ($jq) => $jq->where('company_id', $companyId)))
+                ->when($request->filled('date_from'), fn ($q) => $q->whereDate('acquisition_date', '>=', $request->date('date_from')))
+                ->when($request->filled('date_to'), fn ($q) => $q->whereDate('acquisition_date', '<=', $request->date('date_to')))
+                ->get()
+                ->map(fn (AccountingInventoryRecord $record) => [
+                    'id' => 'inv-'.$record->id,
+                    'type' => 'out',
+                    'source' => 'inventaris',
+                    'source_name' => 'Inventaris',
+                    'reference_no' => 'INV-'.$record->id,
+                    'date' => $record->acquisition_date?->format('Y-m-d'),
+                    'project_name' => '-',
+                    'project_id' => null,
+                    'category' => 'pembelian_inventaris',
+                    'amount' => (float) $record->amount,
+                    'payment_method_name' => null,
+                    'payment_method_id' => null,
+                    'cash_account_id' => $record->cash_account_id,
+                    'cash_account_name' => $record->cashAccount?->displayLabel() ?? '-',
+                    'recipient_name' => $record->item_name,
+                    'note' => trim(collect([
+                        $record->assetAccount?->displayLabel(),
+                        $record->note,
+                    ])->filter()->implode(' · ')) ?: null,
+                    'creator_name' => $record->creator?->name ?? '-',
+                    'document_status' => DocumentStatus::Posted->value,
+                    'journal_entry_id' => $record->journal_entry_id,
+                    'mutable' => false,
+                    'created_at' => optional($record->created_at)->timestamp ?? 0,
+                ]);
+
         $posCashAccount = app(CoaSettingService::class)->resolveAccountByKey('pos_sale_cash_account', '1001');
         $posSales = $this->buildPosEntries($request, $posCashAccount);
 
         $merged = collect($cashIns)->merge($cashOuts)
             ->merge($supplierPayments)
+            ->merge($inventoryOutflows)
             ->merge($posSales)
             ->sortByDesc(fn (array $row) => sprintf('%s-%d', $row['date'] ?? '0000-00-00', $row['created_at']));
 
@@ -468,6 +505,7 @@ class CashflowController extends Controller
             ['value' => 'manual', 'label' => 'Manual / Umum'],
             ['value' => 'supplier_payment', 'label' => 'Pembayaran Supplier'],
             ['value' => 'member_payment', 'label' => 'Pembayaran Anggota'],
+            ['value' => 'inventaris', 'label' => 'Inventaris'],
         ];
     }
 
@@ -475,7 +513,7 @@ class CashflowController extends Controller
     {
         $source = $request->string('source')->toString();
 
-        return in_array($source, ['project', 'pos', 'manual', 'supplier_payment', 'member_payment'], true) ? $source : '';
+        return in_array($source, ['project', 'pos', 'manual', 'supplier_payment', 'member_payment', 'inventaris'], true) ? $source : '';
     }
 
     private function storeCashInEntry(Request $request, array $validated): void

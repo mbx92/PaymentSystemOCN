@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 
 const props = defineProps({
@@ -13,14 +13,14 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue']);
 const { parse, formatInput } = useCurrency();
 
-const display = ref(props.modelValue ? formatInput(props.modelValue) : '');
+const display = ref('');
 
-watch(() => props.modelValue, (val) => {
-    const current = parse(display.value);
-    if (current !== Number(val)) {
-        display.value = val ? formatInput(val) : '';
-    }
-});
+const syncDisplayFromModel = () => {
+    display.value = formatInput(props.modelValue);
+};
+
+watch(() => props.modelValue, syncDisplayFromModel, { immediate: true });
+onMounted(syncDisplayFromModel);
 
 const onInput = (e) => {
     const raw = e.target.value.replace(/[^\d]/g, '');

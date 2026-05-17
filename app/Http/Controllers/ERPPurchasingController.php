@@ -166,10 +166,10 @@ class ERPPurchasingController extends Controller
             'order_date' => 'required|date',
             'notes' => 'nullable|string',
         ]);
-        $validatedLines = $this->validatePurchaseOrderLines($request);
+        $validatedLines = $this->validatePurchaseOrderLines($request, linesRequired: false);
 
         $vendor = Vendor::query()->where('code', $baseValidated['vendor_code'])->firstOrFail();
-        $lines = $this->buildPurchaseOrderLines($validatedLines['lines']);
+        $lines = $this->buildPurchaseOrderLines($validatedLines['lines'] ?? []);
         $totalAmount = (float) $lines->sum('line_total');
 
         $poNumber = DB::transaction(function () use ($baseValidated, $vendor, $lines, $totalAmount): string {
@@ -271,10 +271,12 @@ class ERPPurchasingController extends Controller
         return back()->with('flash', ['type' => 'success', 'message' => 'Data Purchase Order berhasil diperbarui.']);
     }
 
-    private function validatePurchaseOrderLines(Request $request): array
+    private function validatePurchaseOrderLines(Request $request, bool $linesRequired = true): array
     {
+        $linesRule = $linesRequired ? 'required|array|min:1' : 'nullable|array';
+
         return $request->validate([
-            'lines' => 'required|array|min:1',
+            'lines' => $linesRule,
             'lines.*.product_id' => [
                 'required',
                 'integer',
