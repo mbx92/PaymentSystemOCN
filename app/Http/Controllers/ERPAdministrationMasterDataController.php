@@ -116,7 +116,7 @@ class ERPAdministrationMasterDataController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:120',
             'domain' => 'required|string|max:190|unique:landing_sites,domain',
-            'layout_key' => 'required|string|in:toko,cctv,coming_soon',
+            'layout_key' => 'required|string|in:toko,cctv,coming_soon,countdown',
             'warehouse_id' => 'nullable|exists:warehouses,id',
             'is_active' => 'required|boolean',
         ]);
@@ -133,7 +133,7 @@ class ERPAdministrationMasterDataController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:120',
             'domain' => 'required|string|max:190|unique:landing_sites,domain,'.$landingSite->id,
-            'layout_key' => 'required|string|in:toko,cctv,coming_soon',
+            'layout_key' => 'required|string|in:toko,cctv,coming_soon,countdown',
             'warehouse_id' => 'nullable|exists:warehouses,id',
             'is_active' => 'required|boolean',
         ]);

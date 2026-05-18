@@ -1,8 +1,9 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Head, Link } from '@inertiajs/vue3';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
+import { Head, Link, router } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
-import { computed } from 'vue';
+import { computed, reactive, watch } from 'vue';
 import { Bar, Doughnut, Line } from 'vue-chartjs';
 import {
   Chart as ChartJS,
@@ -32,7 +33,33 @@ ChartJS.register(
 const props = defineProps({
   stats: Object,
   visitAnalytics: { type: Object, default: () => ({}) },
+  recentAccess: Object,
+  recentAccessFilters: Object,
+  recentAccessOptions: Object,
 });
+
+const recentFilters = reactive({
+  kind: props.recentAccessFilters?.kind ?? '',
+  device_type: props.recentAccessFilters?.device_type ?? '',
+  q: props.recentAccessFilters?.q ?? '',
+  per_page: props.recentAccessFilters?.per_page ?? props.recentAccess?.per_page ?? 25,
+});
+
+let recentFilterTimer;
+watch(
+  recentFilters,
+  (val) => {
+    clearTimeout(recentFilterTimer);
+    recentFilterTimer = setTimeout(() => {
+      router.get(route('erp.cms'), val, {
+        preserveState: true,
+        preserveScroll: true,
+        replace: true,
+      });
+    }, 300);
+  },
+  { deep: true },
+);
 
 const bytes = (n) => {
   const v = Number(n ?? 0);
@@ -154,6 +181,10 @@ const barOptions = {
     y: { grid: { display: false } },
   },
 };
+
+const applyRecentPerPage = (n) => {
+  recentFilters.per_page = n;
+};
 </script>
 
 <template>
@@ -251,6 +282,39 @@ const barOptions = {
           <h2 class="ocn-panel__title">Akses terbaru</h2>
           <p class="ocn-panel__desc">IP, lokasi perkiraan, perangkat, dan jalur.</p>
         </div>
+        <div class="card-body pb-2">
+          <div class="flex flex-nowrap items-end gap-3 overflow-x-auto pb-1">
+            <div class="min-w-[180px]">
+              <label class="label">
+                <span class="label-text text-xs font-semibold uppercase tracking-wide">Jenis akses</span>
+              </label>
+              <select v-model="recentFilters.kind" class="select select-sm select-bordered w-full">
+                <option value="">Semua</option>
+                <option v-for="kind in recentAccessOptions?.kinds ?? []" :key="kind.value" :value="kind.value">{{ kind.label }}</option>
+              </select>
+            </div>
+            <div class="min-w-[180px]">
+              <label class="label">
+                <span class="label-text text-xs font-semibold uppercase tracking-wide">Perangkat</span>
+              </label>
+              <select v-model="recentFilters.device_type" class="select select-sm select-bordered w-full">
+                <option value="">Semua</option>
+                <option v-for="device in recentAccessOptions?.device_types ?? []" :key="device" :value="device">{{ deviceLabel(device) }}</option>
+              </select>
+            </div>
+            <div class="min-w-[260px] grow">
+              <label class="label">
+                <span class="label-text text-xs font-semibold uppercase tracking-wide">Cari</span>
+              </label>
+              <input
+                v-model="recentFilters.q"
+                type="text"
+                class="input input-sm input-bordered w-full"
+                placeholder="IP, lokasi, browser, user, domain, path"
+              />
+            </div>
+          </div>
+        </div>
         <div class="overflow-x-auto">
         <table class="table table-sm">
           <thead>
@@ -265,7 +329,7 @@ const barOptions = {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(row, idx) in visitAnalytics?.recent ?? []" :key="idx">
+            <tr v-for="row in recentAccess?.data ?? []" :key="row.at + row.ip + row.path">
               <td class="whitespace-nowrap text-sm">{{ row.at_display ?? '—' }}</td>
               <td class="whitespace-nowrap text-sm">{{ row.kind_label }}</td>
               <td class="font-mono text-xs">{{ row.ip }}</td>
@@ -280,12 +344,13 @@ const barOptions = {
                 <span v-else>{{ row.path }}</span>
               </td>
             </tr>
-            <tr v-if="!(visitAnalytics?.recent ?? []).length">
+            <tr v-if="!(recentAccess?.data ?? []).length">
               <td colspan="7" class="text-center text-sm text-base-content/50 py-8">Belum ada log akses.</td>
             </tr>
           </tbody>
         </table>
         </div>
+        <DataTablePagination :paginator="recentAccess" @update:per-page="applyRecentPerPage" />
       </div>
 
       <div class="grid gap-4 md:grid-cols-2">

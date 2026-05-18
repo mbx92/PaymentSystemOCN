@@ -76,6 +76,45 @@ class PersonalFinanceController extends Controller
                 ->sum('amount'), 2);
         }
 
+        $assetTypeLabels = [
+            'tabungan' => 'Tabungan / deposito',
+            'saham' => 'Saham',
+            'reksadana' => 'Reksadana',
+            'emas' => 'Emas / logam mulia',
+            'crypto' => 'Crypto',
+            'lainnya' => 'Lainnya',
+        ];
+
+        $investments = PersonalInvestment::query()
+            ->where('user_id', $userId)
+            ->orderByDesc('is_active')
+            ->orderBy('name')
+            ->get();
+
+        $investmentNetById = PersonalInvestmentMovement::query()
+            ->whereIn('investment_id', $investments->pluck('id'))
+            ->get()
+            ->groupBy('investment_id')
+            ->map(function ($group) {
+                return round($group->sum(function (PersonalInvestmentMovement $movement) {
+                    $amount = (float) $movement->amount;
+
+                    return $movement->flow === 'withdrawal' ? -$amount : $amount;
+                }), 2);
+            });
+
+        $investmentRows = $investments->map(function (PersonalInvestment $investment) use ($assetTypeLabels, $investmentNetById) {
+            return [
+                'id' => $investment->id,
+                'name' => $investment->name,
+                'asset_type' => $investment->asset_type,
+                'asset_label' => $assetTypeLabels[$investment->asset_type] ?? $investment->asset_type,
+                'institution' => $investment->institution,
+                'is_active' => (bool) $investment->is_active,
+                'net_flow' => round((float) ($investmentNetById[$investment->id] ?? 0), 2),
+            ];
+        });
+
         return Inertia::render('Personal/Overview', [
             'wallets' => $walletRows,
             'month' => [
@@ -88,6 +127,14 @@ class PersonalFinanceController extends Controller
                 'labels' => $chartLabels,
                 'income' => $chartIncome,
                 'expense' => $chartExpense,
+            ],
+            'investments' => [
+                'summary' => [
+                    'count' => $investmentRows->count(),
+                    'active_count' => $investmentRows->where('is_active', true)->count(),
+                    'net_flow' => round((float) $investmentRows->sum('net_flow'), 2),
+                ],
+                'items' => $investmentRows,
             ],
         ]);
     }

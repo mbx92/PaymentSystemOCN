@@ -9,12 +9,13 @@ use App\Models\LandingSite;
 use App\Models\LandingSitePage;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection as SupportCollection;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class CmsModuleController extends Controller
 {
-    public function dashboard(): Response
+    public function dashboard(Request $request): Response
     {
         return Inertia::render('CMS/Dashboard', [
             'stats' => [
@@ -25,6 +26,15 @@ class CmsModuleController extends Controller
                 'media_bytes' => (int) CmsMedia::query()->sum('size_bytes'),
             ],
             'visitAnalytics' => $this->buildVisitAnalytics(),
+            'recentAccess' => $this->buildRecentAccess($request),
+            'recentAccessFilters' => $this->filtersWithPerPage($request, ['kind', 'device_type', 'q']),
+            'recentAccessOptions' => [
+                'kinds' => [
+                    ['value' => CmsAccessLog::KIND_LANDING_PUBLIC, 'label' => 'Landing publik'],
+                    ['value' => CmsAccessLog::KIND_CMS_ADMIN, 'label' => 'Panel CMS'],
+                ],
+                'device_types' => $this->recentAccessDeviceTypes(),
+            ],
         ]);
     }
 
@@ -96,34 +106,6 @@ class CmsModuleController extends Controller
             ->map(fn ($row) => ['label' => (string) $row->device_type, 'value' => (int) $row->cnt])
             ->all();
 
-        $recent = CmsAccessLog::query()
-            ->with([
-                'landingSite:id,name,domain',
-                'user:id,name,email',
-            ])
-            ->orderByDesc('id')
-            ->limit(40)
-            ->get()
-            ->map(function (CmsAccessLog $log) {
-                $loc = array_filter([$log->city, $log->region_name, $log->country_name]);
-
-                return [
-                    'at' => $log->created_at?->toIso8601String(),
-                    'at_display' => $log->created_at?->format('d M Y, H:i'),
-                    'kind' => $log->kind,
-                    'kind_label' => $log->kind === CmsAccessLog::KIND_LANDING_PUBLIC ? 'Landing publik' : 'Panel CMS',
-                    'ip' => $log->ip_address,
-                    'location' => $loc === [] ? '—' : implode(', ', $loc),
-                    'device_type' => $log->device_type,
-                    'browser' => $log->browser ?? '—',
-                    'os' => $log->os ?? '—',
-                    'site' => $log->landingSite?->name,
-                    'user' => $log->user?->email,
-                    'path' => $log->path,
-                ];
-            })
-            ->all();
-
         return [
             'range_days' => $rangeDays,
             'summary' => [
@@ -149,7 +131,81 @@ class CmsModuleController extends Controller
             ],
             'devices' => $devices,
             'countries' => $topCountries,
-            'recent' => $recent,
+        ];
+    }
+
+    private function buildRecentAccess(Request $request)
+    {
+        $query = CmsAccessLog::query()
+            ->with([
+                'landingSite:id,name,domain',
+                'user:id,name,email',
+            ]);
+
+        if ($kind = $request->string('kind')->toString()) {
+            $query->where('kind', $kind);
+        }
+
+        if ($deviceType = $request->string('device_type')->toString()) {
+            $query->where('device_type', $deviceType);
+        }
+
+        if ($q = trim($request->string('q')->toString())) {
+            $query->where(function ($inner) use ($q) {
+                $inner->where('ip_address', 'like', "%{$q}%")
+                    ->orWhere('path', 'like', "%{$q}%")
+                    ->orWhere('browser', 'like', "%{$q}%")
+                    ->orWhere('os', 'like', "%{$q}%")
+                    ->orWhere('city', 'like', "%{$q}%")
+                    ->orWhere('region_name', 'like', "%{$q}%")
+                    ->orWhere('country_name', 'like', "%{$q}%")
+                    ->orWhereHas('landingSite', fn ($site) => $site->where('name', 'like', "%{$q}%")->orWhere('domain', 'like', "%{$q}%"))
+                    ->orWhereHas('user', fn ($user) => $user->where('email', 'like', "%{$q}%")->orWhere('name', 'like', "%{$q}%"));
+            });
+        }
+
+        return $query
+            ->orderByDesc('id')
+            ->paginate($this->resolvedPerPage($request))
+            ->withQueryString()
+            ->through(fn (CmsAccessLog $log) => $this->mapRecentAccessRow($log));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function recentAccessDeviceTypes(): array
+    {
+        return CmsAccessLog::query()
+            ->whereNotNull('device_type')
+            ->distinct()
+            ->orderBy('device_type')
+            ->pluck('device_type')
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function mapRecentAccessRow(CmsAccessLog $log): array
+    {
+        $loc = array_filter([$log->city, $log->region_name, $log->country_name]);
+
+        return [
+            'at' => $log->created_at?->toIso8601String(),
+            'at_display' => $log->created_at?->format('d M Y, H:i'),
+            'kind' => $log->kind,
+            'kind_label' => $log->kind === CmsAccessLog::KIND_LANDING_PUBLIC ? 'Landing publik' : 'Panel CMS',
+            'ip' => $log->ip_address,
+            'location' => $loc === [] ? '—' : implode(', ', $loc),
+            'device_type' => $log->device_type,
+            'browser' => $log->browser ?? '—',
+            'os' => $log->os ?? '—',
+            'site' => $log->landingSite?->name,
+            'user' => $log->user?->email,
+            'path' => $log->path,
         ];
     }
 

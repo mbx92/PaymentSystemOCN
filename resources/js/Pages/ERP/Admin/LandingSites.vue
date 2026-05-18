@@ -249,6 +249,7 @@ const onPerPage = (n) => {
               <option value="toko">Toko (retail)</option>
               <option value="cctv">CCTV & jaringan</option>
               <option value="coming_soon">Coming Soon (simple)</option>
+              <option value="countdown">Countdown launch</option>
             </select>
             <p v-if="form.errors.layout_key" class="text-error text-xs mt-1">{{ form.errors.layout_key }}</p>
           </div>
@@ -300,6 +301,7 @@ const onPerPage = (n) => {
               <option value="toko">Toko (retail)</option>
               <option value="cctv">CCTV & jaringan</option>
               <option value="coming_soon">Coming Soon (simple)</option>
+              <option value="countdown">Countdown launch</option>
             </select>
             <p v-if="editForm.errors.layout_key" class="text-error text-xs mt-1">{{ editForm.errors.layout_key }}</p>
           </div>
@@ -332,4 +334,3 @@ const onPerPage = (n) => {
     </dialog>
   </AppLayout>
 </template>
-

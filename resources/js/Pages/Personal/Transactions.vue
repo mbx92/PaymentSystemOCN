@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import ConfirmModal from '@/Components/ConfirmModal.vue';
+import CurrencyInput from '@/Components/CurrencyInput.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { computed, ref } from 'vue';
@@ -212,9 +213,12 @@ const defaultWalletId = computed(() => {
             </select>
           </div>
           <div>
-            <label class="label"><span class="label-text">Jumlah</span></label>
-            <input v-model="txForm.amount" type="number" min="0.01" step="0.01" class="input input-bordered w-full" />
-            <p v-if="txForm.errors.amount" class="text-error text-xs mt-1">{{ txForm.errors.amount }}</p>
+            <CurrencyInput
+              v-model="txForm.amount"
+              label="Jumlah"
+              placeholder="0"
+              :error="txForm.errors.amount"
+            />
           </div>
           <div>
             <label class="label"><span class="label-text">Tanggal</span></label>
@@ -263,8 +267,12 @@ const defaultWalletId = computed(() => {
             </select>
           </div>
           <div>
-            <label class="label"><span class="label-text">Jumlah</span></label>
-            <input v-model="editForm.amount" type="number" min="0.01" step="0.01" class="input input-bordered w-full" />
+            <CurrencyInput
+              v-model="editForm.amount"
+              label="Jumlah"
+              placeholder="0"
+              :error="editForm.errors.amount"
+            />
           </div>
           <div>
             <label class="label"><span class="label-text">Tanggal</span></label>

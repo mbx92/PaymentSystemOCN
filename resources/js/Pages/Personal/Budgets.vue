@@ -1,5 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import CurrencyInput from '@/Components/CurrencyInput.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { computed, ref } from 'vue';
@@ -136,9 +137,12 @@ const submitBudget = () => {
         <p v-if="editingRow" class="text-sm text-base-content/70 mt-1">{{ editingRow.category_name }} — {{ period?.label }}</p>
         <div class="mt-4 space-y-3">
           <div>
-            <label class="label"><span class="label-text">Nominal plafon</span></label>
-            <input v-model="budgetForm.amount_limit" type="number" min="0.01" step="0.01" class="input input-bordered w-full" />
-            <p v-if="budgetForm.errors.amount_limit" class="text-error text-xs mt-1">{{ budgetForm.errors.amount_limit }}</p>
+            <CurrencyInput
+              v-model="budgetForm.amount_limit"
+              label="Nominal plafon"
+              placeholder="0"
+              :error="budgetForm.errors.amount_limit"
+            />
           </div>
         </div>
         <div class="modal-action">

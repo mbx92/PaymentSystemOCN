@@ -2,7 +2,13 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import ConfirmModal from '@/Components/ConfirmModal.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
+import {
+    ArrowLeftIcon,
+    PencilSquareIcon,
+    PlusIcon,
+    TrashIcon,
+    WalletIcon,
+} from '@heroicons/vue/24/outline';
 import { computed, ref } from 'vue';
 
 defineProps({
@@ -98,73 +104,94 @@ const doDelete = () => {
   <AppLayout>
     <div class="space-y-5">
       <div class="ocn-panel">
-        <div class="ocn-panel__head">
-          <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Personal</p>
-              <h1 class="ocn-panel__title mt-1">Dompet</h1>
-              <p class="ocn-panel__desc mt-1">
-                Tentukan sumber dan tujuan uang: rekening bank, tunai, e-wallet. Setiap transaksi dicatat ke satu dompet.
-              </p>
-            </div>
-            <div class="flex flex-wrap items-center gap-2 shrink-0">
-              <button type="button" class="btn btn-primary btn-sm" @click="openAdd">+ Dompet</button>
-              <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('personal')">
-                <ArrowLeftIcon class="h-4 w-4" />
-                Back
-              </Link>
-            </div>
+        <div class="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between">
+          <div class="space-y-2">
+            <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Personal</p>
+            <h1 class="text-xl font-semibold text-base-content">Dompet</h1>
+            <p class="max-w-2xl text-sm text-base-content/70">
+              Tentukan sumber dan tujuan uang: rekening bank, tunai, e-wallet. Setiap transaksi dicatat ke satu dompet.
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 shrink-0">
+            <button type="button" class="btn btn-primary btn-sm gap-1.5" @click="openAdd">
+              <PlusIcon class="h-4 w-4" />
+              Dompet
+            </button>
+            <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('personal')">
+              <ArrowLeftIcon class="h-4 w-4" />
+              Back
+            </Link>
           </div>
         </div>
       </div>
 
-      <div class="ocn-panel">
-        <div class="ocn-panel__head">
-          <h2 class="ocn-panel__title">Daftar dompet</h2>
-          <p class="ocn-panel__desc">Saldo = total pemasukan dikurangi pengeluaran pada dompet yang sama.</p>
-        </div>
-        <div class="overflow-x-auto">
-          <table class="table table-zebra table-sm">
-            <thead>
-              <tr>
-                <th>Nama</th>
-                <th>Mata uang</th>
-                <th>Saldo</th>
-                <th>Transaksi</th>
-                <th>Urutan</th>
-                <th>Default</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in wallets" :key="row.id">
-                <td class="font-medium">{{ row.name }}</td>
-                <td>{{ row.currency }}</td>
-                <td class="font-mono">{{ money(row.balance) }}</td>
-                <td>{{ row.transaction_count }}</td>
-                <td>{{ row.sort_order }}</td>
-                <td>
-                  <span v-if="row.is_default" class="badge badge-sm badge-primary">Utama</span>
-                  <span v-else class="text-base-content/40">—</span>
-                </td>
-                <td class="text-right whitespace-nowrap">
-                  <button type="button" class="btn btn-ghost btn-xs" @click="openEdit(row)">Edit</button>
-                  <button
-                    type="button"
-                    class="btn btn-ghost btn-xs text-error"
-                    :class="{ 'btn-disabled': !row.can_delete }"
-                    :disabled="!row.can_delete"
-                    :title="row.can_delete ? 'Hapus' : 'Masih ada transaksi'"
-                    @click="confirmDelete(row)"
-                  >Hapus</button>
-                </td>
-              </tr>
-              <tr v-if="!(wallets && wallets.length)">
-                <td colspan="7" class="py-8 text-center text-base-content/50">Belum ada dompet.</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+      <div v-if="wallets && wallets.length" class="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+        <article
+          v-for="row in wallets"
+          :key="row.id"
+          class="rounded-xl border border-base-300 bg-base-100 p-5 shadow-md ring-1 ring-base-200/70 transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div class="flex min-w-0 items-start gap-3">
+              <div class="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                <WalletIcon class="h-5 w-5" />
+              </div>
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                  <h3 class="truncate text-base font-semibold text-base-content">{{ row.name }}</h3>
+                  <span v-if="row.is_default" class="badge badge-primary badge-sm">Utama</span>
+                </div>
+                <p class="mt-1 text-xs font-medium uppercase text-base-content/50">{{ row.currency }}</p>
+              </div>
+            </div>
+            <div class="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                class="btn btn-ghost btn-square btn-xs"
+                title="Edit dompet"
+                @click="openEdit(row)"
+              >
+                <PencilSquareIcon class="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                class="btn btn-ghost btn-square btn-xs text-error"
+                :class="{ 'btn-disabled': !row.can_delete }"
+                :disabled="!row.can_delete"
+                :title="row.can_delete ? 'Hapus dompet' : 'Masih ada transaksi'"
+                @click="confirmDelete(row)"
+              >
+                <TrashIcon class="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          <div class="mt-5">
+            <p class="text-xs font-semibold uppercase text-base-content/50">Saldo</p>
+            <p
+              class="mt-1 break-words font-mono text-2xl font-bold"
+              :class="Number(row.balance ?? 0) >= 0 ? 'text-primary' : 'text-error'"
+            >
+              {{ money(row.balance) }}
+            </p>
+          </div>
+
+          <div class="mt-5 border-t border-base-200 pt-4">
+            <div class="grid grid-cols-2 gap-3">
+              <div class="rounded-lg bg-base-200/70 px-3 py-2">
+                <p class="text-[11px] font-semibold uppercase text-base-content/50">Transaksi</p>
+                <p class="mt-1 text-sm font-bold text-base-content">{{ row.transaction_count }}</p>
+              </div>
+              <div class="rounded-lg bg-base-200/70 px-3 py-2">
+                <p class="text-[11px] font-semibold uppercase text-base-content/50">Urutan</p>
+                <p class="mt-1 text-sm font-bold text-base-content">{{ row.sort_order }}</p>
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>
+      <div v-else class="rounded-xl border border-dashed border-base-300 bg-base-100 p-8 text-center text-base-content/50 shadow-sm">
+        Belum ada dompet.
       </div>
     </div>
 

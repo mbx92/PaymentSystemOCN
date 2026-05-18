@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import ConfirmModal from '@/Components/ConfirmModal.vue';
+import CurrencyInput from '@/Components/CurrencyInput.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { computed, ref } from 'vue';
@@ -309,9 +310,12 @@ const assetLabel = (types, value) => types?.find((t) => t.value === value)?.labe
             </select>
           </div>
           <div>
-            <label class="label"><span class="label-text">Jumlah</span></label>
-            <input v-model="movForm.amount" type="number" min="0.01" step="0.01" class="input input-bordered w-full" />
-            <p v-if="movForm.errors.amount" class="text-error text-xs mt-1">{{ movForm.errors.amount }}</p>
+            <CurrencyInput
+              v-model="movForm.amount"
+              label="Jumlah"
+              placeholder="0"
+              :error="movForm.errors.amount"
+            />
           </div>
           <div>
             <label class="label"><span class="label-text">Tanggal</span></label>

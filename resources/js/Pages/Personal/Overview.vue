@@ -8,6 +8,7 @@ defineProps({
     wallets: Array,
     month: Object,
     chart: Object,
+    investments: Object,
 });
 
 const money = (n) => `Rp ${Number(n ?? 0).toLocaleString('id-ID')}`;
@@ -50,6 +51,23 @@ const money = (n) => `Rp ${Number(n ?? 0).toLocaleString('id-ID')}`;
         </div>
       </div>
 
+      <div class="grid gap-4 md:grid-cols-3">
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Instrumen investasi</p>
+          <p class="mt-2 text-2xl font-bold text-base-content">{{ investments?.summary?.count ?? 0 }}</p>
+        </div>
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Investasi aktif</p>
+          <p class="mt-2 text-2xl font-bold text-success">{{ investments?.summary?.active_count ?? 0 }}</p>
+        </div>
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Arus kas investasi</p>
+          <p class="mt-2 text-2xl font-bold" :class="(investments?.summary?.net_flow ?? 0) >= 0 ? 'text-primary' : 'text-warning'">
+            {{ money(investments?.summary?.net_flow) }}
+          </p>
+        </div>
+      </div>
+
       <div class="ocn-panel">
         <div class="ocn-panel__head">
           <h2 class="ocn-panel__title">Saldo per dompet</h2>
@@ -72,6 +90,44 @@ const money = (n) => `Rp ${Number(n ?? 0).toLocaleString('id-ID')}`;
               </tr>
               <tr v-if="!(wallets && wallets.length)">
                 <td colspan="3" class="py-8 text-center text-base-content/50">Belum ada dompet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Investasi</h2>
+          <p class="ocn-panel__desc">Arus kas investasi dihitung dari setoran - penarikan + dividen pada tiap instrumen.</p>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="table table-zebra">
+            <thead>
+              <tr>
+                <th>Instrumen</th>
+                <th>Jenis aset</th>
+                <th>Status</th>
+                <th>Institusi</th>
+                <th class="text-right">Arus kas</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="investment in investments?.items ?? []" :key="investment.id">
+                <td class="font-medium">{{ investment.name }}</td>
+                <td><span class="badge badge-ghost badge-sm">{{ investment.asset_label }}</span></td>
+                <td>
+                  <span class="badge badge-sm" :class="investment.is_active ? 'badge-success' : 'badge-ghost'">
+                    {{ investment.is_active ? 'aktif' : 'ditutup' }}
+                  </span>
+                </td>
+                <td>{{ investment.institution || '—' }}</td>
+                <td class="text-right font-mono" :class="investment.net_flow >= 0 ? 'text-primary' : 'text-error'">
+                  {{ money(investment.net_flow) }}
+                </td>
+              </tr>
+              <tr v-if="!((investments?.items ?? []).length)">
+                <td colspan="5" class="py-8 text-center text-base-content/50">Belum ada investasi.</td>
               </tr>
             </tbody>
           </table>

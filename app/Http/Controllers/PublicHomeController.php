@@ -22,34 +22,30 @@ class PublicHomeController extends Controller
             ->with(['warehouse:id,code,name', 'page'])
             ->first();
 
+        if ($host === 'ocnetworks.web.id') {
+            if ($landing) {
+                CmsAccessLogger::logLandingPublic($request, (int) $landing->id);
+            }
+
+            return Inertia::render('Public/LandingCountdown', [
+                'landing' => $this->landingPayload($landing, $host, 'OCNetworks'),
+                'countdownAt' => (string) config('app.ocnetworks_launch_at'),
+            ]);
+        }
+
         if ($landing) {
             CmsAccessLogger::logLandingPublic($request, (int) $landing->id);
 
             $page = match ($landing->layout_key) {
                 'cctv' => 'Public/LandingCctv',
+                'countdown' => 'Public/LandingCountdown',
                 'coming_soon' => 'Public/LandingComingSoon',
                 default => 'Public/LandingToko',
             };
 
             return Inertia::render($page, [
-                'landing' => [
-                    'name' => $landing->name,
-                    'domain' => $landing->domain,
-                    'layout_key' => $landing->layout_key,
-                    'warehouse' => $landing->warehouse,
-                    'content' => [
-                        'headline' => $landing->page?->is_published ? $landing->page?->headline : null,
-                        'subheadline' => $landing->page?->is_published ? $landing->page?->subheadline : null,
-                        'body' => $landing->page?->is_published ? $landing->page?->body : null,
-                        'primary_cta_text' => $landing->page?->is_published ? $landing->page?->primary_cta_text : null,
-                        'primary_cta_url' => $landing->page?->is_published ? $landing->page?->primary_cta_url : null,
-                        'secondary_cta_text' => $landing->page?->is_published ? $landing->page?->secondary_cta_text : null,
-                        'secondary_cta_url' => $landing->page?->is_published ? $landing->page?->secondary_cta_url : null,
-                        'contact_text' => $landing->page?->is_published ? $landing->page?->contact_text : null,
-                        'seo_title' => $landing->page?->is_published ? $landing->page?->seo_title : null,
-                        'seo_description' => $landing->page?->is_published ? $landing->page?->seo_description : null,
-                    ],
-                ],
+                'landing' => $this->landingPayload($landing, $host),
+                ...( $page === 'Public/LandingCountdown' ? ['countdownAt' => (string) config('app.ocnetworks_launch_at')] : [] ),
             ]);
         }
 
@@ -65,5 +61,32 @@ class PublicHomeController extends Controller
         $host = strtolower($request->getHost());
 
         return preg_replace('/:\d+$/', '', $host);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function landingPayload(?LandingSite $landing, string $host, ?string $fallbackName = null): array
+    {
+        $published = (bool) ($landing?->page?->is_published ?? false);
+
+        return [
+            'name' => $landing?->name ?? $fallbackName ?? 'OCNetworks',
+            'domain' => $landing?->domain ?? $host,
+            'layout_key' => $landing?->layout_key ?? 'countdown',
+            'warehouse' => $landing?->warehouse,
+            'content' => [
+                'headline' => $published ? $landing?->page?->headline : null,
+                'subheadline' => $published ? $landing?->page?->subheadline : null,
+                'body' => $published ? $landing?->page?->body : null,
+                'primary_cta_text' => $published ? $landing?->page?->primary_cta_text : null,
+                'primary_cta_url' => $published ? $landing?->page?->primary_cta_url : null,
+                'secondary_cta_text' => $published ? $landing?->page?->secondary_cta_text : null,
+                'secondary_cta_url' => $published ? $landing?->page?->secondary_cta_url : null,
+                'contact_text' => $published ? $landing?->page?->contact_text : null,
+                'seo_title' => $published ? $landing?->page?->seo_title : null,
+                'seo_description' => $published ? $landing?->page?->seo_description : null,
+            ],
+        ];
     }
 }
