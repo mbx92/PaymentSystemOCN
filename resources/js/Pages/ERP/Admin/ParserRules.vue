@@ -63,10 +63,14 @@ const toKeywordsArray = (value) => value
   .map((item) => item.trim().toLowerCase())
   .filter((item) => item.length > 0);
 
-const openAddModal = () => {
+const resetAddForm = () => {
   form.clearErrors();
   form.reset();
   Object.assign(form, emptyForm());
+};
+
+const openAddModal = () => {
+  resetAddForm();
   document.getElementById('modal-add-parser-rule')?.showModal();
 };
 
@@ -82,7 +86,10 @@ const submitAdd = () => {
     response_text: data.response_text,
   })).post(route('erp.admin.parser-rules.store'), {
     preserveScroll: true,
-    onSuccess: () => document.getElementById('modal-add-parser-rule')?.close(),
+    onSuccess: () => {
+      resetAddForm();
+      document.getElementById('modal-add-parser-rule')?.close();
+    },
   });
 };
 

@@ -31,18 +31,25 @@ const addForm = useForm({
     is_active: true,
 });
 
-const openAddInv = () => {
+const resetAddInvestmentForm = () => {
     addForm.clearErrors();
     addForm.reset('name', 'institution', 'notes', 'opened_at');
     addForm.asset_type = 'reksadana';
     addForm.is_active = true;
+};
+
+const openAddInv = () => {
+    resetAddInvestmentForm();
     document.getElementById('modal-add-investment')?.showModal();
 };
 
 const submitAdd = () => {
     addForm.post(route('personal.investments.store'), {
         preserveScroll: true,
-        onSuccess: () => document.getElementById('modal-add-investment')?.close(),
+        onSuccess: () => {
+            resetAddInvestmentForm();
+            document.getElementById('modal-add-investment')?.close();
+        },
     });
 };
 
@@ -102,13 +109,17 @@ const movForm = useForm({
     note: '',
 });
 
-const openMovement = (inv) => {
-    movementInv.value = inv;
+const resetMovementForm = () => {
     movForm.clearErrors();
     movForm.flow = 'deposit';
     movForm.amount = '';
     movForm.occurred_on = new Date().toISOString().slice(0, 10);
     movForm.note = '';
+};
+
+const openMovement = (inv) => {
+    movementInv.value = inv;
+    resetMovementForm();
     document.getElementById('modal-movement')?.showModal();
 };
 
@@ -119,7 +130,11 @@ const submitMovement = () => {
         amount: Number(d.amount),
     })).post(route('personal.investments.movements.store', movementInv.value.id), {
         preserveScroll: true,
-        onSuccess: () => document.getElementById('modal-movement')?.close(),
+        onSuccess: () => {
+            resetMovementForm();
+            movementInv.value = null;
+            document.getElementById('modal-movement')?.close();
+        },
     });
 };
 

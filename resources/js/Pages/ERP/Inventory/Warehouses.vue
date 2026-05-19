@@ -43,16 +43,23 @@ const editForm = useForm({
 });
 const editingWarehouseId = ref(null);
 
-const openAddModal = () => {
+const resetAddForm = () => {
   form.reset();
   form.status = 'active';
+};
+
+const openAddModal = () => {
+  resetAddForm();
   document.getElementById('modal-add-warehouse')?.showModal();
 };
 
 const submitAdd = () => {
   form.post(route('erp.inventory.warehouses.store'), {
     preserveScroll: true,
-    onSuccess: () => document.getElementById('modal-add-warehouse')?.close(),
+    onSuccess: () => {
+      resetAddForm();
+      document.getElementById('modal-add-warehouse')?.close();
+    },
   });
 };
 
@@ -205,4 +212,3 @@ const submitEdit = () => {
     </div>
   </AppLayout>
 </template>
-

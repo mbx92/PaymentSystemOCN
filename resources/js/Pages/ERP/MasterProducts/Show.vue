@@ -119,7 +119,7 @@ const editPreviewPrice = computed(() => {
   return Number(editMappingForm.selling_price || 0);
 });
 
-const openAddMappingModal = () => {
+const resetAddMappingForm = () => {
   mappingForm.reset('uom_code', 'multiplier', 'price_operation', 'selling_price', 'use_auto_price', 'status');
   mappingForm.multiplier = 1;
   mappingForm.price_operation = 'multiply';
@@ -129,13 +129,20 @@ const openAddMappingModal = () => {
   if (availableUoms.value.length) {
     mappingForm.uom_code = availableUoms.value[0].code;
   }
+};
+
+const openAddMappingModal = () => {
+  resetAddMappingForm();
   document.getElementById('modal-add-uom-mapping')?.showModal();
 };
 
 const submitMapping = () => {
   mappingForm.post(route('erp.master-products.uom-mappings.store', props.product.id), {
     preserveScroll: true,
-    onSuccess: () => document.getElementById('modal-add-uom-mapping')?.close(),
+    onSuccess: () => {
+      resetAddMappingForm();
+      document.getElementById('modal-add-uom-mapping')?.close();
+    },
   });
 };
 
@@ -170,18 +177,25 @@ const removeMapping = (mappingId) => {
   });
 };
 
-const openAddChannelPriceModal = () => {
+const resetAddChannelPriceForm = () => {
   channelPriceForm.reset('sales_channel', 'selling_price', 'status');
   channelPriceForm.sales_channel = availablePriceChannels.value[0]?.key ?? props.priceChannels?.[0]?.key ?? 'retail';
   channelPriceForm.selling_price = Number(props.product.selling_price || 0);
   channelPriceForm.status = 'active';
+};
+
+const openAddChannelPriceModal = () => {
+  resetAddChannelPriceForm();
   document.getElementById('modal-add-channel-price')?.showModal();
 };
 
 const submitChannelPrice = () => {
   channelPriceForm.post(route('erp.master-products.channel-prices.store', props.product.id), {
     preserveScroll: true,
-    onSuccess: () => document.getElementById('modal-add-channel-price')?.close(),
+    onSuccess: () => {
+      resetAddChannelPriceForm();
+      document.getElementById('modal-add-channel-price')?.close();
+    },
   });
 };
 

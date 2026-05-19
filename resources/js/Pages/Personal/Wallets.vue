@@ -25,11 +25,15 @@ const addForm = useForm({
     is_default: false,
 });
 
-const openAdd = () => {
+const resetAddForm = () => {
     addForm.clearErrors();
     addForm.reset('name', 'sort_order');
     addForm.currency = 'IDR';
     addForm.is_default = false;
+};
+
+const openAdd = () => {
+    resetAddForm();
     document.getElementById('modal-add-wallet')?.showModal();
 };
 
@@ -40,7 +44,10 @@ const submitAdd = () => {
         is_default: !!d.is_default,
     })).post(route('personal.wallets.store'), {
         preserveScroll: true,
-        onSuccess: () => document.getElementById('modal-add-wallet')?.close(),
+        onSuccess: () => {
+            resetAddForm();
+            document.getElementById('modal-add-wallet')?.close();
+        },
     });
 };
 

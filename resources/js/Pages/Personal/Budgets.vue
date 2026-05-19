@@ -34,6 +34,14 @@ const budgetForm = useForm({
     amount_limit: '',
 });
 
+const resetBudgetForm = () => {
+    budgetForm.clearErrors();
+    budgetForm.category_id = '';
+    budgetForm.year = props.period?.year;
+    budgetForm.month = props.period?.month;
+    budgetForm.amount_limit = '';
+};
+
 const openBudget = (row) => {
     editingRow.value = row;
     budgetForm.clearErrors();
@@ -52,7 +60,11 @@ const submitBudget = () => {
         amount_limit: Number(d.amount_limit),
     })).post(route('personal.budgets.store'), {
         preserveScroll: true,
-        onSuccess: () => document.getElementById('modal-budget')?.close(),
+        onSuccess: () => {
+            resetBudgetForm();
+            editingRow.value = null;
+            document.getElementById('modal-budget')?.close();
+        },
     });
 };
 </script>

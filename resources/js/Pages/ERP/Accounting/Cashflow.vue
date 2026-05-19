@@ -99,12 +99,7 @@ watch(() => form.type, (type) => {
   }
 });
 
-const openAddModal = () => {
-  if (!props.canMutate) {
-    showGlobalAlert('Anda tidak memiliki izin untuk menambah transaksi cashflow.', 'warning');
-    return;
-  }
-
+const resetAddForm = () => {
   form.reset();
   form.type = 'out';
   form.cash_account_id = props.cashAccounts?.[0]?.id ?? '';
@@ -114,13 +109,25 @@ const openAddModal = () => {
   form.date = new Date().toISOString().slice(0, 10);
   form.recipient_name = '';
   form.note = '';
+};
+
+const openAddModal = () => {
+  if (!props.canMutate) {
+    showGlobalAlert('Anda tidak memiliki izin untuk menambah transaksi cashflow.', 'warning');
+    return;
+  }
+
+  resetAddForm();
   document.getElementById('modal-cashflow-entry')?.showModal();
 };
 
 const submitEntry = () => {
   form.post(route('erp.accounting.cashflow.store'), {
     preserveScroll: true,
-    onSuccess: () => document.getElementById('modal-cashflow-entry')?.close(),
+    onSuccess: () => {
+      resetAddForm();
+      document.getElementById('modal-cashflow-entry')?.close();
+    },
     onError: (errors) => showGlobalAlert(firstBackendError(errors, 'Transaksi cashflow gagal disimpan.'), 'error'),
   });
 };

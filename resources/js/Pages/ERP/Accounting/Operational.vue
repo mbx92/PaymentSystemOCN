@@ -41,7 +41,7 @@ const form = useForm({
   note: '',
 });
 
-const openModal = () => {
+const resetAddForm = () => {
   form.reset();
   form.project_id = '';
   form.cash_account_id = props.cashAccounts?.[0]?.id ?? '';
@@ -49,12 +49,19 @@ const openModal = () => {
   form.date = new Date().toISOString().slice(0, 10);
   form.recipient_name = '';
   form.note = '';
+};
+
+const openModal = () => {
+  resetAddForm();
   document.getElementById('modal-operational')?.showModal();
 };
 
 const submit = () => form.post(route('erp.accounting.operational.store'), {
   preserveScroll: true,
-  onSuccess: () => document.getElementById('modal-operational')?.close(),
+  onSuccess: () => {
+    resetAddForm();
+    document.getElementById('modal-operational')?.close();
+  },
 });
 
 const editForm = useForm({

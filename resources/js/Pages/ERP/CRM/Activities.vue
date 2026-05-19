@@ -91,7 +91,7 @@ const editForm = useForm({
 
 const selected = ref(null);
 
-const openAdd = () => {
+const resetAddForm = () => {
   form.clearErrors();
   form.reset();
   form.type = 'call';
@@ -100,13 +100,20 @@ const openAdd = () => {
   form.crm_lead_id = '';
   form.crm_customer_id = '';
   form.crm_pipeline_id = '';
+};
+
+const openAdd = () => {
+  resetAddForm();
   document.getElementById('modal-add-activity')?.showModal();
 };
 
 const submitAdd = () => {
   form.post(route('erp.crm.activities.store'), {
     preserveScroll: true,
-    onSuccess: () => document.getElementById('modal-add-activity')?.close(),
+    onSuccess: () => {
+      resetAddForm();
+      document.getElementById('modal-add-activity')?.close();
+    },
   });
 };
 

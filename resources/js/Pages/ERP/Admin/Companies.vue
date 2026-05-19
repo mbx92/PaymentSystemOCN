@@ -31,16 +31,23 @@ const addForm = useForm({
   address: '',
 });
 
-const openAddModal = () => {
+const resetAddForm = () => {
   addForm.clearErrors();
   addForm.reset();
+};
+
+const openAddModal = () => {
+  resetAddForm();
   document.getElementById('modal-add-company')?.showModal();
 };
 
 const submitAdd = () => {
   addForm.post(route('erp.admin.companies.store'), {
     preserveScroll: true,
-    onSuccess: () => document.getElementById('modal-add-company')?.close(),
+    onSuccess: () => {
+      resetAddForm();
+      document.getElementById('modal-add-company')?.close();
+    },
   });
 };
 

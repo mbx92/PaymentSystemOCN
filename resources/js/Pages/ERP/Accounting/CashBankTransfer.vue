@@ -47,7 +47,7 @@ const form = useForm({
   note: '',
 });
 
-const openModal = () => {
+const resetForm = () => {
   const accounts = props.cashAccounts ?? [];
   form.reset();
   form.from_account_id = accounts.find((a) => /bank/i.test(a.name))?.id ?? accounts[0]?.id ?? '';
@@ -58,13 +58,20 @@ const openModal = () => {
   form.transfer_date = new Date().toISOString().slice(0, 10);
   form.project_id = '';
   form.note = '';
+};
+
+const openModal = () => {
+  resetForm();
   document.getElementById('modal-cash-bank-transfer')?.showModal();
 };
 
 const submit = () => {
   form.post(route('erp.accounting.cash-bank-transfer.store'), {
     preserveScroll: true,
-    onSuccess: () => document.getElementById('modal-cash-bank-transfer')?.close(),
+    onSuccess: () => {
+      resetForm();
+      document.getElementById('modal-cash-bank-transfer')?.close();
+    },
   });
 };
 

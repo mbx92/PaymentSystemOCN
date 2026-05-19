@@ -93,20 +93,27 @@ const editForm = useForm({
 
 const selected = ref(null);
 
-const openAdd = () => {
+const resetAddForm = () => {
   form.clearErrors();
   form.reset();
   form.source = 'manual';
   form.status = 'new';
   form.estimated_value = 0;
   form.pic_user_id = '';
+};
+
+const openAdd = () => {
+  resetAddForm();
   document.getElementById('modal-add-lead')?.showModal();
 };
 
 const submitAdd = () => {
   form.post(route('erp.crm.leads.store'), {
     preserveScroll: true,
-    onSuccess: () => document.getElementById('modal-add-lead')?.close(),
+    onSuccess: () => {
+      resetAddForm();
+      document.getElementById('modal-add-lead')?.close();
+    },
   });
 };
 

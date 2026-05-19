@@ -48,7 +48,7 @@ const form = useForm({
   note: '',
 });
 
-const openModal = () => {
+const resetForm = () => {
   form.reset();
   form.item_name = '';
   form.qty = 1;
@@ -57,13 +57,20 @@ const openModal = () => {
   form.asset_account_id = props.defaultAssetAccountId ?? props.assetAccounts?.[0]?.id ?? '';
   form.cash_account_id = props.cashAccounts?.[0]?.id ?? '';
   form.note = '';
+};
+
+const openModal = () => {
+  resetForm();
   document.getElementById('modal-inventaris')?.showModal();
 };
 
 const submit = () => {
   form.post(route('erp.accounting.inventaris.store'), {
     preserveScroll: true,
-    onSuccess: () => document.getElementById('modal-inventaris')?.close(),
+    onSuccess: () => {
+      resetForm();
+      document.getElementById('modal-inventaris')?.close();
+    },
   });
 };
 

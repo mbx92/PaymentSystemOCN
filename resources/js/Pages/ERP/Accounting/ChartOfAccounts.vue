@@ -59,19 +59,26 @@ const coaForm = useForm({
   is_cash_bank: false,
 });
 
-const openAddModal = () => {
+const resetAddForm = () => {
   coaForm.reset();
   coaForm.type = 'asset';
   coaForm.normal_balance = 'debit';
   coaForm.is_active = true;
   coaForm.is_cash_bank = false;
+};
+
+const openAddModal = () => {
+  resetAddForm();
   document.getElementById('modal-add-coa')?.showModal();
 };
 
 const submitAdd = () => {
   coaForm.post(route('erp.accounting.coa.store'), {
     preserveScroll: true,
-    onSuccess: () => document.getElementById('modal-add-coa')?.close(),
+    onSuccess: () => {
+      resetAddForm();
+      document.getElementById('modal-add-coa')?.close();
+    },
   });
 };
 

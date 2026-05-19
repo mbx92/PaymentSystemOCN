@@ -29,12 +29,16 @@ const txForm = useForm({
     note: '',
 });
 
-const openAddTx = () => {
+const resetAddTxForm = () => {
     txForm.clearErrors();
     txForm.reset('wallet_id', 'category_id', 'amount', 'note');
     txForm.type = 'expense';
     txForm.wallet_id = defaultWalletId.value;
     txForm.occurred_on = new Date().toISOString().slice(0, 10);
+};
+
+const openAddTx = () => {
+    resetAddTxForm();
     document.getElementById('modal-add-transaction')?.showModal();
 };
 
@@ -47,6 +51,7 @@ const submitTx = () => {
     })).post(route('personal.transactions.store'), {
         preserveScroll: true,
         onSuccess: () => {
+            resetAddTxForm();
             document.getElementById('modal-add-transaction')?.close();
         },
     });

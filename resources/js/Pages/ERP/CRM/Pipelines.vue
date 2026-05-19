@@ -75,7 +75,7 @@ const editForm = useForm({
 
 const selected = ref(null);
 
-const openAdd = () => {
+const resetAddForm = () => {
   form.clearErrors();
   form.reset();
   form.stage = 'prospecting';
@@ -84,13 +84,20 @@ const openAdd = () => {
   form.crm_customer_id = '';
   form.crm_lead_id = '';
   form.pic_user_id = '';
+};
+
+const openAdd = () => {
+  resetAddForm();
   document.getElementById('modal-add-pipeline')?.showModal();
 };
 
 const submitAdd = () => {
   form.post(route('erp.crm.pipelines.store'), {
     preserveScroll: true,
-    onSuccess: () => document.getElementById('modal-add-pipeline')?.close(),
+    onSuccess: () => {
+      resetAddForm();
+      document.getElementById('modal-add-pipeline')?.close();
+    },
   });
 };
 

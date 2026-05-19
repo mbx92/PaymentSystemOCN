@@ -35,18 +35,25 @@ const editForm = useForm({
 
 const selected = ref(null);
 
-const openAdd = () => {
+const resetAddForm = () => {
   form.clearErrors();
   form.reset();
   form.is_active = true;
   form.base_salary = 0;
+};
+
+const openAdd = () => {
+  resetAddForm();
   document.getElementById('modal-add-employee')?.showModal();
 };
 
 const submitAdd = () => {
   form.post(route('erp.hr.employees.store'), {
     preserveScroll: true,
-    onSuccess: () => document.getElementById('modal-add-employee')?.close(),
+    onSuccess: () => {
+      resetAddForm();
+      document.getElementById('modal-add-employee')?.close();
+    },
   });
 };
 

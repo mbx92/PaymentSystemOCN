@@ -20,17 +20,25 @@ const addForm = useForm({
     color: '',
 });
 
-const openAdd = (type = 'expense') => {
+const resetAddForm = (type = 'expense') => {
     addForm.clearErrors();
     addForm.reset('name', 'color');
     addForm.type = type;
+};
+
+const openAdd = (type = 'expense') => {
+    resetAddForm(type);
     document.getElementById('modal-add-category')?.showModal();
 };
 
 const submitAdd = () => {
+    const submittedType = addForm.type;
     addForm.post(route('personal.categories.store'), {
         preserveScroll: true,
-        onSuccess: () => document.getElementById('modal-add-category')?.close(),
+        onSuccess: () => {
+            resetAddForm(submittedType);
+            document.getElementById('modal-add-category')?.close();
+        },
     });
 };
 

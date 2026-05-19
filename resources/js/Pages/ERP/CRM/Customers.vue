@@ -81,20 +81,27 @@ const editForm = useForm({
 
 const selected = ref(null);
 
-const openAdd = () => {
+const resetAddForm = () => {
   form.clearErrors();
   form.reset();
   form.source = 'manual';
   form.is_active = true;
   form.pic_user_id = '';
   form.business_type = '';
+};
+
+const openAdd = () => {
+  resetAddForm();
   document.getElementById('modal-add-customer')?.showModal();
 };
 
 const submitAdd = () => {
   form.post(route('erp.crm.customers.store'), {
     preserveScroll: true,
-    onSuccess: () => document.getElementById('modal-add-customer')?.close(),
+    onSuccess: () => {
+      resetAddForm();
+      document.getElementById('modal-add-customer')?.close();
+    },
   });
 };
 
