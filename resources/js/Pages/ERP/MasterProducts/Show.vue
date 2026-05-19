@@ -858,7 +858,7 @@ const regenerateEditBarcode = async () => {
             </div>
             <div>
               <label class="label"><span class="label-text">Warehouse Asal</span></label>
-              <select v-model="productForm.warehouse_id" class="select select-bordered w-full" :disabled="productForm.product_type === 'service'">
+              <select v-model="productForm.warehouse_id" class="select select-bordered w-full">
                 <option value="">Pilih warehouse asal</option>
                 <option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">{{ warehouse.code }} - {{ warehouse.name }}</option>
               </select>

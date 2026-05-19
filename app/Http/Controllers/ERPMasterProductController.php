@@ -73,7 +73,6 @@ class ERPMasterProductController extends Controller
             $validated['min_stock'] = 0;
             $validated['total_sold'] = 0;
             $validated['low_stock_alert_enabled'] = false;
-            $validated['warehouse_id'] = null;
         } elseif (empty($validated['warehouse_id'])) {
             return back()->withErrors([
                 'warehouse_id' => 'Warehouse asal wajib dipilih untuk produk stok.',
@@ -243,7 +242,6 @@ class ERPMasterProductController extends Controller
             $validated['min_stock'] = 0;
             $validated['total_sold'] = 0;
             $validated['low_stock_alert_enabled'] = false;
-            $validated['warehouse_id'] = null;
         } elseif (empty($validated['warehouse_id'])) {
             return back()->withErrors([
                 'warehouse_id' => 'Warehouse asal wajib dipilih untuk produk stok.',

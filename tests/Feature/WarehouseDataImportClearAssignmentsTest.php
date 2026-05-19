@@ -282,6 +282,191 @@ class WarehouseDataImportClearAssignmentsTest extends TestCase
         ]);
     }
 
+    public function test_sync_project_material_origin_warehouses_updates_existing_material_rows_and_reservations(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $wA = Warehouse::query()->create([
+            'code' => 'WH-A',
+            'name' => 'Gudang A',
+            'is_active' => true,
+        ]);
+        $wB = Warehouse::query()->create([
+            'code' => 'WH-B',
+            'name' => 'Gudang B',
+            'is_active' => true,
+        ]);
+
+        $product = MasterProduct::query()->create([
+            'sku' => 'SYNC-PM-001',
+            'name' => 'Produk Sync PM',
+            'category' => 'General',
+            'uom' => 'pcs',
+            'sales_channel' => 'project',
+            'product_type' => MasterProduct::PRODUCT_TYPE_PROJECT_MATERIAL,
+            'status' => 'active',
+            'warehouse_id' => $wB->id,
+        ]);
+
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $product->id,
+            'warehouse_id' => $wA->id,
+            'qty' => 10,
+            'reserved_qty' => 3,
+        ]);
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $product->id,
+            'warehouse_id' => $wB->id,
+            'qty' => 5,
+            'reserved_qty' => 0,
+        ]);
+
+        $project = new Project([
+            'name' => 'Project Sync PM',
+            'client_name' => 'Client',
+            'total_value' => 1000,
+            'status' => 'berjalan',
+        ]);
+        $project->id = (string) Str::uuid();
+        $project->save();
+
+        ProjectMaterial::query()->create([
+            'project_id' => $project->id,
+            'master_product_id' => $product->id,
+            'warehouse_id' => $wA->id,
+            'planned_qty' => 3,
+            'reserved_qty' => 3,
+            'issued_qty' => 0,
+            'status' => 'ready',
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('erp.admin.data-import.project-materials.sync-origin-warehouses'))
+            ->assertRedirect(route('erp.admin.data-import', ['tab' => 'products']));
+
+        $this->assertDatabaseHas('project_materials', [
+            'project_id' => $project->id,
+            'master_product_id' => $product->id,
+            'warehouse_id' => $wB->id,
+        ]);
+        $this->assertDatabaseHas('master_product_warehouse_stocks', [
+            'master_product_id' => $product->id,
+            'warehouse_id' => $wA->id,
+            'reserved_qty' => '0.00',
+        ]);
+        $this->assertDatabaseHas('master_product_warehouse_stocks', [
+            'master_product_id' => $product->id,
+            'warehouse_id' => $wB->id,
+            'reserved_qty' => '3.00',
+        ]);
+    }
+
+    public function test_relocate_project_material_warehouse_moves_and_merges_rows_for_one_item(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $wA = Warehouse::query()->create([
+            'code' => 'WH-SRC',
+            'name' => 'Gudang Sumber',
+            'is_active' => true,
+        ]);
+        $wB = Warehouse::query()->create([
+            'code' => 'WH-DST',
+            'name' => 'Gudang Tujuan',
+            'is_active' => true,
+        ]);
+        $product = MasterProduct::query()->create([
+            'sku' => 'MOVE-PM-001',
+            'name' => 'Produk Pindah PM',
+            'category' => 'General',
+            'uom' => 'pcs',
+            'sales_channel' => 'project',
+            'product_type' => MasterProduct::PRODUCT_TYPE_PROJECT_MATERIAL,
+            'status' => 'active',
+            'warehouse_id' => $wB->id,
+        ]);
+
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $product->id,
+            'warehouse_id' => $wA->id,
+            'qty' => 8,
+            'reserved_qty' => 4,
+        ]);
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $product->id,
+            'warehouse_id' => $wB->id,
+            'qty' => 10,
+            'reserved_qty' => 1,
+        ]);
+
+        $project = new Project([
+            'name' => 'Project Relocate',
+            'client_name' => 'Client',
+            'total_value' => 1000,
+            'status' => 'berjalan',
+        ]);
+        $project->id = (string) Str::uuid();
+        $project->save();
+
+        ProjectMaterial::query()->create([
+            'project_id' => $project->id,
+            'master_product_id' => $product->id,
+            'warehouse_id' => $wA->id,
+            'planned_qty' => 4,
+            'reserved_qty' => 4,
+            'issued_qty' => 0,
+            'unit_cost' => 10000,
+            'unit_price' => 15000,
+            'status' => 'ready',
+            'notes' => 'dari sumber',
+        ]);
+        ProjectMaterial::query()->create([
+            'project_id' => $project->id,
+            'master_product_id' => $product->id,
+            'warehouse_id' => $wB->id,
+            'planned_qty' => 1,
+            'reserved_qty' => 1,
+            'issued_qty' => 0,
+            'unit_cost' => 20000,
+            'unit_price' => 30000,
+            'status' => 'ready',
+            'notes' => 'sudah di tujuan',
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('erp.admin.data-import.project-materials.relocate-warehouse'), [
+                'master_product_id' => $product->id,
+                'source_warehouse_id' => $wA->id,
+                'destination_warehouse_id' => $wB->id,
+            ])
+            ->assertRedirect(route('erp.admin.data-import', ['tab' => 'products']));
+
+        $this->assertDatabaseMissing('project_materials', [
+            'project_id' => $project->id,
+            'master_product_id' => $product->id,
+            'warehouse_id' => $wA->id,
+        ]);
+        $this->assertDatabaseHas('project_materials', [
+            'project_id' => $project->id,
+            'master_product_id' => $product->id,
+            'warehouse_id' => $wB->id,
+            'planned_qty' => '5.00',
+            'reserved_qty' => '5.00',
+        ]);
+        $this->assertDatabaseHas('master_product_warehouse_stocks', [
+            'master_product_id' => $product->id,
+            'warehouse_id' => $wA->id,
+            'reserved_qty' => '0.00',
+        ]);
+        $this->assertDatabaseHas('master_product_warehouse_stocks', [
+            'master_product_id' => $product->id,
+            'warehouse_id' => $wB->id,
+            'reserved_qty' => '5.00',
+        ]);
+    }
+
     public function test_clears_nonzero_qty_for_exclusive_product_and_deletes_master(): void
     {
         $this->disableErpMiddleware();

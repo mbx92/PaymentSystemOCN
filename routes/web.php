@@ -387,6 +387,8 @@ Route::middleware('auth')->group(function () {
         Route::post('erp/admin/data-import/run-seeder', [ERPAdministrationMasterDataController::class, 'runSeeder'])->name('erp.admin.data-import.run-seeder');
         Route::post('erp/admin/data-import/warehouse-clear-products', [ERPAdministrationMasterDataController::class, 'clearWarehouseProductAssignments'])->name('erp.admin.data-import.warehouse-clear-products');
         Route::post('erp/admin/data-import/master-products/sync-origin-warehouses', [ERPAdministrationMasterDataController::class, 'syncMasterProductOriginWarehouses'])->name('erp.admin.data-import.master-products.sync-origin-warehouses');
+        Route::post('erp/admin/data-import/project-materials/sync-origin-warehouses', [ERPAdministrationMasterDataController::class, 'syncProjectMaterialOriginWarehouses'])->name('erp.admin.data-import.project-materials.sync-origin-warehouses');
+        Route::post('erp/admin/data-import/project-materials/relocate-warehouse', [ERPAdministrationMasterDataController::class, 'relocateProjectMaterialWarehouse'])->name('erp.admin.data-import.project-materials.relocate-warehouse');
         Route::get('erp/admin/master-products/import', [ERPAdministrationMasterDataController::class, 'masterProductImport'])->name('erp.admin.master-products.import');
         Route::get('erp/admin/master-products/import/template', [ERPAdministrationMasterDataController::class, 'downloadMasterProductImportTemplate'])->name('erp.admin.master-products.import.template');
         Route::post('erp/admin/master-products/import', [ERPAdministrationMasterDataController::class, 'importMasterProducts'])->name('erp.admin.master-products.import.store');

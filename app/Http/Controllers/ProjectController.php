@@ -596,8 +596,16 @@ class ProjectController extends Controller
             'notes' => 'nullable|string|max:500',
         ]);
 
-        DB::transaction(function () use ($project, $validated): void {
-            $product = MasterProduct::query()->findOrFail((int) $validated['master_product_id']);
+        $product = MasterProduct::query()->findOrFail((int) $validated['master_product_id']);
+        $selectedWarehouseId = (int) $validated['warehouse_id'];
+
+        if ($product->isStockTracked() && $product->warehouse_id !== null && (int) $product->warehouse_id !== $selectedWarehouseId) {
+            throw ValidationException::withMessages([
+                'master_product_id' => 'Produk ini tidak terdaftar untuk gudang yang dipilih.',
+            ]);
+        }
+
+        DB::transaction(function () use ($project, $validated, $product): void {
             $stock = null;
             $available = 0;
             if ($product->isStockTracked()) {
@@ -675,13 +683,24 @@ class ProjectController extends Controller
         $products = MasterProduct::query()
             ->where('status', 'active')
             ->whereIn('sales_channel', ['project', 'both'])
+            ->where(function ($query) use ($warehouseId): void {
+                $query
+                    ->where('product_type', MasterProduct::PRODUCT_TYPE_SERVICE)
+                    ->orWhere('warehouse_id', $warehouseId)
+                    ->orWhere(function ($legacyQuery) use ($warehouseId): void {
+                        $legacyQuery
+                            ->whereNull('warehouse_id')
+                            ->whereHas('warehouseStocks', fn ($stock) => $stock->where('warehouse_id', $warehouseId));
+                    });
+            })
             ->when($keyword !== '', function ($query) use ($keyword) {
-                $query->where(function ($nested) use ($keyword) {
+                $operator = $this->caseInsensitiveLikeOperator();
+                $query->where(function ($nested) use ($keyword, $operator) {
                     $nested
-                        ->where('sku', 'ilike', "%{$keyword}%")
-                        ->orWhere('name', 'ilike', "%{$keyword}%")
-                        ->orWhere('category', 'ilike', "%{$keyword}%")
-                        ->orWhere('uom', 'ilike', "%{$keyword}%");
+                        ->where('sku', $operator, "%{$keyword}%")
+                        ->orWhere('name', $operator, "%{$keyword}%")
+                        ->orWhere('category', $operator, "%{$keyword}%")
+                        ->orWhere('uom', $operator, "%{$keyword}%");
                 });
             })
             ->orderBy('name')
@@ -706,6 +725,11 @@ class ProjectController extends Controller
             ->values();
 
         return response()->json(['products' => $products]);
+    }
+
+    private function caseInsensitiveLikeOperator(): string
+    {
+        return DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
     }
 
     public function destroyMaterial(Project $project, ProjectMaterial $material)

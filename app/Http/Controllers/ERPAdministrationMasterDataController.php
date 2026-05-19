@@ -21,6 +21,7 @@ use App\Models\PaymentMethod;
 use App\Models\PosSaleItem;
 use App\Models\ProductStockMovement;
 use App\Models\ProjectMaterial;
+use App\Services\ProjectMaterialReservationService;
 use App\Services\LanEscPosPrinter;
 use App\Services\LanTsplPrinter;
 use App\Services\DatabaseBackupService;
@@ -37,6 +38,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use Maatwebsite\Excel\Facades\Excel;
@@ -855,6 +857,16 @@ class ERPAdministrationMasterDataController extends Controller
             'warehouses' => Warehouse::query()
                 ->orderBy('name')
                 ->get(['id', 'code', 'name']),
+            'projectMaterialProducts' => MasterProduct::query()
+                ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
+                ->orderBy('name')
+                ->get(['id', 'sku', 'name', 'warehouse_id'])
+                ->map(fn (MasterProduct $product) => [
+                    'id' => $product->id,
+                    'sku' => $product->sku,
+                    'name' => $product->name,
+                    'warehouse_id' => $product->warehouse_id,
+                ]),
             'backupMeta' => $this->databaseBackupService->backupMeta(),
         ]);
     }
@@ -1064,6 +1076,127 @@ class ERPAdministrationMasterDataController extends Controller
             ->with('flash', [
                 'type' => 'success',
                 'message' => "Sinkron warehouse asal item selesai. {$updatedCount} item diperbarui, {$clearedCount} item dikosongkan.",
+            ]);
+    }
+
+    public function syncProjectMaterialOriginWarehouses(): RedirectResponse
+    {
+        $updatedCount = 0;
+
+        DB::transaction(function () use (&$updatedCount): void {
+            ProjectMaterial::query()
+                ->with('product:id,product_type,warehouse_id')
+                ->orderBy('id')
+                ->chunkById(100, function ($materials) use (&$updatedCount): void {
+                    foreach ($materials as $material) {
+                        $product = $material->product;
+                        if (! $product || $product->product_type === MasterProduct::PRODUCT_TYPE_SERVICE) {
+                            continue;
+                        }
+
+                        $resolvedWarehouseId = $product->warehouse_id;
+                        if ($resolvedWarehouseId === null || (int) $material->warehouse_id === (int) $resolvedWarehouseId) {
+                            continue;
+                        }
+
+                        $material->forceFill([
+                            'warehouse_id' => $resolvedWarehouseId,
+                        ])->save();
+                        $updatedCount++;
+                    }
+                });
+        });
+
+        $reservationSummary = app(ProjectMaterialReservationService::class)->syncAllWarehouseReservations();
+
+        return redirect()
+            ->route('erp.admin.data-import', ['tab' => 'products'])
+            ->with('flash', [
+                'type' => 'success',
+                'message' => "Sinkron material project selesai. {$updatedCount} baris dipindahkan ke warehouse asal item. Reserved gudang disesuaikan pada {$reservationSummary['warehouse_rows_updated']} baris stok.",
+            ]);
+    }
+
+    public function relocateProjectMaterialWarehouse(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'master_product_id' => ['required', 'integer', 'exists:master_products,id'],
+            'source_warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
+            'destination_warehouse_id' => ['required', 'integer', 'exists:warehouses,id', 'different:source_warehouse_id'],
+        ]);
+
+        $product = MasterProduct::query()->findOrFail((int) $validated['master_product_id']);
+        if (! $product->isStockTracked()) {
+            throw ValidationException::withMessages([
+                'master_product_id' => 'Produk jasa tidak memiliki material project per gudang.',
+            ]);
+        }
+
+        $productId = (int) $product->id;
+        $sourceWarehouseId = (int) $validated['source_warehouse_id'];
+        $destinationWarehouseId = (int) $validated['destination_warehouse_id'];
+        $movedCount = 0;
+        $mergedCount = 0;
+
+        DB::transaction(function () use ($productId, $sourceWarehouseId, $destinationWarehouseId, &$movedCount, &$mergedCount): void {
+            $sourceRows = ProjectMaterial::query()
+                ->where('master_product_id', $productId)
+                ->where('warehouse_id', $sourceWarehouseId)
+                ->lockForUpdate()
+                ->get();
+
+            if ($sourceRows->isEmpty()) {
+                throw ValidationException::withMessages([
+                    'source_warehouse_id' => 'Tidak ada material project untuk item ini pada gudang sumber.',
+                ]);
+            }
+
+            foreach ($sourceRows as $sourceRow) {
+                $destinationRow = ProjectMaterial::query()
+                    ->where('project_id', $sourceRow->project_id)
+                    ->where('master_product_id', $productId)
+                    ->where('warehouse_id', $destinationWarehouseId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($destinationRow) {
+                    $destinationPlannedQty = (float) $destinationRow->planned_qty;
+                    $sourcePlannedQty = (float) $sourceRow->planned_qty;
+                    $combinedPlannedQty = $destinationPlannedQty + $sourcePlannedQty;
+
+                    $destinationRow->planned_qty = $combinedPlannedQty;
+                    $destinationRow->reserved_qty = (float) $destinationRow->reserved_qty + (float) $sourceRow->reserved_qty;
+                    $destinationRow->issued_qty = (float) $destinationRow->issued_qty + (float) $sourceRow->issued_qty;
+                    $destinationRow->unit_cost = $combinedPlannedQty > 0
+                        ? (($destinationPlannedQty * (float) $destinationRow->unit_cost) + ($sourcePlannedQty * (float) $sourceRow->unit_cost)) / $combinedPlannedQty
+                        : 0;
+                    $destinationRow->unit_price = $combinedPlannedQty > 0
+                        ? (($destinationPlannedQty * (float) $destinationRow->unit_price) + ($sourcePlannedQty * (float) $sourceRow->unit_price)) / $combinedPlannedQty
+                        : 0;
+                    $destinationRow->notes = $this->mergeProjectMaterialNotes($destinationRow->notes, $sourceRow->notes);
+                    $destinationRow->status = $this->projectMaterialStatus($destinationRow);
+                    $destinationRow->save();
+
+                    $sourceRow->delete();
+                    $mergedCount++;
+                    continue;
+                }
+
+                $sourceRow->warehouse_id = $destinationWarehouseId;
+                $sourceRow->status = $this->projectMaterialStatus($sourceRow);
+                $sourceRow->save();
+                $movedCount++;
+            }
+        });
+
+        $sourceStock = app(ProjectMaterialReservationService::class)->syncWarehouseReservation($productId, $sourceWarehouseId);
+        $destinationStock = app(ProjectMaterialReservationService::class)->syncWarehouseReservation($productId, $destinationWarehouseId);
+
+        return redirect()
+            ->route('erp.admin.data-import', ['tab' => 'products'])
+            ->with('flash', [
+                'type' => 'success',
+                'message' => "Material project item berhasil dipindahkan. {$movedCount} baris dipindah, {$mergedCount} baris digabung. Reserve sumber kini {$sourceStock->reserved_qty}, reserve tujuan {$destinationStock->reserved_qty}.",
             ]);
     }
 
@@ -1323,6 +1456,38 @@ class ERPAdministrationMasterDataController extends Controller
             ['key' => 'pos_receipt', 'label' => 'Template Struk POS', 'description' => 'Template struk thermal POS default.', 'class' => 'FillThermalPosReceiptTemplatesSeeder'],
             ['key' => 'project_flow', 'label' => 'Alur Project Demo', 'description' => '5 data project lengkap: budget, termin, cashflow, tim, task, referral, dan material.', 'class' => 'ProjectFlowSeeder'],
         ];
+    }
+
+    private function projectMaterialStatus(ProjectMaterial $material): string
+    {
+        $plannedQty = (float) $material->planned_qty;
+        $reservedQty = (float) $material->reserved_qty;
+        $issuedQty = (float) $material->issued_qty;
+
+        if ($plannedQty > 0 && $issuedQty >= $plannedQty) {
+            return 'issued';
+        }
+
+        if ($plannedQty > 0 && $reservedQty >= $plannedQty) {
+            return 'ready';
+        }
+
+        if ($reservedQty > 0) {
+            return 'partial';
+        }
+
+        return 'planned';
+    }
+
+    private function mergeProjectMaterialNotes(?string $existingNotes, ?string $incomingNotes): ?string
+    {
+        $notes = collect([$existingNotes, $incomingNotes])
+            ->map(fn ($note) => trim((string) $note))
+            ->filter()
+            ->unique()
+            ->values();
+
+        return $notes->isEmpty() ? null : $notes->implode("\n");
     }
 
     public function serverMonitoring(ServerMetricsService $metrics): Response

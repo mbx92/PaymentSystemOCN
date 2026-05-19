@@ -53,7 +53,7 @@ const materialForm = useForm({
 
 const materialWarehouseFilter = ref('');
 const materialSearch = ref('');
-const modalMaterialProducts = ref(props.material_products ?? []);
+const modalMaterialProducts = ref([]);
 const warehouseStocksCache = ref(props.warehouse_stocks ?? {});
 const materialProductsLoading = ref(false);
 let materialSearchTimer;
@@ -78,7 +78,7 @@ const filteredMaterialProducts = computed(() => {
 
 const loadMaterialProducts = async () => {
     if (!materialWarehouseFilter.value) {
-        modalMaterialProducts.value = props.material_products ?? [];
+        modalMaterialProducts.value = [];
         return;
     }
 
@@ -119,7 +119,15 @@ const loadMaterialProducts = async () => {
     }
 };
 
-watch([materialWarehouseFilter, materialSearch], () => {
+watch(materialWarehouseFilter, () => {
+    materialForm.master_product_id = '';
+    materialForm.warehouse_id = '';
+    modalMaterialProducts.value = [];
+    clearTimeout(materialSearchTimer);
+    materialSearchTimer = setTimeout(loadMaterialProducts, 250);
+});
+
+watch(materialSearch, () => {
     materialForm.master_product_id = '';
     clearTimeout(materialSearchTimer);
     materialSearchTimer = setTimeout(loadMaterialProducts, 250);
@@ -176,6 +184,7 @@ const submitMaterial = () => {
             materialForm.planned_qty = 1;
             materialForm.unit_cost = 0;
             materialForm.unit_price = 0;
+            materialWarehouseFilter.value = '';
             materialSearch.value = '';
             document.getElementById('modal-add-material')?.close();
         },

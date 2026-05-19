@@ -233,6 +233,120 @@ class ProjectMaterialChannelTest extends TestCase
         ]);
     }
 
+    public function test_material_product_search_only_returns_items_for_selected_origin_warehouse(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $project = $this->createProject();
+        $warehouseOcn = Warehouse::create([
+            'code' => 'WH-OCN',
+            'name' => 'Gudang OCN',
+            'is_active' => true,
+        ]);
+        $warehouseNuma = Warehouse::create([
+            'code' => 'WH-NUMA',
+            'name' => 'Gudang NUMA',
+            'is_active' => true,
+        ]);
+
+        $ocnProduct = MasterProduct::create([
+            'sku' => 'OCN-POE-01',
+            'name' => 'POE OCN',
+            'category' => 'Network',
+            'uom' => 'pcs',
+            'sales_channel' => 'project',
+            'product_type' => 'project_material',
+            'status' => 'active',
+            'warehouse_id' => $warehouseOcn->id,
+        ]);
+        $numaProduct = MasterProduct::create([
+            'sku' => 'NUMA-POE-01',
+            'name' => 'POE NUMA',
+            'category' => 'Network',
+            'uom' => 'pcs',
+            'sales_channel' => 'project',
+            'product_type' => 'project_material',
+            'status' => 'active',
+            'warehouse_id' => $warehouseNuma->id,
+        ]);
+        $serviceProduct = MasterProduct::create([
+            'sku' => 'SRV-INSTALL-01',
+            'name' => 'Jasa Instalasi',
+            'category' => 'Service',
+            'uom' => 'paket',
+            'sales_channel' => 'project',
+            'product_type' => 'service',
+            'status' => 'active',
+            'warehouse_id' => null,
+        ]);
+
+        MasterProductWarehouseStock::create([
+            'master_product_id' => $ocnProduct->id,
+            'warehouse_id' => $warehouseOcn->id,
+            'qty' => 5,
+            'reserved_qty' => 1,
+        ]);
+        MasterProductWarehouseStock::create([
+            'master_product_id' => $numaProduct->id,
+            'warehouse_id' => $warehouseNuma->id,
+            'qty' => 8,
+            'reserved_qty' => 0,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->getJson(route('projects.material-products.search', $project).'?warehouse_id='.$warehouseNuma->id.'&q=poe')
+            ->assertOk()
+            ->assertJsonCount(1, 'products')
+            ->assertJsonPath('products.0.id', $numaProduct->id);
+
+        $this
+            ->actingAs($user)
+            ->getJson(route('projects.material-products.search', $project).'?warehouse_id='.$warehouseOcn->id)
+            ->assertOk()
+            ->assertJsonFragment(['id' => $ocnProduct->id])
+            ->assertJsonFragment(['id' => $serviceProduct->id]);
+    }
+
+    public function test_cannot_add_stock_product_to_different_origin_warehouse(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $project = $this->createProject();
+        $warehouseOcn = Warehouse::create([
+            'code' => 'WH-OCN',
+            'name' => 'Gudang OCN',
+            'is_active' => true,
+        ]);
+        $warehouseNuma = Warehouse::create([
+            'code' => 'WH-NUMA',
+            'name' => 'Gudang NUMA',
+            'is_active' => true,
+        ]);
+        $projectProduct = MasterProduct::create([
+            'sku' => 'MAT-ORIGIN-01',
+            'name' => 'Material Warehouse Asal',
+            'category' => 'General',
+            'uom' => 'pcs',
+            'sales_channel' => 'project',
+            'product_type' => 'project_material',
+            'status' => 'active',
+            'warehouse_id' => $warehouseNuma->id,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->post(route('projects.materials.store', $project), [
+                'master_product_id' => $projectProduct->id,
+                'warehouse_id' => $warehouseOcn->id,
+                'planned_qty' => 1,
+            ])
+            ->assertSessionHasErrors('master_product_id')
+            ->assertRedirect();
+    }
+
     public function test_project_service_is_recorded_without_stock_reserve_or_reorder_planning(): void
     {
         $this->disableErpMiddleware();

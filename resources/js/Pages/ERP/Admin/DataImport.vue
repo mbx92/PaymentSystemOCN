@@ -12,6 +12,7 @@ const props = defineProps({
   activeTab: String,
   seeders: { type: Array, default: () => [] },
   warehouses: { type: Array, default: () => [] },
+  projectMaterialProducts: { type: Array, default: () => [] },
   backupMeta: { type: Object, default: () => ({}) },
 });
 
@@ -43,6 +44,12 @@ const productForm = useForm({ file: null });
 const projectForm = useForm({ file: null });
 const clearWarehouseForm = useForm({ warehouse_id: '' });
 const syncOriginWarehouseForm = useForm({});
+const syncProjectMaterialWarehouseForm = useForm({});
+const relocateProjectMaterialForm = useForm({
+  master_product_id: '',
+  source_warehouse_id: '',
+  destination_warehouse_id: '',
+});
 
 const clearWarehouseDialogEl = ref(null);
 const clearWarehouseDeletePhrase = ref('');
@@ -132,6 +139,25 @@ function submitClearWarehouseProductsFromModal() {
 function syncOriginWarehouses() {
   syncOriginWarehouseForm.post(route('erp.admin.data-import.master-products.sync-origin-warehouses'), {
     preserveScroll: true,
+  });
+}
+
+function syncProjectMaterialWarehouses() {
+  syncProjectMaterialWarehouseForm.post(route('erp.admin.data-import.project-materials.sync-origin-warehouses'), {
+    preserveScroll: true,
+  });
+}
+
+function relocateProjectMaterialWarehouse() {
+  if (!relocateProjectMaterialForm.master_product_id || !relocateProjectMaterialForm.source_warehouse_id || !relocateProjectMaterialForm.destination_warehouse_id) {
+    return;
+  }
+
+  relocateProjectMaterialForm.post(route('erp.admin.data-import.project-materials.relocate-warehouse'), {
+    preserveScroll: true,
+    onSuccess: () => {
+      relocateProjectMaterialForm.reset();
+    },
   });
 }
 
@@ -355,6 +381,84 @@ async function runAllSeeders() {
                 @click="syncOriginWarehouses"
               >
                 {{ syncOriginWarehouseForm.processing ? 'Memproses…' : 'Sync warehouse asal item' }}
+              </button>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-base-200 bg-base-200/30 p-4 space-y-3">
+            <div>
+              <h3 class="font-semibold text-sm">Sync material project ke warehouse asal item</h3>
+              <p class="text-xs text-base-content/70 mt-1">
+                Memperbarui <code>project_materials.warehouse_id</code> agar mengikuti <code>master_products.warehouse_id</code> terbaru.
+                Sesudah itu reserved stok tiap gudang akan dihitung ulang otomatis.
+              </p>
+            </div>
+            <div class="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                class="btn btn-outline btn-sm"
+                :disabled="syncProjectMaterialWarehouseForm.processing"
+                @click="syncProjectMaterialWarehouses"
+              >
+                {{ syncProjectMaterialWarehouseForm.processing ? 'Memproses…' : 'Sync material project' }}
+              </button>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-base-200 bg-base-200/30 p-4 space-y-3">
+            <div>
+              <h3 class="font-semibold text-sm">Pindahkan material project per item</h3>
+              <p class="text-xs text-base-content/70 mt-1">
+                Pakai ini untuk merapikan item yang sudah terlanjur direlasikan ke gudang yang salah setelah proses mutasi.
+                Hanya material project untuk item dan gudang sumber yang dipilih yang akan dipindahkan.
+              </p>
+            </div>
+            <div class="grid gap-3 md:grid-cols-3">
+              <label class="form-control">
+                <span class="label-text text-xs font-medium">Item</span>
+                <select v-model="relocateProjectMaterialForm.master_product_id" class="select select-bordered select-sm w-full">
+                  <option value="" disabled>Pilih item</option>
+                  <option v-for="product in projectMaterialProducts" :key="product.id" :value="product.id">
+                    {{ product.sku }} - {{ product.name }}
+                  </option>
+                </select>
+                <p v-if="relocateProjectMaterialForm.errors.master_product_id" class="mt-1 text-xs text-error">
+                  {{ relocateProjectMaterialForm.errors.master_product_id }}
+                </p>
+              </label>
+              <label class="form-control">
+                <span class="label-text text-xs font-medium">Gudang sumber</span>
+                <select v-model="relocateProjectMaterialForm.source_warehouse_id" class="select select-bordered select-sm w-full">
+                  <option value="" disabled>Pilih gudang sumber</option>
+                  <option v-for="wh in warehouses" :key="`source-${wh.id}`" :value="wh.id">
+                    {{ wh.name }} ({{ wh.code }})
+                  </option>
+                </select>
+                <p v-if="relocateProjectMaterialForm.errors.source_warehouse_id" class="mt-1 text-xs text-error">
+                  {{ relocateProjectMaterialForm.errors.source_warehouse_id }}
+                </p>
+              </label>
+              <label class="form-control">
+                <span class="label-text text-xs font-medium">Gudang tujuan</span>
+                <select v-model="relocateProjectMaterialForm.destination_warehouse_id" class="select select-bordered select-sm w-full">
+                  <option value="" disabled>Pilih gudang tujuan</option>
+                  <option v-for="wh in warehouses" :key="`destination-${wh.id}`" :value="wh.id">
+                    {{ wh.name }} ({{ wh.code }})
+                  </option>
+                </select>
+                <p v-if="relocateProjectMaterialForm.errors.destination_warehouse_id" class="mt-1 text-xs text-error">
+                  {{ relocateProjectMaterialForm.errors.destination_warehouse_id }}
+                </p>
+              </label>
+            </div>
+            <div class="flex justify-end">
+              <button
+                type="button"
+                class="btn btn-outline btn-sm"
+                :disabled="relocateProjectMaterialForm.processing || !relocateProjectMaterialForm.master_product_id || !relocateProjectMaterialForm.source_warehouse_id || !relocateProjectMaterialForm.destination_warehouse_id"
+                @click="relocateProjectMaterialWarehouse"
+              >
+                {{ relocateProjectMaterialForm.processing ? 'Memproses…' : 'Pindahkan material project' }}
               </button>
             </div>
           </div>
