@@ -14,11 +14,6 @@ const props = defineProps({
 
 const showProductModal = ref(false);
 
-const filterForm = useForm({
-  warehouse_id: props.filters.warehouse_id ?? '',
-  q: props.filters.q ?? '',
-});
-
 const form = useForm({
   warehouse_id: props.filters.warehouse_id ?? '',
   product_id: '',
@@ -36,15 +31,13 @@ const pickerProducts = computed(() => props.products.map((product) => ({
   stock: product.warehouse_stock,
 })));
 
-function applyFilters() {
+function syncWarehouseProducts() {
   router.get(route('erp.inventory.stock-opname'), {
-    warehouse_id: filterForm.warehouse_id || undefined,
-    q: filterForm.q || undefined,
+    warehouse_id: form.warehouse_id || undefined,
   }, {
     preserveScroll: true,
     replace: true,
     onSuccess: () => {
-      form.warehouse_id = filterForm.warehouse_id || '';
       form.product_id = '';
       form.physical_stock = 0;
     },
@@ -66,7 +59,7 @@ const submit = () => {
     onSuccess: () => {
       form.reset('product_id', 'physical_stock', 'note');
       form.stock_opname_date = props.defaultStockOpnameDate || new Date().toISOString().slice(0, 10);
-      form.warehouse_id = filterForm.warehouse_id || '';
+      form.warehouse_id = props.filters.warehouse_id ?? form.warehouse_id;
     },
   });
 };
@@ -110,43 +103,12 @@ function selectProduct(product) {
 
       <div class="ocn-panel">
         <div class="ocn-panel__head">
-          <h2 class="ocn-panel__title">Filter item opname</h2>
-          <p class="ocn-panel__desc">Pilih gudang lalu cari item berdasarkan SKU atau nama produk.</p>
-        </div>
-        <div class="card-body grid gap-3 md:grid-cols-4">
-          <div>
-            <label class="label"><span class="label-text">Gudang</span></label>
-            <select v-model="filterForm.warehouse_id" class="select select-bordered w-full">
-              <option value="">Pilih gudang</option>
-              <option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">
-                {{ warehouse.code }} - {{ warehouse.name }}
-              </option>
-            </select>
-          </div>
-          <div class="md:col-span-2">
-            <label class="label"><span class="label-text">Filter Item</span></label>
-            <input
-              v-model="filterForm.q"
-              type="text"
-              class="input input-bordered w-full"
-              placeholder="Cari SKU atau nama produk"
-              @keyup.enter="applyFilters"
-            />
-          </div>
-          <div class="flex items-end">
-            <button class="btn btn-outline w-full" @click="applyFilters">Terapkan Filter</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="ocn-panel">
-        <div class="ocn-panel__head">
           <h2 class="ocn-panel__title">Penyesuaian stok opname</h2>
         </div>
         <div class="card-body grid gap-3 md:grid-cols-2">
           <div>
             <label class="label"><span class="label-text">Gudang Opname</span></label>
-            <select v-model="form.warehouse_id" class="select select-bordered w-full" @change="filterForm.warehouse_id = form.warehouse_id">
+            <select v-model="form.warehouse_id" class="select select-bordered w-full" @change="syncWarehouseProducts">
               <option value="">Pilih gudang</option>
               <option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">
                 {{ warehouse.code }} - {{ warehouse.name }}
@@ -227,7 +189,7 @@ function selectProduct(product) {
       :show="showProductModal"
       :products="pickerProducts"
       title="Pilih Item Stock Opname"
-      subtitle="Pilih produk dari master item untuk dilakukan stock opname pada gudang yang aktif."
+      subtitle="Cari dan pilih produk yang terdaftar pada gudang opname yang aktif."
       search-label="Cari Item"
       search-placeholder="Cari SKU / barcode / nama item..."
       confirm-text="Pilih Item"

@@ -42,6 +42,7 @@ const projectFileInput = ref(null);
 const productForm = useForm({ file: null });
 const projectForm = useForm({ file: null });
 const clearWarehouseForm = useForm({ warehouse_id: '' });
+const syncOriginWarehouseForm = useForm({});
 
 const clearWarehouseDialogEl = ref(null);
 const clearWarehouseDeletePhrase = ref('');
@@ -125,6 +126,12 @@ function submitClearWarehouseProductsFromModal() {
     onSuccess: () => {
       closeClearWarehouseModal();
     },
+  });
+}
+
+function syncOriginWarehouses() {
+  syncOriginWarehouseForm.post(route('erp.admin.data-import.master-products.sync-origin-warehouses'), {
+    preserveScroll: true,
   });
 }
 
@@ -330,6 +337,26 @@ async function runAllSeeders() {
             <p v-if="clearWarehouseForm.errors.warehouse_id" class="text-xs text-error">
               {{ clearWarehouseForm.errors.warehouse_id }}
             </p>
+          </div>
+
+          <div class="rounded-xl border border-base-200 bg-base-200/30 p-4 space-y-3">
+            <div>
+              <h3 class="font-semibold text-sm">Sync warehouse asal item</h3>
+              <p class="text-xs text-base-content/70 mt-1">
+                Menyelaraskan <code>master_products.warehouse_id</code> dari data <code>master_product_warehouse_stocks</code>.
+                Item stok akan memakai warehouse dengan qty terbesar. Item service akan dikosongkan warehouse asalnya.
+              </p>
+            </div>
+            <div class="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                class="btn btn-outline btn-sm"
+                :disabled="syncOriginWarehouseForm.processing"
+                @click="syncOriginWarehouses"
+              >
+                {{ syncOriginWarehouseForm.processing ? 'Memproses…' : 'Sync warehouse asal item' }}
+              </button>
+            </div>
           </div>
         </div>
       </div>

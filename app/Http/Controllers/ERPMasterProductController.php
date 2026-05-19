@@ -27,6 +27,7 @@ class ERPMasterProductController extends Controller
         $perPage = $this->resolvedPerPage($request);
 
         $products = MasterProduct::query()
+            ->with('warehouse:id,code,name')
             ->when($request->filled('sales_channel'), fn ($q) => $q->where('sales_channel', $request->string('sales_channel')->toString()))
             ->when($request->filled('product_type'), fn ($q) => $q->where('product_type', $request->string('product_type')->toString()))
             ->when($request->filled('warehouse_id'), fn ($q) => $q->whereHas('warehouseStocks', fn ($sub) => $sub->where('warehouse_id', $request->integer('warehouse_id'))))
@@ -58,6 +59,7 @@ class ERPMasterProductController extends Controller
             'name' => 'required|string|max:255',
             'category' => 'required|string|max:100|exists:product_categories,name',
             'uom' => 'required|string|max:20|exists:uoms,code',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
             'sales_channel' => 'required|in:pos,project,both',
             'product_type' => 'required|in:finished_goods,project_material,service',
             'status' => 'required|in:active,inactive',
@@ -71,6 +73,11 @@ class ERPMasterProductController extends Controller
             $validated['min_stock'] = 0;
             $validated['total_sold'] = 0;
             $validated['low_stock_alert_enabled'] = false;
+            $validated['warehouse_id'] = null;
+        } elseif (empty($validated['warehouse_id'])) {
+            return back()->withErrors([
+                'warehouse_id' => 'Warehouse asal wajib dipilih untuk produk stok.',
+            ])->withInput();
         }
 
         if (empty($validated['sku'])) {
@@ -98,7 +105,7 @@ class ERPMasterProductController extends Controller
 
     public function show(MasterProduct $masterProduct, WindowsSmbRawPrinter $smb): Response
     {
-        $masterProduct->load(['uomMappings', 'channelPrices']);
+        $masterProduct->load(['uomMappings', 'channelPrices', 'warehouse:id,code,name']);
 
         return Inertia::render('ERP/MasterProducts/Show', [
             'product' => $masterProduct,
@@ -128,6 +135,10 @@ class ERPMasterProductController extends Controller
                 ->where('status', 'active')
                 ->orderBy('name')
                 ->get(['name']),
+            'warehouses' => Warehouse::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name', 'code']),
         ]);
     }
 
@@ -218,6 +229,7 @@ class ERPMasterProductController extends Controller
             'name' => 'required|string|max:255',
             'category' => 'required|string|max:100|exists:product_categories,name',
             'uom' => 'required|string|max:20|exists:uoms,code',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
             'sales_channel' => 'required|in:pos,project,both',
             'product_type' => 'required|in:finished_goods,project_material,service',
             'status' => 'required|in:active,inactive',
@@ -231,6 +243,11 @@ class ERPMasterProductController extends Controller
             $validated['min_stock'] = 0;
             $validated['total_sold'] = 0;
             $validated['low_stock_alert_enabled'] = false;
+            $validated['warehouse_id'] = null;
+        } elseif (empty($validated['warehouse_id'])) {
+            return back()->withErrors([
+                'warehouse_id' => 'Warehouse asal wajib dipilih untuk produk stok.',
+            ])->withInput();
         }
         $masterProduct->update($validated);
 

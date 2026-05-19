@@ -216,6 +216,72 @@ class WarehouseDataImportClearAssignmentsTest extends TestCase
         $this->assertSame('warning', session('flash.type'));
     }
 
+    public function test_sync_master_product_origin_warehouses_uses_largest_qty_stock_row(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $wA = Warehouse::query()->create([
+            'code' => 'WH-A',
+            'name' => 'Gudang A',
+            'is_active' => true,
+        ]);
+        $wB = Warehouse::query()->create([
+            'code' => 'WH-B',
+            'name' => 'Gudang B',
+            'is_active' => true,
+        ]);
+
+        $stockProduct = MasterProduct::query()->create([
+            'sku' => 'SYNC-001',
+            'name' => 'Produk Sync',
+            'category' => 'General',
+            'uom' => 'pcs',
+            'warehouse_id' => null,
+            'sales_channel' => 'both',
+            'product_type' => 'finished_goods',
+            'status' => 'active',
+            'stock' => 10,
+        ]);
+        $serviceProduct = MasterProduct::query()->create([
+            'sku' => 'SYNC-SRV',
+            'name' => 'Jasa Sync',
+            'category' => 'General',
+            'uom' => 'pcs',
+            'warehouse_id' => $wA->id,
+            'sales_channel' => 'both',
+            'product_type' => 'service',
+            'status' => 'active',
+            'stock' => 0,
+        ]);
+
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $stockProduct->id,
+            'warehouse_id' => $wA->id,
+            'qty' => 3,
+            'reserved_qty' => 0,
+        ]);
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $stockProduct->id,
+            'warehouse_id' => $wB->id,
+            'qty' => 7,
+            'reserved_qty' => 0,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('erp.admin.data-import.master-products.sync-origin-warehouses'))
+            ->assertRedirect(route('erp.admin.data-import', ['tab' => 'products']));
+
+        $this->assertDatabaseHas('master_products', [
+            'id' => $stockProduct->id,
+            'warehouse_id' => $wB->id,
+        ]);
+        $this->assertDatabaseHas('master_products', [
+            'id' => $serviceProduct->id,
+            'warehouse_id' => null,
+        ]);
+    }
+
     public function test_clears_nonzero_qty_for_exclusive_product_and_deletes_master(): void
     {
         $this->disableErpMiddleware();

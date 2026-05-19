@@ -1020,6 +1020,53 @@ class ERPAdministrationMasterDataController extends Controller
         ]);
     }
 
+    public function syncMasterProductOriginWarehouses(): RedirectResponse
+    {
+        $updatedCount = 0;
+        $clearedCount = 0;
+
+        DB::transaction(function () use (&$updatedCount, &$clearedCount): void {
+            MasterProduct::query()
+                ->orderBy('id')
+                ->chunkById(100, function ($products) use (&$updatedCount, &$clearedCount): void {
+                    foreach ($products as $product) {
+                        if ($product->product_type === MasterProduct::PRODUCT_TYPE_SERVICE) {
+                            if ($product->warehouse_id !== null) {
+                                $product->forceFill(['warehouse_id' => null])->save();
+                                $clearedCount++;
+                            }
+                            continue;
+                        }
+
+                        $resolvedWarehouseId = MasterProductWarehouseStock::query()
+                            ->where('master_product_id', $product->id)
+                            ->orderByDesc('qty')
+                            ->orderBy('warehouse_id')
+                            ->value('warehouse_id');
+
+                        if ((int) ($product->warehouse_id ?? 0) === (int) ($resolvedWarehouseId ?? 0)) {
+                            continue;
+                        }
+
+                        $product->forceFill(['warehouse_id' => $resolvedWarehouseId])->save();
+
+                        if ($resolvedWarehouseId === null) {
+                            $clearedCount++;
+                        } else {
+                            $updatedCount++;
+                        }
+                    }
+                });
+        });
+
+        return redirect()
+            ->route('erp.admin.data-import', ['tab' => 'products'])
+            ->with('flash', [
+                'type' => 'success',
+                'message' => "Sinkron warehouse asal item selesai. {$updatedCount} item diperbarui, {$clearedCount} item dikosongkan.",
+            ]);
+    }
+
     public function masterProductImport(): RedirectResponse
     {
         return redirect()->route('erp.admin.data-import', ['tab' => 'products']);

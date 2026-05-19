@@ -164,6 +164,39 @@ class StockManagementFilterTest extends TestCase
                 ->missing('products.data.1'));
     }
 
+    public function test_stock_management_search_is_case_insensitive_for_postgresql(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $warehouse = Warehouse::query()->create([
+            'code' => 'WH-OCN',
+            'name' => 'Gudang WH-OCN',
+            'is_active' => true,
+        ]);
+        $product = $this->createProduct('NET-POE-0001', 'Switch POE Hilook 5 Port', 0);
+
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 0,
+            'reserved_qty' => 0,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.inventory.stock-management', [
+                'warehouse_id' => $warehouse->id,
+                'q' => 'poe',
+            ]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Inventory/StockManagement')
+                ->where('products.data.0.id', $product->id)
+                ->where('products.data.0.sku', 'NET-POE-0001')
+                ->where('filters.q', 'poe'));
+    }
+
     public function test_low_stock_notification_can_be_toggled_per_product(): void
     {
         $this->disableErpMiddleware();
@@ -332,6 +365,8 @@ class StockManagementFilterTest extends TestCase
         ]);
         $target = $this->createProduct('OPN-ABC', 'Kabel Opname ABC', 2);
         $other = $this->createProduct('OPN-XYZ', 'Kabel Opname XYZ', 2);
+        $target->update(['warehouse_id' => $warehouse->id]);
+        $other->update(['warehouse_id' => $warehouse->id]);
 
         MasterProductWarehouseStock::query()->create([
             'master_product_id' => $target->id,
@@ -360,6 +395,59 @@ class StockManagementFilterTest extends TestCase
             'id' => $other->id,
             'sku' => 'OPN-XYZ',
         ]);
+    }
+
+    public function test_stock_opname_only_lists_items_that_exist_in_selected_warehouse(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $warehouse = Warehouse::query()->create([
+            'code' => 'WH-01',
+            'name' => 'Gudang Utama',
+            'is_active' => true,
+        ]);
+        $available = $this->createProduct('POE-001', 'Switch POE Warehouse', 2);
+        $missing = $this->createProduct('POE-002', 'Switch POE Belum Ada', 2);
+        $zeroQty = $this->createProduct('POE-003', 'Switch POE Qty Nol', 2);
+        $otherOrigin = $this->createProduct('POE-004', 'Switch POE Warehouse Lain', 2);
+
+        $available->update(['warehouse_id' => $warehouse->id]);
+        $zeroQty->update(['warehouse_id' => $warehouse->id]);
+
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $available->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 3,
+            'reserved_qty' => 0,
+        ]);
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $zeroQty->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 0,
+            'reserved_qty' => 0,
+        ]);
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $otherOrigin->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 4,
+            'reserved_qty' => 0,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.inventory.stock-opname', [
+                'warehouse_id' => $warehouse->id,
+                'q' => 'POE',
+            ]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Inventory/StockOpname')
+                ->where('products.0.id', $zeroQty->id)
+                ->where('products.0.sku', 'POE-003')
+                ->where('products.1.id', $available->id)
+                ->where('products.1.sku', 'POE-001')
+                ->missing('products.2'));
     }
 
     public function test_stock_opname_updates_selected_warehouse_stock_and_movement_date(): void
@@ -481,6 +569,7 @@ class StockManagementFilterTest extends TestCase
             'name' => $name,
             'category' => 'Material',
             'uom' => 'pcs',
+            'warehouse_id' => null,
             'sales_channel' => 'project',
             'product_type' => MasterProduct::PRODUCT_TYPE_PROJECT_MATERIAL,
             'status' => $status,

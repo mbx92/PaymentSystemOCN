@@ -23,6 +23,7 @@ class ERPInventoryController extends Controller
         $selectedWarehouseId = (int) $request->integer('warehouse_id', $warehouses->first()?->id ?? 0);
         $perPage = $this->resolvedPerPage($request);
         $lowStockOnly = $request->boolean('low_stock_only');
+        $searchOperator = $this->caseInsensitiveLikeOperator();
 
         $query = MasterProduct::query()
             ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
@@ -31,11 +32,11 @@ class ERPInventoryController extends Controller
                     $stock->where('warehouse_id', $selectedWarehouseId);
                 });
             })
-            ->when($request->filled('q'), function ($query) use ($request): void {
+            ->when($request->filled('q'), function ($query) use ($request, $searchOperator): void {
                 $term = $request->string('q')->toString();
-                $query->where(function ($inner) use ($term): void {
-                    $inner->where('sku', 'like', '%'.$term.'%')
-                        ->orWhere('name', 'like', '%'.$term.'%');
+                $query->where(function ($inner) use ($term, $searchOperator): void {
+                    $inner->where('sku', $searchOperator, '%'.$term.'%')
+                        ->orWhere('name', $searchOperator, '%'.$term.'%');
                 });
             })
             ->when($request->filled('status'), fn ($query) => $query->where('status', $request->string('status')->toString()));
@@ -233,6 +234,7 @@ class ERPInventoryController extends Controller
             ->get(['id', 'code', 'name']);
         $selectedWarehouseId = (int) request()->integer('warehouse_id', $warehouses->first()?->id ?? 0);
         $search = trim(request()->string('q')->toString());
+        $searchOperator = $this->caseInsensitiveLikeOperator();
 
         return Inertia::render('ERP/Inventory/StockOpname', [
             'warehouses' => $warehouses,
@@ -244,10 +246,13 @@ class ERPInventoryController extends Controller
             'products' => MasterProduct::query()
                 ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
                 ->where('status', 'active')
-                ->when($search !== '', function ($query) use ($search): void {
-                    $query->where(function ($inner) use ($search): void {
-                        $inner->where('sku', 'like', '%'.$search.'%')
-                            ->orWhere('name', 'like', '%'.$search.'%');
+                ->when($selectedWarehouseId, function ($query) use ($selectedWarehouseId): void {
+                    $query->where('warehouse_id', $selectedWarehouseId);
+                })
+                ->when($search !== '', function ($query) use ($search, $searchOperator): void {
+                    $query->where(function ($inner) use ($search, $searchOperator): void {
+                        $inner->where('sku', $searchOperator, '%'.$search.'%')
+                            ->orWhere('name', $searchOperator, '%'.$search.'%');
                     });
                 })
                 ->orderBy('name')
@@ -653,6 +658,11 @@ class ERPInventoryController extends Controller
         }
 
         return 'mixed';
+    }
+
+    private function caseInsensitiveLikeOperator(): string
+    {
+        return DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
     }
 
     private function allocateProjectMaterialReservations(int $productId, int $warehouseId, float $incomingQty): float

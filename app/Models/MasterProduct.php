@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\ERP\Inventory\Models\Warehouse;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -21,6 +22,7 @@ class MasterProduct extends Model
         'name',
         'category',
         'uom',
+        'warehouse_id',
         'sales_channel',
         'product_type',
         'status',
@@ -38,6 +40,7 @@ class MasterProduct extends Model
             'selling_price' => 'decimal:2',
             'stock' => 'int',
             'min_stock' => 'int',
+            'warehouse_id' => 'int',
             'low_stock_alert_enabled' => 'bool',
             'total_sold' => 'int',
         ];
@@ -56,6 +59,11 @@ class MasterProduct extends Model
     public function warehouseStocks(): HasMany
     {
         return $this->hasMany(MasterProductWarehouseStock::class);
+    }
+
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class);
     }
 
     public function projectMaterials(): HasMany

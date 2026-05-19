@@ -47,6 +47,7 @@ const form = useForm({
   name: '',
   category: '',
   uom: 'pcs',
+  warehouse_id: '',
   sales_channel: 'pos',
   product_type: 'finished_goods',
   status: 'active',
@@ -239,6 +240,7 @@ const goToDetail = (id) => {
                 <th>Produk</th>
                 <th>Kategori</th>
                 <th>UoM</th>
+                <th>Warehouse Asal</th>
                 <th>Channel</th>
                 <th>Tipe</th>
                 <th>Status</th>
@@ -256,6 +258,7 @@ const goToDetail = (id) => {
                 <td class="font-semibold">{{ product.name }}</td>
                 <td>{{ product.category }}</td>
                 <td class="uppercase">{{ product.uom }}</td>
+                <td class="text-sm text-base-content/70">{{ product.warehouse?.code ? `${product.warehouse.code} - ${product.warehouse.name}` : '-' }}</td>
                 <td>
                   <span class="badge badge-sm badge-info">{{ channelLabel(product.sales_channel) }}</span>
                 </td>
@@ -265,7 +268,7 @@ const goToDetail = (id) => {
                 <td><StatusBadge :status="product.status" /></td>
               </tr>
               <tr v-if="productRows.length === 0">
-                <td colspan="8" class="py-10 text-center text-base-content/50">Tidak ada produk sesuai filter.</td>
+                <td colspan="9" class="py-10 text-center text-base-content/50">Tidak ada produk sesuai filter.</td>
               </tr>
             </tbody>
           </table>
@@ -360,6 +363,14 @@ const goToDetail = (id) => {
               <option value="" disabled>Pilih UoM</option>
               <option v-for="uom in uoms" :key="uom.code" :value="uom.code">{{ uom.code }} - {{ uom.name }}</option>
             </select>
+          </div>
+          <div>
+            <label class="label"><span class="label-text">Warehouse Asal</span></label>
+            <select v-model="form.warehouse_id" class="select select-bordered w-full" :disabled="form.product_type === 'service'">
+              <option value="">Pilih warehouse asal</option>
+              <option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">{{ warehouse.code }} - {{ warehouse.name }}</option>
+            </select>
+            <p v-if="form.errors.warehouse_id" class="mt-1 text-xs text-error">{{ form.errors.warehouse_id }}</p>
           </div>
           <div>
             <label class="label"><span class="label-text">Sales Channel <span class="text-error">*</span></span></label>

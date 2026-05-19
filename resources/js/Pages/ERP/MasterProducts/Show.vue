@@ -20,6 +20,7 @@ const props = defineProps({
   priceChannels: Array,
   uoms: Array,
   categories: Array,
+  warehouses: Array,
 });
 
 const { format } = useCurrency();
@@ -38,6 +39,7 @@ const productForm = useForm({
   name: '',
   category: '',
   uom: '',
+  warehouse_id: '',
   sales_channel: 'pos',
   product_type: 'finished_goods',
   status: 'active',
@@ -234,6 +236,7 @@ const openEditProductModal = () => {
   productForm.name = props.product.name ?? '';
   productForm.category = props.product.category ?? '';
   productForm.uom = props.product.uom ?? '';
+  productForm.warehouse_id = props.product.warehouse_id ?? '';
   productForm.sales_channel = props.product.sales_channel ?? 'pos';
   productForm.product_type = props.product.product_type ?? 'finished_goods';
   productForm.status = props.product.status ?? 'active';
@@ -388,6 +391,10 @@ const regenerateEditBarcode = async () => {
               <div>
                 <p class="text-xs uppercase text-base-content/50">Sales Channel</p>
                 <span class="badge badge-info badge-sm mt-1">{{ channelLabel(product.sales_channel) }}</span>
+              </div>
+              <div>
+                <p class="text-xs uppercase text-base-content/50">Warehouse Asal</p>
+                <p class="font-semibold">{{ product.warehouse?.code ? `${product.warehouse.code} - ${product.warehouse.name}` : '-' }}</p>
               </div>
               <div>
                 <p class="text-xs uppercase text-base-content/50">Tipe Produk</p>
@@ -848,6 +855,14 @@ const regenerateEditBarcode = async () => {
                 <option v-for="uom in uoms" :key="uom.code" :value="uom.code">{{ uom.code }} - {{ uom.name }}</option>
               </select>
               <p v-if="productForm.errors.uom" class="text-xs text-error mt-1">{{ productForm.errors.uom }}</p>
+            </div>
+            <div>
+              <label class="label"><span class="label-text">Warehouse Asal</span></label>
+              <select v-model="productForm.warehouse_id" class="select select-bordered w-full" :disabled="productForm.product_type === 'service'">
+                <option value="">Pilih warehouse asal</option>
+                <option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">{{ warehouse.code }} - {{ warehouse.name }}</option>
+              </select>
+              <p v-if="productForm.errors.warehouse_id" class="text-xs text-error mt-1">{{ productForm.errors.warehouse_id }}</p>
             </div>
             <div>
               <label class="label"><span class="label-text">Sales Channel</span></label>

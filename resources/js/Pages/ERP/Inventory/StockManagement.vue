@@ -56,12 +56,18 @@ const stockManagementParams = () => ({
   per_page: filters.per_page,
 });
 
+const resetFilters = () => {
+  filters.q = '';
+  filters.status = '';
+  filters.low_stock_only = false;
+};
+
 watch(
   filters,
   () => {
     clearTimeout(filterTimer);
     filterTimer = setTimeout(() => {
-      router.get(route('erp.inventory.stock-management'), stockManagementParams(), {
+      router.get(route('erp.inventory.stock-management'), { ...stockManagementParams(), page: 1 }, {
         preserveState: true,
         replace: true,
       });
@@ -246,6 +252,9 @@ const openReservedModal = (product) => {
             </label>
             <div class="text-sm text-base-content/60">
               Stok yang ditampilkan adalah stok per warehouse terpilih.
+            </div>
+            <div class="ml-auto">
+              <button type="button" class="btn btn-ghost btn-sm" @click="resetFilters">Reset filter</button>
             </div>
           </div>
         </div>
