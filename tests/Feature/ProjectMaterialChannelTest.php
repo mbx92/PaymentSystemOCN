@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\ERP\Core\Models\Company;
+use App\ERP\Core\Services\ErpCompanyResolver;
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Inventory\Models\Warehouse;
 use App\ERP\Purchasing\Models\GoodsReceipt;
@@ -307,6 +309,56 @@ class ProjectMaterialChannelTest extends TestCase
             ->assertOk()
             ->assertJsonFragment(['id' => $ocnProduct->id])
             ->assertJsonFragment(['id' => $serviceProduct->id]);
+    }
+
+    public function test_project_material_modal_uses_active_company_warehouses_only(): void
+    {
+        $this->disableErpMiddleware();
+
+        $companyOcn = Company::query()->create([
+            'name' => 'OCN',
+            'is_active' => true,
+        ]);
+        $companyNuma = Company::query()->create([
+            'name' => 'NUMA',
+            'is_active' => true,
+        ]);
+        $user = User::factory()->create([
+            'company_id' => $companyOcn->id,
+        ]);
+        $project = $this->createProject();
+        $warehouseOcn = Warehouse::create([
+            'code' => 'WH-OCN',
+            'company_id' => $companyOcn->id,
+            'name' => 'Gudang OCN',
+            'is_active' => true,
+        ]);
+        $warehouseNuma = Warehouse::create([
+            'code' => 'WH-NUMA',
+            'company_id' => $companyNuma->id,
+            'name' => 'Gudang NUMA',
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->withSession([ErpCompanyResolver::SESSION_KEY => $companyOcn->id])
+            ->get(route('projects.show', $project))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Projects/Show')
+                ->where('warehouses', [
+                    [
+                        'id' => $warehouseOcn->id,
+                        'code' => 'WH-OCN',
+                        'name' => 'Gudang OCN',
+                    ],
+                ]));
+
+        $this->actingAs($user)
+            ->withSession([ErpCompanyResolver::SESSION_KEY => $companyOcn->id])
+            ->getJson(route('projects.material-products.search', $project).'?warehouse_id='.$warehouseNuma->id.'&q=poe')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('warehouse_id');
     }
 
     public function test_cannot_add_stock_product_to_different_origin_warehouse(): void

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\ERP\Accounting\Models\Account;
+use App\ERP\Core\Services\ErpCompanyResolver;
 use App\ERP\CRM\Models\CrmCustomer;
 use App\ERP\Inventory\Models\Warehouse;
 use App\Models\CashCategory;
@@ -20,6 +21,7 @@ use App\Models\TeamRole;
 use App\Models\User;
 use App\Support\LegalVaultPath;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
@@ -31,7 +33,7 @@ class ProjectController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Project::with(['payments', 'materials', 'convertedBudget.items', 'projectTypeDefinition'])
+        $query = Project::with(['materials', 'convertedBudget.items', 'projectTypeDefinition'])
             ->withSum('cashIns as paid_amount', 'amount')
             ->when($request->search, fn ($q) => $q->where('name', 'ilike', "%{$request->search}%")
                 ->orWhere('client_name', 'ilike', "%{$request->search}%"))
@@ -44,9 +46,9 @@ class ProjectController extends Controller
                 'name' => $p->name,
                 'client_name' => $p->client_name,
                 'project_type' => $p->project_type,
-                'project_type_label' => $p->projectTypeLabel(),
-                'supports_budget_items' => $p->supportsBudgetItems(),
-                'supports_project_board' => $p->supportsProjectBoard(),
+                'project_type_label' => $p->projectTypeDefinition?->label ?: (string) $p->project_type,
+                'supports_budget_items' => (bool) $p->projectTypeDefinition?->supports_budget_items,
+                'supports_project_board' => (bool) $p->projectTypeDefinition?->supports_project_board,
                 'status' => $p->status,
                 'total_value' => $p->resolveListTotalValue(),
                 'paid_amount' => (float) ($p->paid_amount ?? 0),
@@ -112,7 +114,7 @@ class ProjectController extends Controller
         $validated = array_merge($validated, $this->projectClientSnapshot((int) $validated['crm_customer_id']));
 
         DB::transaction(function () use ($validated) {
-            $project = Project::create(collect($validated)->except('payments')->all());
+            $project = Project::create(Arr::except($validated, ['payments']));
             if (! empty($validated['payments'])) {
                 $this->createPaymentRows($project, $validated['payments']);
             }
@@ -121,7 +123,7 @@ class ProjectController extends Controller
         return redirect()->route('projects.index')->with('flash', ['type' => 'success', 'message' => 'Project berhasil ditambahkan.']);
     }
 
-    public function show(Project $project)
+    public function show(Request $request, Project $project)
     {
         $project->load(['payments', 'cashIns.creator', 'cashOuts.creator', 'teamDistributions.user', 'referrals', 'tasks.assignee', 'projectTypeDefinition']);
         $project->load(['materials.product', 'materials.warehouse']);
@@ -151,6 +153,9 @@ class ProjectController extends Controller
         $budgetTotalCost = (float) $budgetItems->sum(fn ($item) => (float) $item->qty * (float) $item->unit_cost);
         $budgetTotalPrice = (float) $budgetItems->sum(fn ($item) => (float) $item->qty * (float) $item->unit_price);
         $hasBudgetItems = $budgetItems->isNotEmpty();
+
+        $availableWarehouses = $this->projectWarehouseQuery($request)->get(['id', 'code', 'name']);
+        $availableWarehouseIds = $availableWarehouses->pluck('id');
 
         return Inertia::render('Projects/Show', [
             'project' => [
@@ -268,8 +273,9 @@ class ProjectController extends Controller
                 ->whereIn('sales_channel', ['project', 'both'])
                 ->orderBy('name')
                 ->get(['id', 'sku', 'name', 'category', 'uom', 'sales_channel', 'product_type', 'selling_price']),
-            'warehouses' => Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']),
+            'warehouses' => $availableWarehouses,
             'warehouse_stocks' => MasterProductWarehouseStock::query()
+                ->when($availableWarehouseIds->isNotEmpty(), fn ($query) => $query->whereIn('warehouse_id', $availableWarehouseIds))
                 ->get(['master_product_id', 'warehouse_id', 'qty', 'reserved_qty'])
                 ->groupBy('warehouse_id')
                 ->map(fn ($rows) => $rows->keyBy('master_product_id')->map(fn ($r) => [
@@ -502,7 +508,7 @@ class ProjectController extends Controller
         }
 
         DB::transaction(function () use ($project, $validated, $canEditPayments) {
-            $project->update(collect($validated)->except('payments')->all());
+            $project->update(Arr::except($validated, ['payments']));
 
             if ($canEditPayments) {
                 $this->replacePaymentSchedule($project, $validated['payments']);
@@ -598,6 +604,12 @@ class ProjectController extends Controller
 
         $product = MasterProduct::query()->findOrFail((int) $validated['master_product_id']);
         $selectedWarehouseId = (int) $validated['warehouse_id'];
+        $allowedWarehouseIds = $this->projectWarehouseQuery($request)->pluck('id')->map(fn ($id) => (int) $id)->all();
+        if ($allowedWarehouseIds !== [] && ! in_array($selectedWarehouseId, $allowedWarehouseIds, true)) {
+            throw ValidationException::withMessages([
+                'warehouse_id' => 'Gudang tidak tersedia pada konteks perusahaan aktif.',
+            ]);
+        }
 
         if ($product->isStockTracked() && $product->warehouse_id !== null && (int) $product->warehouse_id !== $selectedWarehouseId) {
             throw ValidationException::withMessages([
@@ -675,6 +687,12 @@ class ProjectController extends Controller
 
         $keyword = trim((string) ($validated['q'] ?? ''));
         $warehouseId = (int) $validated['warehouse_id'];
+        $allowedWarehouseIds = $this->projectWarehouseQuery($request)->pluck('id')->map(fn ($id) => (int) $id)->all();
+        if ($allowedWarehouseIds !== [] && ! in_array($warehouseId, $allowedWarehouseIds, true)) {
+            throw ValidationException::withMessages([
+                'warehouse_id' => 'Gudang tidak tersedia pada konteks perusahaan aktif.',
+            ]);
+        }
         $stocks = MasterProductWarehouseStock::query()
             ->where('warehouse_id', $warehouseId)
             ->get(['master_product_id', 'qty', 'reserved_qty'])
@@ -730,6 +748,26 @@ class ProjectController extends Controller
     private function caseInsensitiveLikeOperator(): string
     {
         return DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
+    }
+
+    private function projectWarehouseQuery(Request $request)
+    {
+        $query = Warehouse::query()->where('is_active', true)->orderBy('name');
+        $currentCompanyId = ErpCompanyResolver::currentCompanyIdForSession($request);
+        if (! $currentCompanyId) {
+            return $query;
+        }
+
+        $companyWarehouseIds = Warehouse::query()
+            ->where('is_active', true)
+            ->where('company_id', $currentCompanyId)
+            ->pluck('id');
+
+        if ($companyWarehouseIds->isNotEmpty()) {
+            $query->whereIn('id', $companyWarehouseIds);
+        }
+
+        return $query;
     }
 
     public function destroyMaterial(Project $project, ProjectMaterial $material)

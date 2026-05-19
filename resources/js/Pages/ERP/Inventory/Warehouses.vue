@@ -9,11 +9,13 @@ import { reactive, ref, watch } from 'vue';
 const props = defineProps({
   warehouses: Object,
   filters: Object,
+  companies: Array,
 });
 
 const filters = reactive({
   q: props.filters?.q ?? '',
   status: props.filters?.status ?? '',
+  company_id: props.filters?.company_id ?? '',
   per_page: props.filters?.per_page ?? props.warehouses?.per_page ?? 25,
 });
 
@@ -30,6 +32,7 @@ watch(filters, (val) => {
 
 const form = useForm({
   code: '',
+  company_id: '',
   name: '',
   address: '',
   status: 'active',
@@ -37,6 +40,7 @@ const form = useForm({
 
 const editForm = useForm({
   code: '',
+  company_id: '',
   name: '',
   address: '',
   status: 'active',
@@ -45,6 +49,7 @@ const editingWarehouseId = ref(null);
 
 const resetAddForm = () => {
   form.reset();
+  form.company_id = '';
   form.status = 'active';
 };
 
@@ -66,6 +71,7 @@ const submitAdd = () => {
 const openEditModal = (warehouse) => {
   editingWarehouseId.value = warehouse.id;
   editForm.code = warehouse.code;
+  editForm.company_id = warehouse.company_id ?? '';
   editForm.name = warehouse.name;
   editForm.address = warehouse.address || '';
   editForm.status = warehouse.status;
@@ -108,10 +114,17 @@ const submitEdit = () => {
           <h2 class="ocn-panel__title">Filter warehouse</h2>
         </div>
         <div class="card-body">
-          <div class="grid grid-cols-1 gap-3 md:grid-cols-4">
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-5">
             <div class="md:col-span-2">
               <label class="label"><span class="label-text text-xs uppercase tracking-wide">Search</span></label>
               <input v-model="filters.q" type="text" class="input input-sm input-bordered w-full" placeholder="Code / nama / alamat warehouse" />
+            </div>
+            <div>
+              <label class="label"><span class="label-text text-xs uppercase tracking-wide">Perusahaan</span></label>
+              <select v-model="filters.company_id" class="select select-sm select-bordered w-full">
+                <option value="">Semua</option>
+                <option v-for="company in companies" :key="company.id" :value="company.id">{{ company.name }}</option>
+              </select>
             </div>
             <div>
               <label class="label"><span class="label-text text-xs uppercase tracking-wide">Status</span></label>
@@ -137,6 +150,7 @@ const submitEdit = () => {
             <thead>
               <tr>
                 <th>Code</th>
+                <th>Perusahaan</th>
                 <th>Nama Warehouse</th>
                 <th>Alamat</th>
                 <th>Status</th>
@@ -146,6 +160,7 @@ const submitEdit = () => {
             <tbody>
               <tr v-for="warehouse in (warehouses?.data || [])" :key="warehouse.id">
                 <td class="font-mono text-xs">{{ warehouse.code }}</td>
+                <td>{{ warehouse.company_name || '-' }}</td>
                 <td class="font-semibold">{{ warehouse.name }}</td>
                 <td>{{ warehouse.address || '-' }}</td>
                 <td><StatusBadge :status="warehouse.status" /></td>
@@ -154,7 +169,7 @@ const submitEdit = () => {
                 </td>
               </tr>
               <tr v-if="!(warehouses?.data || []).length">
-                <td colspan="5" class="py-8 text-center text-base-content/50">Belum ada warehouse.</td>
+                <td colspan="6" class="py-8 text-center text-base-content/50">Belum ada warehouse.</td>
               </tr>
             </tbody>
           </table>
@@ -167,6 +182,10 @@ const submitEdit = () => {
           <h3 class="font-bold text-lg">Tambah Warehouse</h3>
           <div class="mt-4 space-y-3">
             <input v-model="form.code" type="text" class="input input-bordered w-full" placeholder="Code (WH-01)" />
+            <select v-model="form.company_id" class="select select-bordered w-full">
+              <option value="">Pilih perusahaan (opsional)</option>
+              <option v-for="company in companies" :key="company.id" :value="company.id">{{ company.name }}</option>
+            </select>
             <input v-model="form.name" type="text" class="input input-bordered w-full" placeholder="Nama warehouse" />
             <textarea v-model="form.address" class="textarea textarea-bordered w-full" rows="3" placeholder="Alamat (opsional)"></textarea>
             <label class="label cursor-pointer justify-start gap-3 rounded-lg border border-base-300 px-3 mt-1">
@@ -191,6 +210,10 @@ const submitEdit = () => {
           <h3 class="font-bold text-lg">Edit Warehouse</h3>
           <div class="mt-4 space-y-3">
             <input v-model="editForm.code" type="text" class="input input-bordered w-full" placeholder="Code (WH-01)" />
+            <select v-model="editForm.company_id" class="select select-bordered w-full">
+              <option value="">Pilih perusahaan (opsional)</option>
+              <option v-for="company in companies" :key="company.id" :value="company.id">{{ company.name }}</option>
+            </select>
             <input v-model="editForm.name" type="text" class="input input-bordered w-full" placeholder="Nama warehouse" />
             <textarea v-model="editForm.address" class="textarea textarea-bordered w-full" rows="3" placeholder="Alamat (opsional)"></textarea>
             <label class="label cursor-pointer justify-start gap-3 rounded-lg border border-base-300 px-3 mt-1">

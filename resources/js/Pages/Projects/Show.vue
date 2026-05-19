@@ -59,6 +59,17 @@ const materialProductsLoading = ref(false);
 let materialSearchTimer;
 let materialSearchRequestId = 0;
 
+const defaultMaterialWarehouse = computed(() =>
+    props.warehouses.find((warehouse) => warehouse.code === 'WH-OCN')
+    ?? props.warehouses[0]
+    ?? null,
+);
+
+const activeMaterialWarehouseLabel = computed(() => {
+    const warehouse = props.warehouses.find((item) => String(item.id) === String(materialWarehouseFilter.value));
+    return warehouse ? `${warehouse.code} - ${warehouse.name}` : '-';
+});
+
 const filteredMaterialProducts = computed(() => {
     if (!materialWarehouseFilter.value) return [];
     const whStocks = warehouseStocksCache.value?.[materialWarehouseFilter.value] ?? {};
@@ -127,6 +138,25 @@ watch(materialWarehouseFilter, () => {
     materialSearchTimer = setTimeout(loadMaterialProducts, 250);
 });
 
+watch(defaultMaterialWarehouse, (warehouse) => {
+    const warehouseId = warehouse?.id ? String(warehouse.id) : '';
+    if (warehouseId && String(materialWarehouseFilter.value) !== warehouseId) {
+        materialWarehouseFilter.value = warehouseId;
+        return;
+    }
+
+    if (!warehouseId) {
+        materialWarehouseFilter.value = '';
+        materialForm.warehouse_id = '';
+        modalMaterialProducts.value = [];
+        return;
+    }
+
+    materialForm.warehouse_id = warehouseId;
+    clearTimeout(materialSearchTimer);
+    materialSearchTimer = setTimeout(loadMaterialProducts, 0);
+}, { immediate: true });
+
 watch(materialSearch, () => {
     materialForm.master_product_id = '';
     clearTimeout(materialSearchTimer);
@@ -184,7 +214,7 @@ const submitMaterial = () => {
             materialForm.planned_qty = 1;
             materialForm.unit_cost = 0;
             materialForm.unit_price = 0;
-            materialWarehouseFilter.value = '';
+            materialWarehouseFilter.value = defaultMaterialWarehouse.value?.id ? String(defaultMaterialWarehouse.value.id) : '';
             materialSearch.value = '';
             document.getElementById('modal-add-material')?.close();
         },
@@ -1243,14 +1273,13 @@ const deleteProject = () => {
                 <h3 class="font-bold text-lg">Tambah Material Project</h3>
 
                 <div class="mt-4">
-                    <label class="label"><span class="label-text font-semibold">Pilih Warehouse</span></label>
-                    <select v-model="materialWarehouseFilter" class="select select-bordered w-full" @change="materialSearch = ''">
-                        <option value="">-- Pilih warehouse dulu --</option>
-                        <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }} — {{ w.name }}</option>
-                    </select>
+                    <p class="text-xs font-semibold uppercase tracking-[0.16em] text-base-content/60">Gudang Material</p>
+                    <div class="mt-2 rounded-lg border border-base-300 bg-base-200/70 px-4 py-3 text-sm font-medium">
+                        {{ activeMaterialWarehouseLabel }}
+                    </div>
                 </div>
 
-                <div v-if="materialWarehouseFilter" class="mt-4">
+                <div class="mt-4">
                     <div class="mb-3">
                         <label class="label"><span class="label-text font-semibold">Cari Material</span></label>
                         <input

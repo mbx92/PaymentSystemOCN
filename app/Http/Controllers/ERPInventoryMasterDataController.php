@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\ERP\Core\Models\Company;
 use App\ERP\Inventory\Models\Warehouse;
 use App\Models\MasterProductUomMapping;
 use App\Models\ProductCategory;
@@ -17,7 +18,7 @@ class ERPInventoryMasterDataController extends Controller
 {
     public function warehouses(Request $request): Response
     {
-        $query = Warehouse::query()->orderBy('name');
+        $query = Warehouse::query()->with('company:id,name')->orderBy('name');
 
         if ($request->filled('q')) {
             $term = $request->string('q')->toString();
@@ -37,6 +38,10 @@ class ERPInventoryMasterDataController extends Controller
             }
         }
 
+        if ($request->filled('company_id')) {
+            $query->where('company_id', (int) $request->integer('company_id'));
+        }
+
         return Inertia::render('ERP/Inventory/Warehouses', [
             'warehouses' => $query
                 ->paginate($this->resolvedPerPage($request))
@@ -44,11 +49,17 @@ class ERPInventoryMasterDataController extends Controller
                 ->through(fn (Warehouse $warehouse) => [
                     'id' => $warehouse->id,
                     'code' => $warehouse->code,
+                    'company_id' => $warehouse->company_id,
+                    'company_name' => $warehouse->company?->name,
                     'name' => $warehouse->name,
                     'address' => $warehouse->address,
                     'status' => $warehouse->is_active ? 'active' : 'inactive',
                 ]),
-            'filters' => $this->filtersWithPerPage($request, ['q', 'status']),
+            'filters' => $this->filtersWithPerPage($request, ['q', 'status', 'company_id']),
+            'companies' => Company::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name']),
         ]);
     }
 
@@ -56,6 +67,7 @@ class ERPInventoryMasterDataController extends Controller
     {
         $validated = $request->validate([
             'code' => 'required|string|max:32|unique:warehouses,code',
+            'company_id' => 'nullable|exists:companies,id',
             'name' => 'required|string|max:120',
             'address' => 'nullable|string',
             'status' => 'required|in:active,inactive',
@@ -63,6 +75,7 @@ class ERPInventoryMasterDataController extends Controller
 
         Warehouse::query()->create([
             'code' => strtoupper($validated['code']),
+            'company_id' => $validated['company_id'] ?? null,
             'name' => $validated['name'],
             'address' => $validated['address'] ?? null,
             'is_active' => $validated['status'] === 'active',
@@ -75,6 +88,7 @@ class ERPInventoryMasterDataController extends Controller
     {
         $validated = $request->validate([
             'code' => 'required|string|max:32|unique:warehouses,code,'.$warehouse->id,
+            'company_id' => 'nullable|exists:companies,id',
             'name' => 'required|string|max:120',
             'address' => 'nullable|string',
             'status' => 'required|in:active,inactive',
@@ -82,6 +96,7 @@ class ERPInventoryMasterDataController extends Controller
 
         $warehouse->update([
             'code' => strtoupper($validated['code']),
+            'company_id' => $validated['company_id'] ?? null,
             'name' => $validated['name'],
             'address' => $validated['address'] ?? null,
             'is_active' => $validated['status'] === 'active',

@@ -3,6 +3,7 @@
 namespace App\ERP\Core\Models;
 
 use App\ERP\Accounting\Models\JournalEntry;
+use App\ERP\Inventory\Models\Warehouse;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -28,5 +29,10 @@ class Company extends Model
     public function journalEntries(): HasMany
     {
         return $this->hasMany(JournalEntry::class);
+    }
+
+    public function warehouses(): HasMany
+    {
+        return $this->hasMany(Warehouse::class);
     }
 }
