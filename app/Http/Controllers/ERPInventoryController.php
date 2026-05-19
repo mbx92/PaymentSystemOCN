@@ -174,11 +174,50 @@ class ERPInventoryController extends Controller
 
     public function stockOpname(): Response
     {
+        $warehouses = Warehouse::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'code', 'name']);
+        $selectedWarehouseId = (int) request()->integer('warehouse_id', $warehouses->first()?->id ?? 0);
+        $search = trim(request()->string('q')->toString());
+
         return Inertia::render('ERP/Inventory/StockOpname', [
+            'warehouses' => $warehouses,
+            'filters' => [
+                'warehouse_id' => $selectedWarehouseId ?: null,
+                'q' => $search,
+            ],
+            'defaultStockOpnameDate' => now()->toDateString(),
             'products' => MasterProduct::query()
                 ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
+                ->where('status', 'active')
+                ->when($search !== '', function ($query) use ($search): void {
+                    $query->where(function ($inner) use ($search): void {
+                        $inner->where('sku', 'like', '%'.$search.'%')
+                            ->orWhere('name', 'like', '%'.$search.'%');
+                    });
+                })
                 ->orderBy('name')
-                ->get(['id', 'sku', 'name', 'stock', 'uom']),
+                ->get(['id', 'sku', 'name', 'stock', 'uom'])
+                ->map(function (MasterProduct $product) use ($selectedWarehouseId) {
+                    $warehouseStock = $selectedWarehouseId
+                        ? MasterProductWarehouseStock::query()
+                            ->where('master_product_id', $product->id)
+                            ->where('warehouse_id', $selectedWarehouseId)
+                            ->first()
+                        : null;
+
+                    return [
+                        'id' => $product->id,
+                        'sku' => $product->sku,
+                        'name' => $product->name,
+                        'uom' => $product->uom,
+                        'stock' => (float) $product->stock,
+                        'warehouse_stock' => (float) ($warehouseStock?->qty ?? 0),
+                        'reserved_qty' => (float) ($warehouseStock?->reserved_qty ?? 0),
+                    ];
+                })
+                ->values(),
         ]);
     }
 
@@ -186,24 +225,42 @@ class ERPInventoryController extends Controller
     {
         $validated = $request->validate([
             'product_id' => 'required|exists:master_products,id',
-            'physical_stock' => 'required|integer|min:0',
-            'warehouse_id' => 'nullable|exists:warehouses,id',
+            'physical_stock' => 'required|numeric|min:0',
+            'warehouse_id' => 'required|exists:warehouses,id',
+            'stock_opname_date' => 'required|date',
             'note' => 'nullable|string|max:500',
         ]);
 
         $product = MasterProduct::query()->findOrFail($validated['product_id']);
-        $oldStock = $product->stock;
-        $newStock = (int) $validated['physical_stock'];
+        $newStock = (float) $validated['physical_stock'];
 
-        DB::transaction(function () use ($product, $oldStock, $newStock, $validated): void {
-            $product->update(['stock' => $newStock]);
+        DB::transaction(function () use ($product, $newStock, $validated): void {
+            $warehouseStock = MasterProductWarehouseStock::query()->firstOrCreate(
+                [
+                    'master_product_id' => $product->id,
+                    'warehouse_id' => $validated['warehouse_id'],
+                ],
+                [
+                    'qty' => 0,
+                    'reserved_qty' => 0,
+                ]
+            );
+
+            $oldStock = (float) $warehouseStock->qty;
+            $warehouseStock->update(['qty' => $newStock]);
+
+            $totalStock = (float) MasterProductWarehouseStock::query()
+                ->where('master_product_id', $product->id)
+                ->sum('qty');
+
+            $product->update(['stock' => (int) round($totalStock)]);
 
             $diff = $newStock - $oldStock;
             if ($diff !== 0) {
                 ProductStockMovement::query()->create([
                     'master_product_id' => $product->id,
-                    'warehouse_id' => $validated['warehouse_id'] ?? null,
-                    'movement_date' => now()->toDateString(),
+                    'warehouse_id' => $validated['warehouse_id'],
+                    'movement_date' => $validated['stock_opname_date'],
                     'movement_type' => $diff > 0 ? 'opname_in' : 'opname_out',
                     'qty' => abs($diff),
                     'note' => $validated['note'] ?? 'Stock opname',
@@ -211,7 +268,11 @@ class ERPInventoryController extends Controller
             }
         });
 
-        return back()->with('flash', ['type' => 'success', 'message' => 'Stock opname berhasil disimpan.']);
+        return redirect()
+            ->route('erp.inventory.stock-opname', [
+                'warehouse_id' => $validated['warehouse_id'],
+            ])
+            ->with('flash', ['type' => 'success', 'message' => 'Stock opname berhasil disimpan.']);
     }
 
     public function stockReport(Request $request): Response

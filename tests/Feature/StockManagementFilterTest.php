@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\ERP\Inventory\Models\Warehouse;
 use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
+use App\Models\ProductStockMovement;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -210,6 +211,112 @@ class StockManagementFilterTest extends TestCase
                 ->where('inventoryAlerts.lowStockCount', 0)
                 ->where('products.data.0.id', $product->id)
                 ->where('products.data.0.low_stock_alert_enabled', false));
+    }
+
+    public function test_stock_opname_page_can_filter_products_by_warehouse_and_search(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $warehouse = Warehouse::query()->create([
+            'code' => 'WH-01',
+            'name' => 'Gudang Utama',
+            'is_active' => true,
+        ]);
+        $target = $this->createProduct('OPN-ABC', 'Kabel Opname ABC', 2);
+        $other = $this->createProduct('OPN-XYZ', 'Kabel Opname XYZ', 2);
+
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $target->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 8,
+            'reserved_qty' => 1,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.inventory.stock-opname', [
+                'warehouse_id' => $warehouse->id,
+                'q' => 'ABC',
+            ]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Inventory/StockOpname')
+                ->where('filters.warehouse_id', $warehouse->id)
+                ->where('filters.q', 'ABC')
+                ->where('products.0.id', $target->id)
+                ->where('products.0.warehouse_stock', 8)
+                ->where('products.0.reserved_qty', 1)
+                ->missing('products.1'));
+
+        $this->assertDatabaseHas('master_products', [
+            'id' => $other->id,
+            'sku' => 'OPN-XYZ',
+        ]);
+    }
+
+    public function test_stock_opname_updates_selected_warehouse_stock_and_movement_date(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $warehouseA = Warehouse::query()->create([
+            'code' => 'WH-A',
+            'name' => 'Gudang A',
+            'is_active' => true,
+        ]);
+        $warehouseB = Warehouse::query()->create([
+            'code' => 'WH-B',
+            'name' => 'Gudang B',
+            'is_active' => true,
+        ]);
+        $product = $this->createProduct('OPN-001', 'Produk Opname', 2);
+
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $product->id,
+            'warehouse_id' => $warehouseA->id,
+            'qty' => 5,
+            'reserved_qty' => 0,
+        ]);
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $product->id,
+            'warehouse_id' => $warehouseB->id,
+            'qty' => 7,
+            'reserved_qty' => 0,
+        ]);
+        $product->update(['stock' => 12]);
+
+        $this
+            ->actingAs($user)
+            ->post(route('erp.inventory.stock-opname.store'), [
+                'warehouse_id' => $warehouseA->id,
+                'product_id' => $product->id,
+                'physical_stock' => 9,
+                'stock_opname_date' => '2026-05-19',
+                'note' => 'Hitung ulang rak A',
+            ])
+            ->assertRedirect(route('erp.inventory.stock-opname', ['warehouse_id' => $warehouseA->id]))
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('master_product_warehouse_stocks', [
+            'master_product_id' => $product->id,
+            'warehouse_id' => $warehouseA->id,
+            'qty' => '9.00',
+        ]);
+        $this->assertDatabaseHas('master_products', [
+            'id' => $product->id,
+            'stock' => 16,
+        ]);
+        $this->assertDatabaseHas('product_stock_movements', [
+            'master_product_id' => $product->id,
+            'warehouse_id' => $warehouseA->id,
+            'movement_date' => '2026-05-19 00:00:00',
+            'movement_type' => 'opname_in',
+            'qty' => 4,
+            'note' => 'Hitung ulang rak A',
+        ]);
+
+        $this->assertSame(1, ProductStockMovement::query()->count());
     }
 
     private function createProduct(string $sku, string $name, int $minStock, string $status = 'active'): MasterProduct

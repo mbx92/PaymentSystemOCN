@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\Process\Process;
@@ -20,10 +21,7 @@ class DatabaseBackupService
         }
 
         $filename = 'backup-database-'.$config['database'].'-'.now()->format('Ymd-His').'.sql';
-        $tempPath = tempnam(sys_get_temp_dir(), 'ocn-pg-dump-');
-        if ($tempPath === false) {
-            throw new RuntimeException('Gagal menyiapkan file sementara untuk backup database.');
-        }
+        $tempPath = $this->temporaryBackupPath($filename);
 
         $process = new Process($this->pgDumpCommand($config, $tempPath), null, $this->pgDumpEnvironment($config), null, 3600);
         $process->setTimeout(3600);
@@ -235,5 +233,20 @@ class DatabaseBackupService
             '/Applications/Postgres.app/Contents/Versions/latest/bin/pg_dump',
             $home !== '' ? $home.'/.local/bin/pg_dump' : null,
         ]));
+    }
+
+    private function temporaryBackupPath(string $filename): string
+    {
+        $directory = storage_path('app/tmp-backups');
+
+        if (! is_dir($directory) && ! mkdir($directory, 0775, true) && ! is_dir($directory)) {
+            throw new RuntimeException('Gagal membuat direktori sementara backup database.');
+        }
+
+        if (! is_writable($directory)) {
+            throw new RuntimeException('Direktori sementara backup database tidak bisa ditulis.');
+        }
+
+        return $directory.'/'.Str::uuid()->toString().'-'.$filename;
     }
 }

@@ -33,6 +33,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -40,6 +41,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Maatwebsite\Excel\Facades\Excel;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ERPAdministrationMasterDataController extends Controller
 {
@@ -857,9 +859,23 @@ class ERPAdministrationMasterDataController extends Controller
         ]);
     }
 
-    public function downloadDatabaseBackup()
+    public function downloadDatabaseBackup(): BinaryFileResponse|RedirectResponse
     {
-        return $this->databaseBackupService->downloadPostgresDump();
+        try {
+            return $this->databaseBackupService->downloadPostgresDump();
+        } catch (\Throwable $e) {
+            Log::error('Database backup download failed.', [
+                'message' => $e->getMessage(),
+                'exception' => get_class($e),
+            ]);
+
+            return redirect()
+                ->route('erp.admin.data-import', ['tab' => 'backup'])
+                ->with('flash', [
+                    'type' => 'error',
+                    'message' => 'Backup database gagal dijalankan: '.$e->getMessage(),
+                ]);
+        }
     }
 
     public function runSeeder(Request $request): JsonResponse
