@@ -361,6 +361,7 @@ Route::middleware('auth')->group(function () {
         Route::post('erp/admin/companies', [ERPCompanyMasterController::class, 'store'])->name('erp.admin.companies.store');
         Route::patch('erp/admin/companies/{company}', [ERPCompanyMasterController::class, 'update'])->name('erp.admin.companies.update');
         Route::get('erp/admin/landing-sites', [ERPAdministrationMasterDataController::class, 'landingSites'])->name('erp.admin.landing-sites');
+        Route::get('erp/admin/landing-sites/domain-check', [ERPAdministrationMasterDataController::class, 'checkLandingSiteDomain'])->name('erp.admin.landing-sites.domain-check');
         Route::post('erp/admin/landing-sites', [ERPAdministrationMasterDataController::class, 'storeLandingSite'])->name('erp.admin.landing-sites.store');
         Route::patch('erp/admin/landing-sites/{landingSite}', [ERPAdministrationMasterDataController::class, 'updateLandingSite'])->name('erp.admin.landing-sites.update');
         Route::get('erp/admin/landing-sites/{landingSite}/cms', [ERPAdministrationMasterDataController::class, 'landingSiteCms'])->name('erp.admin.landing-sites.cms');

@@ -149,6 +149,43 @@ class ERPAdministrationMasterDataController extends Controller
         return back()->with('flash', ['type' => 'success', 'message' => 'Landing site berhasil diperbarui.']);
     }
 
+    public function checkLandingSiteDomain(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'domain' => 'required|string|max:190',
+        ]);
+
+        $normalizedDomain = $this->normalizeLandingDomain((string) $validated['domain']);
+
+        $landingSite = LandingSite::query()
+            ->with(['warehouse:id,code,name', 'page:id,landing_site_id,is_published,countdown_at'])
+            ->where('domain', $normalizedDomain)
+            ->first();
+
+        return response()->json([
+            'input_domain' => (string) $validated['domain'],
+            'normalized_domain' => $normalizedDomain,
+            'exists' => $landingSite !== null,
+            'landing_site' => $landingSite ? [
+                'id' => $landingSite->id,
+                'name' => $landingSite->name,
+                'domain' => $landingSite->domain,
+                'layout_key' => $landingSite->layout_key,
+                'warehouse_id' => $landingSite->warehouse_id,
+                'is_active' => (bool) $landingSite->is_active,
+                'warehouse' => $landingSite->warehouse ? [
+                    'id' => $landingSite->warehouse->id,
+                    'code' => $landingSite->warehouse->code,
+                    'name' => $landingSite->warehouse->name,
+                ] : null,
+                'page' => $landingSite->page ? [
+                    'is_published' => (bool) $landingSite->page->is_published,
+                    'countdown_at' => $landingSite->page->countdown_at?->toIso8601String(),
+                ] : null,
+            ] : null,
+        ]);
+    }
+
     public function landingSiteCms(Request $request, LandingSite $landingSite): Response
     {
         $landingSite->load('page');

@@ -4,6 +4,7 @@ import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { computed, ref } from 'vue';
+import { showGlobalAlert } from '@/utils/globalAlert';
 
 const props = defineProps({
   landingSites: Object,
@@ -14,6 +15,9 @@ const props = defineProps({
 
 const filterKeyword = ref('');
 const filterStatus = ref('');
+const domainCheckInput = ref('');
+const domainCheckLoading = ref(false);
+const domainCheckResult = ref(null);
 
 const filteredLandingSites = computed(() => {
   const list = props.landingSites?.data ?? [];
@@ -121,6 +125,35 @@ const onPerPage = (n) => {
     replace: true,
   });
 };
+
+const runDomainCheck = async () => {
+  const value = domainCheckInput.value.trim();
+  if (!value) {
+    showGlobalAlert('Isi domain yang ingin dicek terlebih dahulu.', 'warning');
+    return;
+  }
+
+  domainCheckLoading.value = true;
+
+  try {
+    const { data } = await window.axios.get(route('erp.admin.landing-sites.domain-check'), {
+      params: { domain: value },
+    });
+
+    domainCheckResult.value = data;
+  } catch (error) {
+    domainCheckResult.value = null;
+    showGlobalAlert(error?.response?.data?.message || 'Gagal mengecek domain.', 'error');
+  } finally {
+    domainCheckLoading.value = false;
+  }
+};
+
+const useNormalizedDomainForAdd = () => {
+  if (!domainCheckResult.value?.normalized_domain) return;
+  openAddModal();
+  form.domain = domainCheckResult.value.normalized_domain;
+};
 </script>
 
 <template>
@@ -164,6 +197,82 @@ const onPerPage = (n) => {
               </select>
             </div>
             <button class="btn btn-primary" @click="openAddModal">+ Tambah Landing</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Utility cek domain</h2>
+          <p class="ocn-panel__desc">Cek apakah domain sudah tersimpan di database, lihat hasil normalisasinya, lalu buka record terkait tanpa perlu akses server.</p>
+        </div>
+        <div class="card-body space-y-4">
+          <div class="flex flex-wrap items-end gap-3">
+            <div class="min-w-[260px] grow">
+              <label class="label"><span class="label-text">Domain yang dicek</span></label>
+              <input
+                v-model="domainCheckInput"
+                type="text"
+                class="input input-bordered w-full"
+                placeholder="contoh: https://ocnetworks.web.id/"
+                @keyup.enter="runDomainCheck"
+              />
+            </div>
+            <button class="btn btn-primary" :disabled="domainCheckLoading" @click="runDomainCheck">
+              {{ domainCheckLoading ? 'Mengecek...' : 'Cek Domain' }}
+            </button>
+          </div>
+
+          <div v-if="domainCheckResult" class="rounded-2xl border border-base-300 bg-base-100 p-4">
+            <div class="flex flex-wrap items-center gap-2 text-sm">
+              <span class="badge badge-outline">Input: {{ domainCheckResult.input_domain }}</span>
+              <span class="badge badge-primary badge-outline">Normalisasi: {{ domainCheckResult.normalized_domain || '-' }}</span>
+              <span class="badge" :class="domainCheckResult.exists ? 'badge-warning' : 'badge-success'">
+                {{ domainCheckResult.exists ? 'Sudah ada di database' : 'Belum ada di database' }}
+              </span>
+            </div>
+
+            <div v-if="domainCheckResult.exists && domainCheckResult.landing_site" class="mt-4 space-y-3">
+              <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <div class="rounded-xl border border-base-300 p-3">
+                  <p class="text-xs uppercase tracking-[0.16em] text-base-content/60">Nama</p>
+                  <p class="mt-1 font-semibold">{{ domainCheckResult.landing_site.name }}</p>
+                </div>
+                <div class="rounded-xl border border-base-300 p-3">
+                  <p class="text-xs uppercase tracking-[0.16em] text-base-content/60">Layout</p>
+                  <p class="mt-1 font-semibold">{{ domainCheckResult.landing_site.layout_key }}</p>
+                </div>
+                <div class="rounded-xl border border-base-300 p-3">
+                  <p class="text-xs uppercase tracking-[0.16em] text-base-content/60">Status</p>
+                  <p class="mt-1 font-semibold">{{ domainCheckResult.landing_site.is_active ? 'active' : 'inactive' }}</p>
+                </div>
+                <div class="rounded-xl border border-base-300 p-3">
+                  <p class="text-xs uppercase tracking-[0.16em] text-base-content/60">Warehouse</p>
+                  <p class="mt-1 font-semibold">{{ domainCheckResult.landing_site.warehouse ? `${domainCheckResult.landing_site.warehouse.code} — ${domainCheckResult.landing_site.warehouse.name}` : '-' }}</p>
+                </div>
+                <div class="rounded-xl border border-base-300 p-3">
+                  <p class="text-xs uppercase tracking-[0.16em] text-base-content/60">CMS Publish</p>
+                  <p class="mt-1 font-semibold">{{ domainCheckResult.landing_site.page ? (domainCheckResult.landing_site.page.is_published ? 'published' : 'draft') : 'belum ada page' }}</p>
+                </div>
+                <div class="rounded-xl border border-base-300 p-3">
+                  <p class="text-xs uppercase tracking-[0.16em] text-base-content/60">Countdown</p>
+                  <p class="mt-1 font-semibold">{{ domainCheckResult.landing_site.page?.countdown_at || '-' }}</p>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap gap-2">
+                <button class="btn btn-sm btn-outline" @click="openEditModal(domainCheckResult.landing_site)">Edit Landing</button>
+                <Link
+                  class="btn btn-sm btn-primary"
+                  :href="`${route('erp.admin.landing-sites.cms', domainCheckResult.landing_site.id)}${cmsModule ? '?cms=1' : ''}`"
+                >Buka CMS</Link>
+              </div>
+            </div>
+
+            <div v-else class="mt-4 flex flex-wrap items-center gap-2">
+              <p class="text-sm text-base-content/70">Domain ini belum ada. Anda bisa langsung pakai hasil normalisasinya saat menambah landing site baru.</p>
+              <button class="btn btn-sm btn-outline" @click="useNormalizedDomainForAdd">Pakai ke form tambah</button>
+            </div>
           </div>
         </div>
       </div>
