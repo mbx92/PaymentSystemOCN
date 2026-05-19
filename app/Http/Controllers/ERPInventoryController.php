@@ -24,6 +24,11 @@ class ERPInventoryController extends Controller
 
         $query = MasterProduct::query()
             ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
+            ->when($selectedWarehouseId, function ($query) use ($selectedWarehouseId): void {
+                $query->whereHas('warehouseStocks', function ($stock) use ($selectedWarehouseId): void {
+                    $stock->where('warehouse_id', $selectedWarehouseId);
+                });
+            })
             ->when($request->filled('q'), function ($query) use ($request): void {
                 $term = $request->string('q')->toString();
                 $query->where(function ($inner) use ($term): void {
@@ -249,6 +254,19 @@ class ERPInventoryController extends Controller
             $oldStock = (float) $warehouseStock->qty;
             $warehouseStock->update(['qty' => $newStock]);
 
+            if ($newStock > $oldStock) {
+                $allocatedToProjects = $this->allocateProjectMaterialReservations(
+                    $product->id,
+                    (int) $validated['warehouse_id'],
+                    $newStock - $oldStock,
+                );
+
+                if ($allocatedToProjects > 0) {
+                    $warehouseStock->increment('reserved_qty', $allocatedToProjects);
+                    $warehouseStock->refresh();
+                }
+            }
+
             $totalStock = (float) MasterProductWarehouseStock::query()
                 ->where('master_product_id', $product->id)
                 ->sum('qty');
@@ -459,10 +477,20 @@ class ERPInventoryController extends Controller
                     ->where('warehouse_id', $sourceWarehouse->id)
                     ->decrement('qty', $qty);
 
-                MasterProductWarehouseStock::query()->firstOrCreate(
+                $destinationStock = MasterProductWarehouseStock::query()->firstOrCreate(
                     ['master_product_id' => $product->id, 'warehouse_id' => $destWarehouse->id],
                     ['qty' => 0, 'reserved_qty' => 0]
-                )->increment('qty', $qty);
+                );
+                $destinationStock->increment('qty', $qty);
+
+                $allocatedToProjects = $this->allocateProjectMaterialReservations(
+                    $product->id,
+                    $destWarehouse->id,
+                    $qty,
+                );
+                if ($allocatedToProjects > 0) {
+                    $destinationStock->increment('reserved_qty', $allocatedToProjects);
+                }
 
                 ProductStockMovement::query()->create([
                     'master_product_id' => $product->id,
@@ -580,5 +608,63 @@ class ERPInventoryController extends Controller
         }
 
         return 'mixed';
+    }
+
+    private function allocateProjectMaterialReservations(int $productId, int $warehouseId, float $incomingQty): float
+    {
+        $remaining = $incomingQty;
+        $allocated = 0.0;
+
+        ProjectMaterial::query()
+            ->with('project')
+            ->where('master_product_id', $productId)
+            ->where('warehouse_id', $warehouseId)
+            ->whereHas('project', fn ($q) => $q->whereIn('status', ['negosiasi', 'berjalan']))
+            ->whereRaw('planned_qty > reserved_qty')
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get()
+            ->each(function (ProjectMaterial $material) use (&$remaining, &$allocated): void {
+                if ($remaining <= 0) {
+                    return;
+                }
+
+                $shortage = max((float) $material->planned_qty - (float) $material->reserved_qty, 0);
+                $toReserve = min($shortage, $remaining);
+                if ($toReserve <= 0) {
+                    return;
+                }
+
+                $material->reserved_qty = (float) $material->reserved_qty + $toReserve;
+                $material->status = $this->projectMaterialStatus($material);
+                $material->save();
+
+                $remaining -= $toReserve;
+                $allocated += $toReserve;
+            });
+
+        return $allocated;
+    }
+
+    private function projectMaterialStatus(ProjectMaterial $material): string
+    {
+        $plannedQty = (float) $material->planned_qty;
+        $reservedQty = (float) $material->reserved_qty;
+        $issuedQty = (float) $material->issued_qty;
+
+        if ($plannedQty > 0 && $issuedQty >= $plannedQty) {
+            return 'issued';
+        }
+
+        if ($plannedQty > 0 && $reservedQty >= $plannedQty) {
+            return 'ready';
+        }
+
+        if ($reservedQty > 0) {
+            return 'partial';
+        }
+
+        return 'planned';
     }
 }

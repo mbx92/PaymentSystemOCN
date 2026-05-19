@@ -84,6 +84,18 @@ class StockManagementFilterTest extends TestCase
         ]);
         $target = $this->createProduct('MAT-ABC', 'Kabel ABC', 2);
         $inactive = $this->createProduct('MAT-XYZ', 'Kabel XYZ', 2, 'inactive');
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $target->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 9,
+            'reserved_qty' => 0,
+        ]);
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $inactive->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 4,
+            'reserved_qty' => 0,
+        ]);
 
         $this
             ->actingAs($user)
@@ -199,6 +211,12 @@ class StockManagementFilterTest extends TestCase
             'stock' => 1,
             'low_stock_alert_enabled' => false,
         ]);
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 1,
+            'reserved_qty' => 0,
+        ]);
 
         $this
             ->actingAs($user)
@@ -211,6 +229,49 @@ class StockManagementFilterTest extends TestCase
                 ->where('inventoryAlerts.lowStockCount', 0)
                 ->where('products.data.0.id', $product->id)
                 ->where('products.data.0.low_stock_alert_enabled', false));
+    }
+
+    public function test_stock_management_only_shows_items_from_selected_warehouse(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $warehouseA = Warehouse::query()->create([
+            'code' => 'WH-A',
+            'name' => 'Gudang A',
+            'is_active' => true,
+        ]);
+        $warehouseB = Warehouse::query()->create([
+            'code' => 'WH-B',
+            'name' => 'Gudang B',
+            'is_active' => true,
+        ]);
+        $productA = $this->createProduct('WHA-001', 'Produk Gudang A', 1);
+        $productB = $this->createProduct('WHB-001', 'Produk Gudang B', 1);
+
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $productA->id,
+            'warehouse_id' => $warehouseA->id,
+            'qty' => 3,
+            'reserved_qty' => 0,
+        ]);
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $productB->id,
+            'warehouse_id' => $warehouseB->id,
+            'qty' => 7,
+            'reserved_qty' => 0,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.inventory.stock-management', [
+                'warehouse_id' => $warehouseA->id,
+            ]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Inventory/StockManagement')
+                ->where('products.data.0.id', $productA->id)
+                ->missing('products.data.1'));
     }
 
     public function test_stock_opname_page_can_filter_products_by_warehouse_and_search(): void

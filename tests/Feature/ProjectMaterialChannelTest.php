@@ -382,6 +382,74 @@ class ProjectMaterialChannelTest extends TestCase
         ]);
     }
 
+    public function test_stock_opname_allocates_project_material_shortage_and_clears_reorder_need(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $project = $this->createProject();
+        $warehouse = Warehouse::create([
+            'code' => 'WH-01',
+            'name' => 'Main',
+            'is_active' => true,
+        ]);
+        $projectProduct = $this->createProjectProduct('MAT-OPNAME-01');
+
+        ProjectMaterial::create([
+            'project_id' => $project->id,
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'planned_qty' => 5,
+            'reserved_qty' => 0,
+            'issued_qty' => 0,
+            'status' => 'planned',
+        ]);
+
+        MasterProductWarehouseStock::create([
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 0,
+            'reserved_qty' => 0,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->post(route('erp.inventory.stock-opname.store'), [
+                'warehouse_id' => $warehouse->id,
+                'product_id' => $projectProduct->id,
+                'physical_stock' => 5,
+                'stock_opname_date' => now()->toDateString(),
+                'note' => 'Opname masuk stok project',
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('project_materials', [
+            'project_id' => $project->id,
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'reserved_qty' => 5,
+            'status' => 'ready',
+        ]);
+
+        $this->assertDatabaseHas('master_product_warehouse_stocks', [
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => '5.00',
+            'reserved_qty' => '5.00',
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.purchasing.reorder-planning', [
+                'warehouse_id' => $warehouse->id,
+            ]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Purchasing/ReorderPlanning')
+                ->where('reorderSuggestions', []));
+    }
+
     public function test_project_material_shortage_appears_in_reorder_planning(): void
     {
         $this->disableErpMiddleware();
