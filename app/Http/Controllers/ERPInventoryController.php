@@ -7,6 +7,7 @@ use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
 use App\Models\ProductStockMovement;
 use App\Models\ProjectMaterial;
+use App\Services\ProjectMaterialReservationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -102,17 +103,27 @@ class ERPInventoryController extends Controller
                 ->with(['project:id,name,status'])
                 ->where('warehouse_id', $selectedWarehouseId)
                 ->where('reserved_qty', '>', 0)
+                ->whereHas('project', fn ($query) => $query->whereIn('status', ['negosiasi', 'berjalan']))
                 ->orderByDesc('reserved_qty')
                 ->get()
                 ->groupBy('master_product_id')
-                ->map(fn ($rows) => $rows->map(fn (ProjectMaterial $material) => [
-                    'project_id' => $material->project_id,
-                    'project_name' => $material->project?->name,
-                    'project_status' => $material->project?->status,
-                    'planned_qty' => (float) $material->planned_qty,
-                    'reserved_qty' => (float) $material->reserved_qty,
-                    'issued_qty' => (float) $material->issued_qty,
-                ])->values())
+                ->map(function ($rows) {
+                    return $rows
+                        ->map(function (ProjectMaterial $material): array {
+                            $outstanding = app(ProjectMaterialReservationService::class)->outstandingReservedQty($material);
+
+                            return [
+                                'project_id' => $material->project_id,
+                                'project_name' => $material->project?->name,
+                                'project_status' => $material->project?->status,
+                                'planned_qty' => (float) $material->planned_qty,
+                                'reserved_qty' => $outstanding,
+                                'issued_qty' => (float) $material->issued_qty,
+                            ];
+                        })
+                        ->filter(fn (array $row) => $row['reserved_qty'] > 0)
+                        ->values();
+                })
                 ->only($idsOnPage);
         }
 
@@ -255,17 +266,15 @@ class ERPInventoryController extends Controller
             $warehouseStock->update(['qty' => $newStock]);
 
             if ($newStock > $oldStock) {
-                $allocatedToProjects = $this->allocateProjectMaterialReservations(
+                $this->allocateProjectMaterialReservations(
                     $product->id,
                     (int) $validated['warehouse_id'],
                     $newStock - $oldStock,
                 );
-
-                if ($allocatedToProjects > 0) {
-                    $warehouseStock->increment('reserved_qty', $allocatedToProjects);
-                    $warehouseStock->refresh();
-                }
             }
+
+            app(ProjectMaterialReservationService::class)
+                ->syncWarehouseReservation($product->id, (int) $validated['warehouse_id']);
 
             $totalStock = (float) MasterProductWarehouseStock::query()
                 ->where('master_product_id', $product->id)
@@ -483,14 +492,13 @@ class ERPInventoryController extends Controller
                 );
                 $destinationStock->increment('qty', $qty);
 
-                $allocatedToProjects = $this->allocateProjectMaterialReservations(
+                $this->allocateProjectMaterialReservations(
                     $product->id,
                     $destWarehouse->id,
                     $qty,
                 );
-                if ($allocatedToProjects > 0) {
-                    $destinationStock->increment('reserved_qty', $allocatedToProjects);
-                }
+                app(ProjectMaterialReservationService::class)
+                    ->syncWarehouseReservation($product->id, $destWarehouse->id);
 
                 ProductStockMovement::query()->create([
                     'master_product_id' => $product->id,

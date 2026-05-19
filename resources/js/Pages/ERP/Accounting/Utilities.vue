@@ -17,6 +17,7 @@ const props = defineProps({
   cashBankAccounts: Array,
   cashAccountUsage: Array,
   cashAccountReassignment: Object,
+  inventoryReservationSync: Object,
 });
 
 const { formatDate } = useDateFormat();
@@ -37,6 +38,7 @@ const correctionForm = useForm({
   journal_entry_ids: [],
 });
 const backfillForm = useForm({});
+const inventoryReservationForm = useForm({});
 const reassignForm = useForm({
   from_account_id: '',
   to_account_id: '',
@@ -53,6 +55,10 @@ const backfillPendingTotal = computed(
 const backfillConfirmMessage = computed(
   () =>
     `Lengkapi akun kas pada ${backfillReadyTotal.value} transaksi dari jurnal yang sudah diposting? Jurnal GL tidak diubah.`,
+);
+const inventoryReservationSummary = computed(() => props.inventoryReservationSync ?? {});
+const inventoryReservationConfirmMessage = computed(() =>
+  `Sinkronkan ulang reserved stock? ${inventoryReservationSummary.value.warehouse_rows_updated ?? 0} baris gudang terdeteksi perlu diperbaiki.`,
 );
 
 const reassignPreview = computed(() => props.cashAccountReassignment ?? null);
@@ -176,6 +182,14 @@ const openBackfillModal = () => {
 
 const confirmCashAccountBackfill = () => {
   backfillForm.post(route('erp.accounting.utilities.backfill-cash-accounts'), { preserveScroll: true });
+};
+
+const openInventoryReservationModal = () => {
+  document.getElementById('modal-confirm-sync-inventory-reservations')?.showModal();
+};
+
+const confirmInventoryReservationSync = () => {
+  inventoryReservationForm.post(route('erp.accounting.utilities.sync-inventory-reservations'), { preserveScroll: true });
 };
 
 const loadReassignPreview = () => {
@@ -424,6 +438,50 @@ const confirmCashAccountReassign = () => {
       <div class="ocn-panel">
         <div class="ocn-panel__head flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
+            <h2 class="ocn-panel__title">Re-sync reserved stock inventory</h2>
+            <p class="ocn-panel__desc mt-1">
+              Sinkronkan ulang `reserved_qty` warehouse dari material project aktif saja. Berguna untuk membersihkan reserve lama yang tertinggal setelah project selesai atau data lama drift.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="btn btn-primary btn-sm"
+            :disabled="(inventoryReservationSummary.warehouse_rows_updated ?? 0) === 0 || inventoryReservationForm.processing"
+            @click="openInventoryReservationModal"
+          >
+            {{ inventoryReservationForm.processing ? 'Memproses...' : `Re-sync ${inventoryReservationSummary.warehouse_rows_updated ?? 0} baris` }}
+          </button>
+        </div>
+        <div class="card-body pt-0">
+          <div class="grid gap-3 md:grid-cols-4">
+            <div class="rounded-lg border border-base-300 bg-base-100 p-3">
+              <p class="text-xs uppercase tracking-wide text-base-content/50">Baris gudang dicek</p>
+              <p class="mt-1 text-sm font-semibold">{{ inventoryReservationSummary.warehouse_rows_checked ?? 0 }}</p>
+            </div>
+            <div class="rounded-lg border border-base-300 bg-base-100 p-3">
+              <p class="text-xs uppercase tracking-wide text-base-content/50">Perlu diperbarui</p>
+              <p class="mt-1 text-sm font-semibold">{{ inventoryReservationSummary.warehouse_rows_updated ?? 0 }}</p>
+            </div>
+            <div class="rounded-lg border border-base-300 bg-base-100 p-3">
+              <p class="text-xs uppercase tracking-wide text-base-content/50">Reserve lama bisa dibersihkan</p>
+              <p class="mt-1 text-sm font-semibold">{{ inventoryReservationSummary.warehouse_rows_cleared ?? 0 }}</p>
+            </div>
+            <div class="rounded-lg border border-base-300 bg-base-100 p-3">
+              <p class="text-xs uppercase tracking-wide text-base-content/50">Total reserved</p>
+              <p class="mt-1 text-sm font-semibold">
+                {{ inventoryReservationSummary.total_reserved_before ?? 0 }} -> {{ inventoryReservationSummary.total_reserved_after ?? 0 }}
+              </p>
+            </div>
+          </div>
+          <p v-if="(inventoryReservationSummary.warehouse_rows_updated ?? 0) === 0" class="mt-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-base-content/70">
+            Reserved stock warehouse sudah sinkron.
+          </p>
+        </div>
+      </div>
+
+      <div class="ocn-panel">
+        <div class="ocn-panel__head flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
             <h2 class="ocn-panel__title">Pindahkan akun kas/bank salah</h2>
             <p class="ocn-panel__desc mt-1">
               Untuk kas masuk/keluar yang tercatat di akun kas padahal seharusnya bank (atau sebaliknya).
@@ -633,6 +691,14 @@ const confirmCashAccountReassign = () => {
       confirm-text="Perbaiki"
       confirm-class="btn-primary"
       @confirm="confirmCashAccountBackfill"
+    />
+    <ConfirmModal
+      id="modal-confirm-sync-inventory-reservations"
+      title="Re-sync reserved stock"
+      :message="inventoryReservationConfirmMessage"
+      confirm-text="Re-sync"
+      confirm-class="btn-primary"
+      @confirm="confirmInventoryReservationSync"
     />
   </AppLayout>
 </template>

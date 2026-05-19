@@ -18,6 +18,7 @@ use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
 use App\Models\ProductStockMovement;
 use App\Models\ProjectMaterial;
+use App\Services\ProjectMaterialReservationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -734,14 +735,13 @@ class ERPPurchasingController extends Controller
                         );
                         $row->increment('qty', (float) $line->qty_received);
 
-                        $allocatedToProjects = $this->allocateProjectMaterialReservations(
+                        $this->allocateProjectMaterialReservations(
                             $product->id,
                             (int) $warehouseId,
                             (float) $line->qty_received,
                         );
-                        if ($allocatedToProjects > 0) {
-                            $row->increment('reserved_qty', $allocatedToProjects);
-                        }
+                        app(ProjectMaterialReservationService::class)
+                            ->syncWarehouseReservation($product->id, (int) $warehouseId);
                     }
                     $product->increment('stock', (float) $line->qty_received);
                     $poLine?->increment('received_qty', (float) $line->qty_received);

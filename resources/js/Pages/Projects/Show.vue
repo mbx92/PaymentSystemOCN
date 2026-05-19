@@ -416,9 +416,9 @@ const cctvLifecycleTimeline = computed(() => {
         addStep(
             `term-${term.id}`,
             `Pembayaran invoice — termin ${term.term_number}`,
-            term.paid_at,
+            term.timeline_paid_at || term.paid_at,
             `${term.percentage}% · ${format(term.amount)}`,
-            !!term.paid_at,
+            !!term.is_paid,
         );
     }
 

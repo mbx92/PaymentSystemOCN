@@ -6,7 +6,12 @@ use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\CoaSetting;
 use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Core\Models\Company;
+use App\ERP\Inventory\Models\Warehouse;
 use App\Models\CashIn;
+use App\Models\MasterProduct;
+use App\Models\MasterProductWarehouseStock;
+use App\Models\Project;
+use App\Models\ProjectMaterial;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -304,6 +309,75 @@ class AccountingUtilitiesTest extends TestCase
         $this->assertDatabaseHas('journal_lines', [
             'id' => $debitLine->id,
             'account_id' => $bca->id,
+        ]);
+    }
+
+    public function test_accounting_utilities_can_sync_inventory_reserved_stock(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $warehouse = Warehouse::query()->create([
+            'code' => 'WH-UTIL',
+            'name' => 'Gudang Utilitas',
+            'is_active' => true,
+        ]);
+        $product = MasterProduct::query()->create([
+            'sku' => 'MAT-UTIL-01',
+            'name' => 'Material Utility',
+            'category' => 'Material',
+            'uom' => 'pcs',
+            'sales_channel' => 'project',
+            'product_type' => MasterProduct::PRODUCT_TYPE_PROJECT_MATERIAL,
+            'status' => 'active',
+        ]);
+        $project = Project::query()->create([
+            'name' => 'Project Utility',
+            'client_name' => 'Client',
+            'total_value' => 1000000,
+            'status' => 'selesai',
+            'finished_at' => '2026-05-19',
+        ]);
+
+        ProjectMaterial::query()->create([
+            'project_id' => $project->id,
+            'master_product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'planned_qty' => 4,
+            'reserved_qty' => 4,
+            'issued_qty' => 0,
+            'status' => 'ready',
+        ]);
+
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 4,
+            'reserved_qty' => 4,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.accounting.utilities'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Accounting/Utilities')
+                ->where('inventoryReservationSync.warehouse_rows_updated', 1)
+                ->where('inventoryReservationSync.warehouse_rows_cleared', 1)
+                ->where('inventoryReservationSync.total_reserved_before', 4)
+                ->where('inventoryReservationSync.total_reserved_after', 0)
+                ->etc());
+
+        $this
+            ->actingAs($user)
+            ->post(route('erp.accounting.utilities.sync-inventory-reservations'))
+            ->assertSessionHasNoErrors()
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('master_product_warehouse_stocks', [
+            'master_product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'reserved_qty' => '0.00',
         ]);
     }
 

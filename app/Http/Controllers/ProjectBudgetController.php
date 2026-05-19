@@ -11,6 +11,7 @@ use App\Models\ProjectBudgetItem;
 use App\Models\ProjectMaterial;
 use App\Models\ProjectType;
 use App\Services\PdfThemeResolver;
+use App\Services\ProjectMaterialReservationService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -432,8 +433,9 @@ class ProjectBudgetController extends Controller
                     : 'ready';
                 $material->save();
 
-                if ($stock && $reservedQty > 0) {
-                    $stock->increment('reserved_qty', $reservedQty);
+                if ($stock) {
+                    app(ProjectMaterialReservationService::class)
+                        ->syncWarehouseReservation($product->id, $warehouse->id);
                 }
             });
     }

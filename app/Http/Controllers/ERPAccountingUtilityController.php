@@ -9,6 +9,7 @@ use App\ERP\Accounting\Services\CashAccountReassignmentService;
 use App\ERP\Accounting\Services\CoaSettingService;
 use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Core\Models\Company;
+use App\Services\ProjectMaterialReservationService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -99,6 +100,19 @@ class ERPAccountingUtilityController extends Controller
             ])->values(),
             'cashAccountUsage' => app(CashAccountReassignmentService::class)->countsBySourceAccount(),
             'cashAccountReassignment' => $this->cashAccountReassignmentPreview($request),
+            'inventoryReservationSync' => $this->inventoryReservationSyncSummary(),
+        ]);
+    }
+
+    public function syncInventoryReservations(): RedirectResponse
+    {
+        $result = app(ProjectMaterialReservationService::class)->syncAllWarehouseReservations();
+
+        return back()->with('flash', [
+            'type' => $result['warehouse_rows_updated'] > 0 ? 'success' : 'info',
+            'message' => $result['warehouse_rows_updated'] > 0
+                ? "Reserved stock disinkronkan. {$result['warehouse_rows_updated']} baris gudang diperbarui, {$result['warehouse_rows_cleared']} baris reserve lama dibersihkan."
+                : 'Tidak ada perubahan reserved stock. Data sudah sinkron.',
         ]);
     }
 
@@ -377,6 +391,16 @@ class ERPAccountingUtilityController extends Controller
             'from_account_id' => $fromAccountId,
             'from_account_label' => $fromAccount?->displayLabel(),
             ...$preview,
+        ];
+    }
+
+    private function inventoryReservationSyncSummary(): array
+    {
+        $summary = app(ProjectMaterialReservationService::class)->summarizeAllWarehouseReservations();
+
+        return [
+            ...$summary,
+            'can_run' => true,
         ];
     }
 }

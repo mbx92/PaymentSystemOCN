@@ -8,6 +8,7 @@ use App\ERP\Accounting\Models\JournalEntry;
 use App\Models\CashIn;
 use App\Models\PaymentMethod;
 use App\Models\Project;
+use App\Models\ProjectPayment;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -87,6 +88,54 @@ class ProjectInvoicePaymentAccountingTest extends TestCase
                 ->component('ERP/Accounting/Payments')
                 ->has('cashAccounts', 1)
                 ->where('cashAccounts.0.code', '1001'));
+    }
+
+    public function test_project_timeline_marks_term_paid_when_invoice_payment_covers_it(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $project = Project::query()->create([
+            'name' => 'Project Timeline',
+            'client_name' => 'Client',
+            'total_value' => 1000000,
+            'status' => 'selesai',
+            'finished_at' => '2026-05-17',
+        ]);
+
+        ProjectPayment::query()->create([
+            'project_id' => $project->id,
+            'term_number' => 1,
+            'percentage' => 50,
+            'amount' => 500000,
+        ]);
+        ProjectPayment::query()->create([
+            'project_id' => $project->id,
+            'term_number' => 2,
+            'percentage' => 50,
+            'amount' => 500000,
+        ]);
+
+        CashIn::query()->create([
+            'project_id' => $project->id,
+            'category' => 'pendapatan_project',
+            'amount' => 1000000,
+            'date' => '2026-05-18',
+            'note' => 'Pelunasan invoice project',
+            'created_by' => $user->id,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->get(route('projects.show', $project))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Projects/Show')
+                ->where('project.payments.0.is_paid', true)
+                ->where('project.payments.0.timeline_paid_at', '2026-05-18')
+                ->where('project.payments.1.is_paid', true)
+                ->where('project.payments.1.timeline_paid_at', '2026-05-18')
+                ->etc());
     }
 
     private function disableErpMiddleware(): void

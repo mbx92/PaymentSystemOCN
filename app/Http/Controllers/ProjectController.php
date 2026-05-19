@@ -14,6 +14,7 @@ use App\Models\ProjectMaterial;
 use App\Models\ProjectPayment;
 use App\Models\ProjectTask;
 use App\Models\ProjectType;
+use App\Services\ProjectMaterialReservationService;
 use App\Models\TeamDistribution;
 use App\Models\TeamRole;
 use App\Models\User;
@@ -124,6 +125,7 @@ class ProjectController extends Controller
     {
         $project->load(['payments', 'cashIns.creator', 'cashOuts.creator', 'teamDistributions.user', 'referrals', 'tasks.assignee', 'projectTypeDefinition']);
         $project->load(['materials.product', 'materials.warehouse']);
+        $paymentTimeline = $this->paymentTimelineRows($project);
         if (! TeamRole::query()->exists()) {
             foreach (['Lead', 'Developer', 'Designer', 'QA'] as $name) {
                 TeamRole::query()->create([
@@ -168,14 +170,7 @@ class ProjectController extends Controller
                 'finished_at' => $project->finished_at?->format('Y-m-d'),
                 'invoiced_at' => $project->invoiced_at?->format('Y-m-d'),
                 'description' => $project->description,
-                'payments' => $project->payments->map(fn ($p) => [
-                    'id' => $p->id,
-                    'term_number' => $p->term_number,
-                    'percentage' => (float) $p->percentage,
-                    'amount' => (float) $p->amount,
-                    'paid_at' => $p->paid_at?->format('Y-m-d'),
-                    'note' => $p->note,
-                ]),
+                'payments' => $paymentTimeline,
                 'cash_ins' => $project->cashIns->map(fn ($c) => [
                     'id' => $c->id,
                     'category' => $c->category,
@@ -566,10 +561,14 @@ class ProjectController extends Controller
             ]);
         }
 
-        $project->update([
-            'status' => 'selesai',
-            'finished_at' => $validated['finished_at'],
-        ]);
+        DB::transaction(function () use ($project, $validated): void {
+            $project->update([
+                'status' => 'selesai',
+                'finished_at' => $validated['finished_at'],
+            ]);
+
+            app(ProjectMaterialReservationService::class)->releaseProjectReservations($project->fresh('materials'));
+        });
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Status project diubah ke selesai.']);
     }
@@ -650,8 +649,9 @@ class ProjectController extends Controller
                 : 'ready';
             $material->save();
 
-            if ($stock && $toReserve > 0) {
-                $stock->increment('reserved_qty', $toReserve);
+            if ($stock) {
+                app(ProjectMaterialReservationService::class)
+                    ->syncWarehouseReservation($product->id, (int) $validated['warehouse_id']);
             }
         });
 
@@ -713,20 +713,14 @@ class ProjectController extends Controller
         }
 
         DB::transaction(function () use ($material): void {
-            $toRelease = max((float) $material->reserved_qty - (float) $material->issued_qty, 0);
-            if ($toRelease > 0) {
-                $stock = MasterProductWarehouseStock::query()
-                    ->lockForUpdate()
-                    ->where('master_product_id', $material->master_product_id)
-                    ->where('warehouse_id', $material->warehouse_id)
-                    ->first();
-                if ($stock) {
-                    $newReserved = max((float) $stock->reserved_qty - $toRelease, 0);
-                    $stock->update(['reserved_qty' => $newReserved]);
-                }
-            }
-
+            $productId = (int) $material->master_product_id;
+            $warehouseId = (int) $material->warehouse_id;
             $material->delete();
+
+            if ($warehouseId > 0) {
+                app(ProjectMaterialReservationService::class)
+                    ->syncWarehouseReservation($productId, $warehouseId);
+            }
         });
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Material project dihapus dan reserve dikembalikan.']);
@@ -774,6 +768,41 @@ class ProjectController extends Controller
         }
 
         return 'planned';
+    }
+
+    private function paymentTimelineRows(Project $project)
+    {
+        $cashIns = $project->cashIns
+            ->sortBy([['date', 'asc'], ['id', 'asc']])
+            ->values();
+        $cashIndex = 0;
+        $paidRunning = 0.0;
+        $requiredRunning = 0.0;
+
+        return $project->payments->map(function (ProjectPayment $payment) use ($cashIns, &$cashIndex, &$paidRunning, &$requiredRunning): array {
+            $requiredRunning += (float) $payment->amount;
+            $coveredAt = null;
+
+            while ($cashIndex < $cashIns->count() && $paidRunning + 0.00001 < $requiredRunning) {
+                $cash = $cashIns[$cashIndex];
+                $paidRunning += (float) $cash->amount;
+                $coveredAt = $cash->date?->format('Y-m-d');
+                $cashIndex++;
+            }
+
+            $isPaid = $payment->paid_at !== null || $paidRunning + 0.00001 >= $requiredRunning;
+
+            return [
+                'id' => $payment->id,
+                'term_number' => $payment->term_number,
+                'percentage' => (float) $payment->percentage,
+                'amount' => (float) $payment->amount,
+                'paid_at' => $payment->paid_at?->format('Y-m-d'),
+                'timeline_paid_at' => $payment->paid_at?->format('Y-m-d') ?? ($isPaid ? $coveredAt : null),
+                'is_paid' => $isPaid,
+                'note' => $payment->note,
+            ];
+        });
     }
 
     private function cashCategoryOptions(string $domain)

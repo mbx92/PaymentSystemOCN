@@ -450,6 +450,57 @@ class ProjectMaterialChannelTest extends TestCase
                 ->where('reorderSuggestions', []));
     }
 
+    public function test_finishing_project_releases_warehouse_reserved_stock(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $project = $this->createProject();
+        $warehouse = Warehouse::create([
+            'code' => 'WH-REL',
+            'name' => 'Gudang Release',
+            'is_active' => true,
+        ]);
+        $projectProduct = $this->createProjectProduct('MAT-REL-01');
+
+        ProjectMaterial::create([
+            'project_id' => $project->id,
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'planned_qty' => 5,
+            'reserved_qty' => 5,
+            'issued_qty' => 0,
+            'status' => 'ready',
+        ]);
+
+        MasterProductWarehouseStock::create([
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 5,
+            'reserved_qty' => 5,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->patch(route('projects.status.update', $project), [
+                'target_status' => 'selesai',
+                'finished_at' => '2026-05-19',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('projects', [
+            'id' => $project->id,
+            'status' => 'selesai',
+        ]);
+        $this->assertDatabaseHas('master_product_warehouse_stocks', [
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => '5.00',
+            'reserved_qty' => '0.00',
+        ]);
+    }
+
     public function test_project_material_shortage_appears_in_reorder_planning(): void
     {
         $this->disableErpMiddleware();

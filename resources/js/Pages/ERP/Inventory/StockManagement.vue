@@ -216,7 +216,7 @@ const openReservedModal = (product) => {
           </div>
         </div>
         <div class="overflow-x-auto">
-          <table class="table table-zebra">
+          <table class="table table-zebra table-xs text-xs">
             <thead>
               <tr>
                 <th>SKU</th>
@@ -240,7 +240,7 @@ const openReservedModal = (product) => {
                 @click="openReservedModal(product)"
               >
                 <td class="font-mono text-xs">{{ product.sku }}</td>
-                <td class="font-semibold">{{ product.name }}</td>
+                <td class="font-semibold leading-tight">{{ product.name }}</td>
                 <td><span class="badge badge-sm badge-ghost">{{ product.stock }}</span></td>
                 <td><span class="badge badge-sm" :class="product.reserved_qty > 0 ? 'badge-warning' : 'badge-ghost'">{{ product.reserved_qty }}</span></td>
                 <td><span class="badge badge-sm text-white" :class="availabilityBadgeClass(product)">{{ product.available_qty }}</span></td>
@@ -249,7 +249,7 @@ const openReservedModal = (product) => {
                     v-model.number="getForm(product).min_stock"
                     type="number"
                     min="0"
-                    class="input input-bordered input-sm w-24"
+                    class="input input-bordered input-xs h-8 w-20 text-xs"
                     @click.stop
                   />
                 </td>
@@ -262,7 +262,7 @@ const openReservedModal = (product) => {
                   </label>
                 </td>
                 <td><span class="badge badge-sm badge-ghost">{{ product.total_sold }}</span></td>
-                <td><input v-model="getForm(product).note" type="text" class="input input-bordered input-sm w-40" placeholder="Opsional" @click.stop /></td>
+                <td><input v-model="getForm(product).note" type="text" class="input input-bordered input-xs h-8 w-32 text-xs" placeholder="Opsional" @click.stop /></td>
                 <td><StatusBadge :status="product.status" /></td>
                 <td><button class="btn btn-primary btn-xs" :disabled="getForm(product).processing" @click.stop="saveRow(product)">Simpan</button></td>
               </tr>
