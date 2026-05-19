@@ -19,8 +19,16 @@ const domainCheckInput = ref('');
 const domainCheckLoading = ref(false);
 const domainCheckResult = ref(null);
 
+const landingSiteRows = computed(() => {
+  if (Array.isArray(props.landingSites)) {
+    return props.landingSites;
+  }
+
+  return props.landingSites?.data ?? [];
+});
+
 const filteredLandingSites = computed(() => {
-  const list = props.landingSites?.data ?? [];
+  const list = landingSiteRows.value;
   const term = filterKeyword.value.trim().toLowerCase();
   return list.filter((site) => {
     const matchStatus = !filterStatus.value || (filterStatus.value === 'active' ? !!site.is_active : !site.is_active);
@@ -120,7 +128,7 @@ const toggleStatus = (site) => {
 };
 
 const onPerPage = (n) => {
-  router.get(route('erp.admin.landing-sites'), { per_page: n }, {
+  router.get(props.cmsModule ? route('erp.cms.sites') : route('erp.admin.landing-sites'), { per_page: n }, {
     preserveState: true,
     replace: true,
   });

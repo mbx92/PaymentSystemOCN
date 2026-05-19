@@ -38,17 +38,19 @@ class CmsModuleController extends Controller
         ]);
     }
 
-    public function sites(): Response
+    public function sites(Request $request): Response
     {
         return Inertia::render('ERP/Admin/LandingSites', [
             'landingSites' => LandingSite::query()
                 ->with(['warehouse:id,code,name', 'page:id,landing_site_id,is_published'])
                 ->orderBy('is_active', 'desc')
                 ->orderBy('name')
-                ->get(),
+                ->paginate($this->resolvedPerPage($request))
+                ->withQueryString(),
             'warehouses' => Warehouse::query()
                 ->orderBy('name')
                 ->get(['id', 'code', 'name']),
+            'filters' => $this->filtersWithPerPage($request, []),
             'cmsModule' => true,
         ]);
     }
