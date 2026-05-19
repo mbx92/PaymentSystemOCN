@@ -4,15 +4,15 @@ namespace App\Services;
 
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
-use Symfony\Component\HttpFoundation\StreamedResponse;
-use Symfony\Component\Process\Exception\ProcessFailedException;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\Process\Process;
 use Symfony\Component\Process\ExecutableFinder;
 
 class DatabaseBackupService
 {
-    public function downloadPostgresDump(?string $connectionName = null): StreamedResponse
+    public function downloadPostgresDump(?string $connectionName = null): BinaryFileResponse
     {
         $config = $this->postgresConfig($connectionName);
         if (! $this->binaryAvailable($config['binary'])) {
@@ -20,27 +20,39 @@ class DatabaseBackupService
         }
 
         $filename = 'backup-database-'.$config['database'].'-'.now()->format('Ymd-His').'.sql';
+        $tempPath = tempnam(sys_get_temp_dir(), 'ocn-pg-dump-');
+        if ($tempPath === false) {
+            throw new RuntimeException('Gagal menyiapkan file sementara untuk backup database.');
+        }
 
-        return response()->streamDownload(function () use ($config): void {
-            $process = new Process($this->pgDumpCommand($config), null, $this->pgDumpEnvironment($config), null, 3600);
-            $process->setTimeout(3600);
-            $process->start();
+        $process = new Process($this->pgDumpCommand($config, $tempPath), null, $this->pgDumpEnvironment($config), null, 3600);
+        $process->setTimeout(3600);
+        $process->run();
 
-            foreach ($process as $type => $buffer) {
-                if ($type === Process::ERR) {
-                    continue;
-                }
-
-                echo $buffer;
-                flush();
+        if (! $process->isSuccessful() || ! is_file($tempPath) || filesize($tempPath) === 0) {
+            if (is_file($tempPath)) {
+                @unlink($tempPath);
             }
 
-            if (! $process->isSuccessful()) {
-                throw new ProcessFailedException($process);
-            }
-        }, $filename, [
+            Log::error('pg_dump backup failed.', [
+                'database' => $config['database'],
+                'host' => $config['host'],
+                'port' => $config['port'],
+                'schema' => $config['schema'],
+                'binary' => $config['binary'],
+                'exit_code' => $process->getExitCode(),
+                'error_output' => trim($process->getErrorOutput()),
+                'output' => trim($process->getOutput()),
+            ]);
+
+            throw new RuntimeException(
+                'pg_dump gagal dijalankan. Periksa koneksi database, credential, dan permission container aplikasi.'
+            );
+        }
+
+        return response()->download($tempPath, $filename, [
             'Content-Type' => 'application/sql; charset=UTF-8',
-        ]);
+        ])->deleteFileAfterSend(true);
     }
 
     public function backupMeta(?string $connectionName = null): array
@@ -125,7 +137,7 @@ class DatabaseBackupService
      * }  $config
      * @return list<string>
      */
-    private function pgDumpCommand(array $config): array
+    private function pgDumpCommand(array $config, string $outputPath): array
     {
         return [
             $config['binary'],
@@ -140,6 +152,7 @@ class DatabaseBackupService
             '--no-privileges',
             '--clean',
             '--if-exists',
+            '--file='.$outputPath,
         ];
     }
 
