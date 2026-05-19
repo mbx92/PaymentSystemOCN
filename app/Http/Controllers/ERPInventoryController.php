@@ -26,7 +26,7 @@ class ERPInventoryController extends Controller
 
         $query = MasterProduct::query()
             ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
-            ->when($selectedWarehouseId, function ($query) use ($selectedWarehouseId): void {
+            ->when($selectedWarehouseId && ! $request->filled('q'), function ($query) use ($selectedWarehouseId): void {
                 $query->whereHas('warehouseStocks', function ($stock) use ($selectedWarehouseId): void {
                     $stock->where('warehouse_id', $selectedWarehouseId);
                 });

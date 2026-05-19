@@ -32,6 +32,9 @@ class DatabaseBackupService
                 @unlink($tempPath);
             }
 
+            $errorOutput = trim($process->getErrorOutput());
+            $output = trim($process->getOutput());
+
             Log::error('pg_dump backup failed.', [
                 'database' => $config['database'],
                 'host' => $config['host'],
@@ -39,13 +42,13 @@ class DatabaseBackupService
                 'schema' => $config['schema'],
                 'binary' => $config['binary'],
                 'exit_code' => $process->getExitCode(),
-                'error_output' => trim($process->getErrorOutput()),
-                'output' => trim($process->getOutput()),
+                'error_output' => $errorOutput,
+                'output' => $output,
             ]);
 
-            throw new RuntimeException(
-                'pg_dump gagal dijalankan. Periksa koneksi database, credential, dan permission container aplikasi.'
-            );
+            $detail = $this->summarizeProcessFailure($errorOutput, $output, $process->getExitCode());
+
+            throw new RuntimeException('pg_dump gagal dijalankan. '.$detail);
         }
 
         return response()->download($tempPath, $filename, [
@@ -248,5 +251,21 @@ class DatabaseBackupService
         }
 
         return $directory.'/'.Str::uuid()->toString().'-'.$filename;
+    }
+
+    private function summarizeProcessFailure(string $errorOutput, string $output, ?int $exitCode): string
+    {
+        $detail = $errorOutput !== '' ? $errorOutput : $output;
+        $detail = preg_replace('/\s+/', ' ', $detail ?? '') ?? '';
+        $detail = trim($detail);
+
+        if ($detail === '') {
+            return 'Periksa koneksi database, credential, permission container aplikasi, dan ketersediaan binary pg_dump.'
+                .($exitCode !== null ? ' Exit code: '.$exitCode.'.' : '');
+        }
+
+        $detail = Str::limit($detail, 240);
+
+        return 'Detail: '.$detail.($exitCode !== null ? ' (exit code '.$exitCode.')' : '');
     }
 }

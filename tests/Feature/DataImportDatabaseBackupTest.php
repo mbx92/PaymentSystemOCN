@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Services\DatabaseBackupService;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use RuntimeException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Tests\TestCase;
 
@@ -45,5 +46,32 @@ class DataImportDatabaseBackupTest extends TestCase
         $payload = $response->getFile()->getContent();
         $this->assertStringContainsString('PostgreSQL database dump', $payload);
         $this->assertStringContainsString('CREATE TABLE users', $payload);
+    }
+
+    public function test_admin_data_import_backup_failure_shows_underlying_reason(): void
+    {
+        $this->withoutMiddleware([
+            \App\Http\Middleware\ErpMaintenanceMode::class,
+            \App\Http\Middleware\LogErpActivity::class,
+            \Spatie\Permission\Middleware\RoleMiddleware::class,
+        ]);
+
+        $user = User::factory()->create();
+        $this->instance(DatabaseBackupService::class, new class extends DatabaseBackupService
+        {
+            public function downloadPostgresDump(?string $connectionName = null): BinaryFileResponse
+            {
+                throw new RuntimeException('pg_dump gagal dijalankan. Detail: connection to server at "127.0.0.1" port 5432 failed.');
+            }
+        });
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.admin.data-import.backup'))
+            ->assertRedirect(route('erp.admin.data-import', ['tab' => 'backup']))
+            ->assertSessionHas('flash', fn (array $flash) => str_contains(
+                $flash['message'] ?? '',
+                'connection to server at "127.0.0.1" port 5432 failed.'
+            ));
     }
 }

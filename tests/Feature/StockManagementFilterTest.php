@@ -118,6 +118,52 @@ class StockManagementFilterTest extends TestCase
         ]);
     }
 
+    public function test_stock_management_search_can_find_items_outside_current_warehouse_listing_subset(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $warehouse = Warehouse::query()->create([
+            'code' => 'WH-01',
+            'name' => 'Gudang Utama',
+            'is_active' => true,
+        ]);
+        $listed = $this->createProduct('LIST-001', 'Produk Tampil Default', 2);
+        $searchOnly = $this->createProduct('FIND-999', 'Produk Hanya Search', 2);
+
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $listed->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 9,
+            'reserved_qty' => 0,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.inventory.stock-management', [
+                'warehouse_id' => $warehouse->id,
+            ]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Inventory/StockManagement')
+                ->where('products.data.0.id', $listed->id)
+                ->missing('products.data.1'));
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.inventory.stock-management', [
+                'warehouse_id' => $warehouse->id,
+                'q' => 'FIND-999',
+            ]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Inventory/StockManagement')
+                ->where('products.data.0.id', $searchOnly->id)
+                ->where('products.data.0.stock', 0)
+                ->where('filters.q', 'FIND-999')
+                ->missing('products.data.1'));
+    }
+
     public function test_low_stock_notification_can_be_toggled_per_product(): void
     {
         $this->disableErpMiddleware();
