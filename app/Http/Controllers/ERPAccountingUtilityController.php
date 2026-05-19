@@ -10,6 +10,7 @@ use App\ERP\Accounting\Services\CoaSettingService;
 use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Core\Models\Company;
 use App\Services\ProjectMaterialReservationService;
+use App\Services\WarehouseStockRebuildService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -101,6 +102,7 @@ class ERPAccountingUtilityController extends Controller
             'cashAccountUsage' => app(CashAccountReassignmentService::class)->countsBySourceAccount(),
             'cashAccountReassignment' => $this->cashAccountReassignmentPreview($request),
             'inventoryReservationSync' => $this->inventoryReservationSyncSummary(),
+            'inventoryStockRebuild' => $this->inventoryStockRebuildSummary(),
         ]);
     }
 
@@ -113,6 +115,18 @@ class ERPAccountingUtilityController extends Controller
             'message' => $result['warehouse_rows_updated'] > 0
                 ? "Reserved stock disinkronkan. {$result['warehouse_rows_updated']} baris gudang diperbarui, {$result['warehouse_rows_cleared']} baris reserve lama dibersihkan."
                 : 'Tidak ada perubahan reserved stock. Data sudah sinkron.',
+        ]);
+    }
+
+    public function rebuildInventoryStocks(): RedirectResponse
+    {
+        $result = app(WarehouseStockRebuildService::class)->rebuildFromMovements();
+
+        return back()->with('flash', [
+            'type' => $result['warehouse_rows_updated'] > 0 || $result['warehouse_rows_created'] > 0 ? 'success' : 'info',
+            'message' => ($result['warehouse_rows_updated'] > 0 || $result['warehouse_rows_created'] > 0)
+                ? "Stok warehouse direbuild dari stock movement. {$result['warehouse_rows_updated']} baris diperbarui, {$result['warehouse_rows_created']} baris dibuat."
+                : 'Tidak ada perubahan stok warehouse. Data sudah sinkron dengan stock movement.',
         ]);
     }
 
@@ -397,6 +411,16 @@ class ERPAccountingUtilityController extends Controller
     private function inventoryReservationSyncSummary(): array
     {
         $summary = app(ProjectMaterialReservationService::class)->summarizeAllWarehouseReservations();
+
+        return [
+            ...$summary,
+            'can_run' => true,
+        ];
+    }
+
+    private function inventoryStockRebuildSummary(): array
+    {
+        $summary = app(WarehouseStockRebuildService::class)->summarizeFromMovements();
 
         return [
             ...$summary,

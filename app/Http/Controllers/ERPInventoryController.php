@@ -8,6 +8,7 @@ use App\Models\MasterProductWarehouseStock;
 use App\Models\ProductStockMovement;
 use App\Models\ProjectMaterial;
 use App\Services\ProjectMaterialReservationService;
+use App\Services\WarehouseStockRebuildService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -88,6 +89,18 @@ class ERPInventoryController extends Controller
         });
 
         $idsOnPage = collect($products->items())->pluck('id')->all();
+        $stockMismatch = $selectedWarehouseId
+            ? app(WarehouseStockRebuildService::class)->mismatchSummary($selectedWarehouseId, $idsOnPage)
+            : ['count' => 0, 'by_product' => []];
+
+        $products = $products->through(function (array $product) use ($stockMismatch) {
+            $mismatch = $stockMismatch['by_product'][$product['id']] ?? null;
+            $product['movement_mismatch'] = $mismatch !== null;
+            $product['movement_expected_qty'] = $mismatch['expected_qty'] ?? $product['stock'];
+            $product['movement_delta_qty'] = $mismatch['delta_qty'] ?? 0;
+
+            return $product;
+        });
 
         $reservedStocks = collect();
         $reservedBreakdownByProduct = collect();
@@ -151,6 +164,7 @@ class ERPInventoryController extends Controller
             ],
             'reserved_breakdown_by_product' => $reservedBreakdownByProduct,
             'batch_low_stock_alerts' => $this->stockProductsLowStockAlertBatchState(),
+            'stock_movement_mismatch' => $stockMismatch,
         ]);
     }
 

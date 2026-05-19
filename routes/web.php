@@ -128,6 +128,7 @@ Route::middleware('auth')->group(function () {
         Route::post('erp/accounting/utilities/backfill-cash-accounts', [ERPAccountingUtilityController::class, 'backfillCashAccountIds'])->name('erp.accounting.utilities.backfill-cash-accounts');
         Route::post('erp/accounting/utilities/reassign-cash-accounts', [ERPAccountingUtilityController::class, 'reassignCashAccounts'])->name('erp.accounting.utilities.reassign-cash-accounts');
         Route::post('erp/accounting/utilities/sync-inventory-reservations', [ERPAccountingUtilityController::class, 'syncInventoryReservations'])->name('erp.accounting.utilities.sync-inventory-reservations');
+        Route::post('erp/accounting/utilities/rebuild-inventory-stocks', [ERPAccountingUtilityController::class, 'rebuildInventoryStocks'])->name('erp.accounting.utilities.rebuild-inventory-stocks');
         Route::post('erp/accounting/mutasi-kas-bank', [CashBankTransferController::class, 'store'])->name('erp.accounting.cash-bank-transfer.store');
         Route::post('erp/accounting/inventaris', [AccountingInventoryController::class, 'store'])->name('erp.accounting.inventaris.store');
     });

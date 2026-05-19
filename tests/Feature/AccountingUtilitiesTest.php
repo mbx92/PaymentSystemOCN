@@ -10,6 +10,7 @@ use App\ERP\Inventory\Models\Warehouse;
 use App\Models\CashIn;
 use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
+use App\Models\ProductStockMovement;
 use App\Models\Project;
 use App\Models\ProjectMaterial;
 use App\Models\User;
@@ -378,6 +379,71 @@ class AccountingUtilitiesTest extends TestCase
             'master_product_id' => $product->id,
             'warehouse_id' => $warehouse->id,
             'reserved_qty' => '0.00',
+        ]);
+    }
+
+    public function test_accounting_utilities_can_rebuild_inventory_stock_from_movements(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $warehouse = Warehouse::query()->create([
+            'code' => 'WH-REBUILD',
+            'name' => 'Gudang Rebuild',
+            'is_active' => true,
+        ]);
+        $product = MasterProduct::query()->create([
+            'sku' => 'MAT-REBUILD-01',
+            'name' => 'Material Rebuild',
+            'category' => 'Material',
+            'uom' => 'pcs',
+            'sales_channel' => 'project',
+            'product_type' => MasterProduct::PRODUCT_TYPE_PROJECT_MATERIAL,
+            'status' => 'active',
+            'stock' => 0,
+        ]);
+
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 0,
+            'reserved_qty' => 0,
+        ]);
+
+        ProductStockMovement::query()->create([
+            'master_product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'movement_date' => '2026-05-19',
+            'movement_type' => 'opname_in',
+            'qty' => 7,
+            'note' => 'Opname masuk',
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.accounting.utilities'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Accounting/Utilities')
+                ->where('inventoryStockRebuild.warehouse_rows_updated', 1)
+                ->where('inventoryStockRebuild.total_qty_before', 0)
+                ->where('inventoryStockRebuild.total_qty_after', 7)
+                ->etc());
+
+        $this
+            ->actingAs($user)
+            ->post(route('erp.accounting.utilities.rebuild-inventory-stocks'))
+            ->assertSessionHasNoErrors()
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('master_product_warehouse_stocks', [
+            'master_product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => '7.00',
+        ]);
+        $this->assertDatabaseHas('master_products', [
+            'id' => $product->id,
+            'stock' => 7,
         ]);
     }
 

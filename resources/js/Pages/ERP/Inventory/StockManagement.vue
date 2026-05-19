@@ -13,6 +13,7 @@ const props = defineProps({
   reserved_alert: Object,
   reserved_breakdown_by_product: Object,
   batch_low_stock_alerts: { type: String, default: 'all_off' },
+  stock_movement_mismatch: Object,
 });
 
 const filters = reactive({
@@ -25,6 +26,7 @@ const filters = reactive({
 
 const selectedWarehouseId = computed(() => filters.warehouse_id || props.filters?.warehouse_id || '');
 const hasReservedStock = computed(() => (props.reserved_alert?.count ?? 0) > 0);
+const hasMovementMismatch = computed(() => (props.stock_movement_mismatch?.count ?? 0) > 0);
 const selectedReservedProduct = ref(null);
 const batchAlertForm = useForm({
   enabled: true,
@@ -159,6 +161,17 @@ const openReservedModal = (product) => {
         </div>
       </div>
 
+      <div v-if="hasMovementMismatch" class="alert alert-error shadow-sm">
+        <div class="space-y-1">
+          <p class="font-semibold">
+            Ada {{ props.stock_movement_mismatch.count }} produk di halaman ini yang qty warehouse-nya tidak sinkron dengan stock movement.
+          </p>
+          <p class="text-xs opacity-80">
+            Gunakan utility `Rebuild qty stock dari movement` di Accounting > Utilities > Inventory bila histori movement sudah lengkap.
+          </p>
+        </div>
+      </div>
+
       <div class="ocn-panel">
         <div class="ocn-panel__head">
           <h2 class="ocn-panel__title">Manajemen stok per warehouse</h2>
@@ -224,6 +237,7 @@ const openReservedModal = (product) => {
                 <th>On Hand</th>
                 <th>Reserved</th>
                 <th>Available</th>
+                <th>Cek Movement</th>
                 <th>Min Stok</th>
                 <th>Notif Rendah</th>
                 <th>Total Terjual</th>
@@ -244,6 +258,15 @@ const openReservedModal = (product) => {
                 <td><span class="badge badge-sm badge-ghost">{{ product.stock }}</span></td>
                 <td><span class="badge badge-sm" :class="product.reserved_qty > 0 ? 'badge-warning' : 'badge-ghost'">{{ product.reserved_qty }}</span></td>
                 <td><span class="badge badge-sm text-white" :class="availabilityBadgeClass(product)">{{ product.available_qty }}</span></td>
+                <td>
+                  <span
+                    class="badge badge-sm"
+                    :class="product.movement_mismatch ? 'badge-error' : 'badge-success'"
+                    :title="product.movement_mismatch ? `Qty movement ${product.movement_expected_qty}, selisih ${product.movement_delta_qty}` : 'Sinkron dengan stock movement'"
+                  >
+                    {{ product.movement_mismatch ? `Selisih ${product.movement_delta_qty}` : 'Sinkron' }}
+                  </span>
+                </td>
                 <td>
                   <input
                     v-model.number="getForm(product).min_stock"
@@ -267,7 +290,7 @@ const openReservedModal = (product) => {
                 <td><button class="btn btn-primary btn-xs" :disabled="getForm(product).processing" @click.stop="saveRow(product)">Simpan</button></td>
               </tr>
               <tr v-if="(products?.data || []).length === 0">
-                <td colspan="11" class="py-8 text-center text-base-content/50">
+                <td colspan="12" class="py-8 text-center text-base-content/50">
                   Tidak ada produk sesuai filter.
                 </td>
               </tr>

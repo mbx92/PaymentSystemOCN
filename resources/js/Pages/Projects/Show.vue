@@ -54,13 +54,14 @@ const materialForm = useForm({
 const materialWarehouseFilter = ref('');
 const materialSearch = ref('');
 const modalMaterialProducts = ref(props.material_products ?? []);
+const warehouseStocksCache = ref(props.warehouse_stocks ?? {});
 const materialProductsLoading = ref(false);
 let materialSearchTimer;
 let materialSearchRequestId = 0;
 
 const filteredMaterialProducts = computed(() => {
     if (!materialWarehouseFilter.value) return [];
-    const whStocks = props.warehouse_stocks?.[materialWarehouseFilter.value] ?? {};
+    const whStocks = warehouseStocksCache.value?.[materialWarehouseFilter.value] ?? {};
     const keyword = materialSearch.value.trim().toLowerCase();
     return modalMaterialProducts.value
         .map((p) => {
@@ -95,6 +96,21 @@ const loadMaterialProducts = async () => {
         const data = await response.json();
         if (requestId === materialSearchRequestId) {
             modalMaterialProducts.value = data.products ?? [];
+            if (materialWarehouseFilter.value) {
+                const nextWarehouseStocks = { ...(warehouseStocksCache.value ?? {}) };
+                const warehouseRows = { ...(nextWarehouseStocks[materialWarehouseFilter.value] ?? {}) };
+
+                for (const product of modalMaterialProducts.value) {
+                    if (product?.product_type === 'service') continue;
+                    warehouseRows[product.id] = {
+                        ...(warehouseRows[product.id] ?? {}),
+                        available: Number(product.available ?? 0),
+                    };
+                }
+
+                nextWarehouseStocks[materialWarehouseFilter.value] = warehouseRows;
+                warehouseStocksCache.value = nextWarehouseStocks;
+            }
         }
     } finally {
         if (requestId === materialSearchRequestId) {
@@ -125,7 +141,11 @@ const selectedMaterialProduct = computed(() =>
 const selectedProductAvailable = computed(() => {
     if (selectedMaterialProduct.value?.product_type === 'service') return null;
     if (!materialForm.master_product_id || !materialForm.warehouse_id) return 0;
-    const whStocks = props.warehouse_stocks?.[materialForm.warehouse_id] ?? {};
+    const selectedFromList = modalMaterialProducts.value.find((p) => p.id === materialForm.master_product_id);
+    if (selectedFromList && selectedFromList.available !== undefined && selectedFromList.available !== null) {
+        return Number(selectedFromList.available) || 0;
+    }
+    const whStocks = warehouseStocksCache.value?.[materialForm.warehouse_id] ?? {};
     const stock = whStocks[materialForm.master_product_id];
     return stock ? stock.available : 0;
 });

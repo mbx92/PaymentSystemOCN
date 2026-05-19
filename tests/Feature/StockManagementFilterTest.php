@@ -380,6 +380,48 @@ class StockManagementFilterTest extends TestCase
         $this->assertSame(1, ProductStockMovement::query()->count());
     }
 
+    public function test_stock_management_marks_products_with_movement_qty_mismatch(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $warehouse = Warehouse::query()->create([
+            'code' => 'WH-MM',
+            'name' => 'Gudang Mismatch',
+            'is_active' => true,
+        ]);
+        $product = $this->createProduct('MM-001', 'Produk Mismatch', 2);
+
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 0,
+            'reserved_qty' => 0,
+        ]);
+        ProductStockMovement::query()->create([
+            'master_product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'movement_date' => '2026-05-19',
+            'movement_type' => 'opname_in',
+            'qty' => 5,
+            'note' => 'Mismatch test',
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.inventory.stock-management', [
+                'warehouse_id' => $warehouse->id,
+            ]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Inventory/StockManagement')
+                ->where('stock_movement_mismatch.count', 1)
+                ->where('products.data.0.movement_mismatch', true)
+                ->where('products.data.0.movement_expected_qty', 5)
+                ->where('products.data.0.movement_delta_qty', 5)
+                ->etc());
+    }
+
     private function createProduct(string $sku, string $name, int $minStock, string $status = 'active'): MasterProduct
     {
         return MasterProduct::query()->create([

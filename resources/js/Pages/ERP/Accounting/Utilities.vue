@@ -18,6 +18,7 @@ const props = defineProps({
   cashAccountUsage: Array,
   cashAccountReassignment: Object,
   inventoryReservationSync: Object,
+  inventoryStockRebuild: Object,
 });
 
 const { formatDate } = useDateFormat();
@@ -28,6 +29,7 @@ const filters = reactive({
   date_to: props.filters?.date_to ?? '',
   q: props.filters?.q ?? '',
 });
+const activeTab = ref('journals');
 
 const selectedEntryIds = ref([]);
 const moveForm = useForm({
@@ -39,6 +41,7 @@ const correctionForm = useForm({
 });
 const backfillForm = useForm({});
 const inventoryReservationForm = useForm({});
+const inventoryStockRebuildForm = useForm({});
 const reassignForm = useForm({
   from_account_id: '',
   to_account_id: '',
@@ -59,6 +62,10 @@ const backfillConfirmMessage = computed(
 const inventoryReservationSummary = computed(() => props.inventoryReservationSync ?? {});
 const inventoryReservationConfirmMessage = computed(() =>
   `Sinkronkan ulang reserved stock? ${inventoryReservationSummary.value.warehouse_rows_updated ?? 0} baris gudang terdeteksi perlu diperbaiki.`,
+);
+const inventoryStockRebuildSummary = computed(() => props.inventoryStockRebuild ?? {});
+const inventoryStockRebuildConfirmMessage = computed(() =>
+  `Rebuild stok warehouse dari stock movement? ${inventoryStockRebuildSummary.value.warehouse_rows_updated ?? 0} baris akan diperbarui dan ${inventoryStockRebuildSummary.value.warehouse_rows_created ?? 0} baris akan dibuat.`,
 );
 
 const reassignPreview = computed(() => props.cashAccountReassignment ?? null);
@@ -192,6 +199,14 @@ const confirmInventoryReservationSync = () => {
   inventoryReservationForm.post(route('erp.accounting.utilities.sync-inventory-reservations'), { preserveScroll: true });
 };
 
+const openInventoryStockRebuildModal = () => {
+  document.getElementById('modal-confirm-rebuild-inventory-stocks')?.showModal();
+};
+
+const confirmInventoryStockRebuild = () => {
+  inventoryStockRebuildForm.post(route('erp.accounting.utilities.rebuild-inventory-stocks'), { preserveScroll: true });
+};
+
 const loadReassignPreview = () => {
   if (!reassignForm.from_account_id) {
     return;
@@ -250,7 +265,16 @@ const confirmCashAccountReassign = () => {
         </article>
       </div>
 
-      <div class="ocn-panel">
+      <div class="rounded-2xl border border-base-300 bg-base-100 p-2 shadow-sm">
+        <div class="tabs tabs-boxed grid grid-cols-2 gap-2 md:grid-cols-4">
+          <button type="button" class="tab tab-sm" :class="{ 'tab-active': activeTab === 'journals' }" @click="activeTab = 'journals'">Jurnal</button>
+          <button type="button" class="tab tab-sm" :class="{ 'tab-active': activeTab === 'cash' }" @click="activeTab = 'cash'">Kas/Bank</button>
+          <button type="button" class="tab tab-sm" :class="{ 'tab-active': activeTab === 'inventory' }" @click="activeTab = 'inventory'">Inventory</button>
+          <button type="button" class="tab tab-sm" :class="{ 'tab-active': activeTab === 'pos' }" @click="activeTab = 'pos'">POS COA</button>
+        </div>
+      </div>
+
+      <div v-show="activeTab === 'journals'" class="ocn-panel">
         <div class="ocn-panel__head">
           <h2 class="ocn-panel__title">Filter transaksi</h2>
         </div>
@@ -282,7 +306,7 @@ const confirmCashAccountReassign = () => {
         </div>
       </div>
 
-      <div class="ocn-panel">
+      <div v-show="activeTab === 'journals'" class="ocn-panel">
         <div class="ocn-panel__head flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 class="ocn-panel__title">Pindahkan transaksi accounting</h2>
@@ -360,7 +384,7 @@ const confirmCashAccountReassign = () => {
         />
       </div>
 
-      <div class="ocn-panel">
+      <div v-show="activeTab === 'cash'" class="ocn-panel">
         <div class="ocn-panel__head flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 class="ocn-panel__title">Lengkapi akun kas transaksi lama</h2>
@@ -435,7 +459,7 @@ const confirmCashAccountReassign = () => {
         </div>
       </div>
 
-      <div class="ocn-panel">
+      <div v-show="activeTab === 'inventory'" class="ocn-panel">
         <div class="ocn-panel__head flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 class="ocn-panel__title">Re-sync reserved stock inventory</h2>
@@ -479,7 +503,51 @@ const confirmCashAccountReassign = () => {
         </div>
       </div>
 
-      <div class="ocn-panel">
+      <div v-show="activeTab === 'inventory'" class="ocn-panel">
+        <div class="ocn-panel__head flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 class="ocn-panel__title">Rebuild qty stock dari movement</h2>
+            <p class="ocn-panel__desc mt-1">
+              Bangun ulang `qty` warehouse dari histori `stock movement`. Gunakan jika movement sudah ada tetapi angka stok di management stock masih salah.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="btn btn-warning btn-sm"
+            :disabled="((inventoryStockRebuildSummary.warehouse_rows_updated ?? 0) === 0 && (inventoryStockRebuildSummary.warehouse_rows_created ?? 0) === 0) || inventoryStockRebuildForm.processing"
+            @click="openInventoryStockRebuildModal"
+          >
+            {{ inventoryStockRebuildForm.processing ? 'Memproses...' : `Rebuild ${inventoryStockRebuildSummary.warehouse_rows_updated ?? 0} update` }}
+          </button>
+        </div>
+        <div class="card-body pt-0">
+          <div class="grid gap-3 md:grid-cols-4">
+            <div class="rounded-lg border border-base-300 bg-base-100 p-3">
+              <p class="text-xs uppercase tracking-wide text-base-content/50">Pair dicek</p>
+              <p class="mt-1 text-sm font-semibold">{{ inventoryStockRebuildSummary.warehouse_rows_checked ?? 0 }}</p>
+            </div>
+            <div class="rounded-lg border border-base-300 bg-base-100 p-3">
+              <p class="text-xs uppercase tracking-wide text-base-content/50">Perlu update</p>
+              <p class="mt-1 text-sm font-semibold">{{ inventoryStockRebuildSummary.warehouse_rows_updated ?? 0 }}</p>
+            </div>
+            <div class="rounded-lg border border-base-300 bg-base-100 p-3">
+              <p class="text-xs uppercase tracking-wide text-base-content/50">Row baru</p>
+              <p class="mt-1 text-sm font-semibold">{{ inventoryStockRebuildSummary.warehouse_rows_created ?? 0 }}</p>
+            </div>
+            <div class="rounded-lg border border-base-300 bg-base-100 p-3">
+              <p class="text-xs uppercase tracking-wide text-base-content/50">Total qty</p>
+              <p class="mt-1 text-sm font-semibold">
+                {{ inventoryStockRebuildSummary.total_qty_before ?? 0 }} -> {{ inventoryStockRebuildSummary.total_qty_after ?? 0 }}
+              </p>
+            </div>
+          </div>
+          <p class="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-base-content/70">
+            Gunakan hanya jika histori stock movement sudah lengkap. Utility ini menjadikan stock movement sebagai sumber kebenaran qty warehouse.
+          </p>
+        </div>
+      </div>
+
+      <div v-show="activeTab === 'cash'" class="ocn-panel">
         <div class="ocn-panel__head flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 class="ocn-panel__title">Pindahkan akun kas/bank salah</h2>
@@ -584,7 +652,7 @@ const confirmCashAccountReassign = () => {
         </div>
       </div>
 
-      <div class="ocn-panel">
+      <div v-show="activeTab === 'pos'" class="ocn-panel">
         <div class="ocn-panel__head flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 class="ocn-panel__title">Koreksi COA POS admin channel</h2>
@@ -699,6 +767,14 @@ const confirmCashAccountReassign = () => {
       confirm-text="Re-sync"
       confirm-class="btn-primary"
       @confirm="confirmInventoryReservationSync"
+    />
+    <ConfirmModal
+      id="modal-confirm-rebuild-inventory-stocks"
+      title="Rebuild qty stock dari movement"
+      :message="inventoryStockRebuildConfirmMessage"
+      confirm-text="Rebuild"
+      confirm-class="btn-warning"
+      @confirm="confirmInventoryStockRebuild"
     />
   </AppLayout>
 </template>

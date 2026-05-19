@@ -698,7 +698,9 @@ class ProjectController extends Controller
                     'sales_channel' => $product->sales_channel,
                     'product_type' => $product->product_type,
                     'selling_price' => (float) $product->selling_price,
-                    'available' => $product->isStockTracked() && $stock ? max((float) $stock->qty - (float) $stock->reserved_qty, 0) : null,
+                    'available' => $product->isStockTracked()
+                        ? ($stock ? max((float) $stock->qty - (float) $stock->reserved_qty, 0) : 0)
+                        : null,
                 ];
             })
             ->values();
