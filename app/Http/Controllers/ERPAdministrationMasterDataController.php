@@ -113,15 +113,17 @@ class ERPAdministrationMasterDataController extends Controller
 
     public function storeLandingSite(Request $request): RedirectResponse
     {
+        $request->merge([
+            'domain' => $this->normalizeLandingDomain((string) $request->input('domain')),
+        ]);
+
         $validated = $request->validate([
             'name' => 'required|string|max:120',
-            'domain' => 'required|string|max:190|unique:landing_sites,domain',
+            'domain' => ['required', 'string', 'max:190', Rule::unique('landing_sites', 'domain')],
             'layout_key' => 'required|string|in:toko,cctv,coming_soon,countdown',
             'warehouse_id' => 'nullable|exists:warehouses,id',
             'is_active' => 'required|boolean',
         ]);
-
-        $validated['domain'] = strtolower(trim((string) $validated['domain']));
 
         LandingSite::query()->create($validated);
 
@@ -130,15 +132,17 @@ class ERPAdministrationMasterDataController extends Controller
 
     public function updateLandingSite(Request $request, LandingSite $landingSite): RedirectResponse
     {
+        $request->merge([
+            'domain' => $this->normalizeLandingDomain((string) $request->input('domain')),
+        ]);
+
         $validated = $request->validate([
             'name' => 'required|string|max:120',
-            'domain' => 'required|string|max:190|unique:landing_sites,domain,'.$landingSite->id,
+            'domain' => ['required', 'string', 'max:190', Rule::unique('landing_sites', 'domain')->ignore($landingSite->id)],
             'layout_key' => 'required|string|in:toko,cctv,coming_soon,countdown',
             'warehouse_id' => 'nullable|exists:warehouses,id',
             'is_active' => 'required|boolean',
         ]);
-
-        $validated['domain'] = strtolower(trim((string) $validated['domain']));
 
         $landingSite->update($validated);
 
@@ -156,6 +160,7 @@ class ERPAdministrationMasterDataController extends Controller
                 'headline' => $landingSite->page?->headline ?? '',
                 'subheadline' => $landingSite->page?->subheadline ?? '',
                 'body' => $landingSite->page?->body ?? '',
+                'countdown_at' => $landingSite->page?->countdown_at?->format('Y-m-d\TH:i'),
                 'primary_cta_text' => $landingSite->page?->primary_cta_text ?? '',
                 'primary_cta_url' => $landingSite->page?->primary_cta_url ?? '',
                 'secondary_cta_text' => $landingSite->page?->secondary_cta_text ?? '',
@@ -174,6 +179,7 @@ class ERPAdministrationMasterDataController extends Controller
             'headline' => 'nullable|string|max:190',
             'subheadline' => 'nullable|string|max:255',
             'body' => 'nullable|string|max:4000',
+            'countdown_at' => 'nullable|date',
             'primary_cta_text' => 'nullable|string|max:80',
             'primary_cta_url' => 'nullable|string|max:500',
             'secondary_cta_text' => 'nullable|string|max:80',
@@ -190,6 +196,7 @@ class ERPAdministrationMasterDataController extends Controller
                 'headline' => trim((string) ($validated['headline'] ?? '')) ?: null,
                 'subheadline' => trim((string) ($validated['subheadline'] ?? '')) ?: null,
                 'body' => trim((string) ($validated['body'] ?? '')) ?: null,
+                'countdown_at' => $validated['countdown_at'] ?? null,
                 'primary_cta_text' => trim((string) ($validated['primary_cta_text'] ?? '')) ?: null,
                 'primary_cta_url' => trim((string) ($validated['primary_cta_url'] ?? '')) ?: null,
                 'secondary_cta_text' => trim((string) ($validated['secondary_cta_text'] ?? '')) ?: null,
@@ -202,6 +209,23 @@ class ERPAdministrationMasterDataController extends Controller
         );
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Konten landing page berhasil disimpan.']);
+    }
+
+    private function normalizeLandingDomain(string $domain): string
+    {
+        $normalized = strtolower(trim($domain));
+        $normalized = preg_replace('#^https?://#', '', $normalized) ?? $normalized;
+        $normalized = preg_replace('#/.*$#', '', $normalized) ?? $normalized;
+        $normalized = preg_replace('/:\d+$/', '', $normalized) ?? $normalized;
+
+        if ($normalized !== '' && ! str_contains($normalized, '://')) {
+            $parsedHost = parse_url('http://'.$normalized, PHP_URL_HOST);
+            if (is_string($parsedHost) && $parsedHost !== '') {
+                $normalized = $parsedHost;
+            }
+        }
+
+        return trim($normalized, ". \t\n\r\0\x0B");
     }
 
     public function parserRules(Request $request): Response

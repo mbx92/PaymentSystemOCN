@@ -29,7 +29,7 @@ class PublicHomeController extends Controller
 
             return Inertia::render('Public/LandingCountdown', [
                 'landing' => $this->landingPayload($landing, $host, 'OCNetworks'),
-                'countdownAt' => (string) config('app.ocnetworks_launch_at'),
+                'countdownAt' => $this->resolveCountdownAt($landing),
             ]);
         }
 
@@ -45,7 +45,7 @@ class PublicHomeController extends Controller
 
             return Inertia::render($page, [
                 'landing' => $this->landingPayload($landing, $host),
-                ...( $page === 'Public/LandingCountdown' ? ['countdownAt' => (string) config('app.ocnetworks_launch_at')] : [] ),
+                ...($page === 'Public/LandingCountdown' ? ['countdownAt' => $this->resolveCountdownAt($landing)] : []),
             ]);
         }
 
@@ -61,6 +61,12 @@ class PublicHomeController extends Controller
         $host = strtolower($request->getHost());
 
         return preg_replace('/:\d+$/', '', $host);
+    }
+
+    private function resolveCountdownAt(?LandingSite $landing): string
+    {
+        return $landing?->page?->countdown_at?->toIso8601String()
+            ?? (string) config('app.ocnetworks_launch_at');
     }
 
     /**

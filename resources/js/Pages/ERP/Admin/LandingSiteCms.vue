@@ -13,6 +13,7 @@ const form = useForm({
   headline: props.pageContent?.headline ?? '',
   subheadline: props.pageContent?.subheadline ?? '',
   body: props.pageContent?.body ?? '',
+  countdown_at: props.pageContent?.countdown_at ?? '',
   primary_cta_text: props.pageContent?.primary_cta_text ?? '',
   primary_cta_url: props.pageContent?.primary_cta_url ?? '',
   secondary_cta_text: props.pageContent?.secondary_cta_text ?? '',
@@ -77,6 +78,13 @@ const submit = () => {
             <label class="label"><span class="label-text">Body</span></label>
             <textarea v-model="form.body" class="textarea textarea-bordered w-full" rows="4" placeholder="Deskripsi utama landing" />
             <p v-if="form.errors.body" class="text-xs text-error mt-1">{{ form.errors.body }}</p>
+          </div>
+
+          <div>
+            <label class="label"><span class="label-text">Countdown At</span></label>
+            <input v-model="form.countdown_at" type="datetime-local" class="input input-bordered w-full" />
+            <p class="mt-1 text-xs text-base-content/60">Dipakai saat layout landing memakai mode countdown. Kosongkan untuk memakai default global aplikasi.</p>
+            <p v-if="form.errors.countdown_at" class="text-xs text-error mt-1">{{ form.errors.countdown_at }}</p>
           </div>
 
           <div class="grid gap-4 md:grid-cols-2">

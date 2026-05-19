@@ -12,6 +12,7 @@ class LandingSitePage extends Model
         'headline',
         'subheadline',
         'body',
+        'countdown_at',
         'primary_cta_text',
         'primary_cta_url',
         'secondary_cta_text',
@@ -26,6 +27,7 @@ class LandingSitePage extends Model
     {
         return [
             'landing_site_id' => 'int',
+            'countdown_at' => 'datetime',
             'is_published' => 'bool',
         ];
     }
