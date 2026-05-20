@@ -8,6 +8,8 @@ use App\ERP\Accounting\Models\JournalEntry;
 use App\Models\CashIn;
 use App\Models\PaymentMethod;
 use App\Models\Project;
+use App\Models\ProjectBudget;
+use App\Models\ProjectBudgetItem;
 use App\Models\ProjectPayment;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -70,6 +72,66 @@ class ProjectInvoicePaymentAccountingTest extends TestCase
             'account_id' => $revenue->id,
             'debit' => '0.00',
             'credit' => '500000.00',
+        ]);
+    }
+
+    public function test_project_invoice_payment_uses_budget_items_amount_when_project_total_value_is_zero(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $cash = $this->cashAccount('1002', 'Bank BCA');
+        $revenue = $this->account('4003', 'Pendapatan Project', 'revenue', 'credit');
+
+        CoaSetting::query()->create(['key' => 'project_invoice_cash_account', 'account_id' => $cash->id]);
+        CoaSetting::query()->create(['key' => 'project_invoice_revenue_account', 'account_id' => $revenue->id]);
+
+        $paymentMethod = PaymentMethod::query()->create([
+            'code' => 'transfer',
+            'name' => 'Transfer',
+            'status' => 'active',
+        ]);
+
+        $project = Project::query()->create([
+            'name' => 'Project Budget Based Invoice',
+            'client_name' => 'Client',
+            'total_value' => 0,
+            'status' => 'selesai',
+            'finished_at' => '2026-05-17',
+        ]);
+
+        $budget = ProjectBudget::query()->create([
+            'name' => 'Budget Project Budget Based Invoice',
+            'client_name' => 'Client',
+            'status' => 'deal',
+            'converted_project_id' => $project->id,
+        ]);
+
+        ProjectBudgetItem::query()->create([
+            'project_budget_id' => $budget->id,
+            'item_type' => 'service',
+            'name' => 'Implementasi Sistem',
+            'uom' => 'paket',
+            'qty' => 1,
+            'unit_price' => 1500000,
+            'sort_order' => 1,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->post(route('erp.sales.project-invoices.payments.store', $project), [
+                'amount' => 500000,
+                'date' => '2026-05-17',
+                'payment_method_id' => $paymentMethod->id,
+                'cash_account_id' => $cash->id,
+                'note' => 'Pembayaran invoice tanpa termin eksplisit',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('cash_in', [
+            'project_id' => $project->id,
+            'amount' => '500000.00',
         ]);
     }
 

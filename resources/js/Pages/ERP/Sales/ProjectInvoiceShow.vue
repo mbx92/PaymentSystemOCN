@@ -121,7 +121,7 @@ const downloadReceipt = (payment) => window.open(route('erp.sales.project-invoic
             <button class="btn btn-outline btn-sm" @click="downloadInvoice">Download Invoice</button>
             <button class="btn btn-outline btn-sm" @click="downloadSalesNote">Download Nota Penjualan</button>
             <button class="btn btn-primary btn-sm" :disabled="invoice.remaining_amount <= 0" @click="openPaymentModal">Tambah Pembayaran</button>
-            <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.sales.project-invoices')">
+            <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.accounting.payments')">
             <ArrowLeftIcon class="h-4 w-4" />
             Back
           </Link>

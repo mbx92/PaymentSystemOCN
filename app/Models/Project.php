@@ -99,11 +99,13 @@ class Project extends Model
      */
     public function resolveListTotalValue(): float
     {
+        $this->loadMissing(['convertedBudget.items', 'materials.product']);
+
         if ((float) $this->total_value > 0) {
             return (float) $this->total_value;
         }
 
-        $budget = $this->relationLoaded('convertedBudget') ? $this->convertedBudget : null;
+        $budget = $this->convertedBudget;
 
         if ($budget) {
             $items = $budget->relationLoaded('items') ? $budget->items : collect();
@@ -123,14 +125,12 @@ class Project extends Model
             }
         }
 
-        if ($this->relationLoaded('materials')) {
-            $fromMaterials = (float) $this->materials->sum(
-                fn ($material) => (float) $material->planned_qty * (float) $material->unit_price
-            );
+        $fromMaterials = (float) $this->materials->sum(
+            fn ($material) => (float) $material->planned_qty * (float) $material->unit_price
+        );
 
-            if ($fromMaterials > 0) {
-                return $fromMaterials;
-            }
+        if ($fromMaterials > 0) {
+            return $fromMaterials;
         }
 
         return 0.0;

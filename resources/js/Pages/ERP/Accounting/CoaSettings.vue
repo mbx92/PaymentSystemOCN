@@ -2,6 +2,7 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
+import { computed, ref } from 'vue';
 
 const props = defineProps({
   settings: Array,
@@ -60,11 +61,34 @@ const submitCategory = () => {
 };
 
 const defaultsForm = useForm({});
-const openDefaultsModal = () => document.getElementById('modal-apply-defaults')?.showModal();
+const defaultsConfirmation = ref('');
+const defaultsConfirmationError = ref('');
+const isDefaultsConfirmationValid = computed(() => defaultsConfirmation.value === 'CONFIRM');
+
+const resetDefaultsConfirmation = () => {
+  defaultsConfirmation.value = '';
+  defaultsConfirmationError.value = '';
+};
+
+const openDefaultsModal = () => {
+  resetDefaultsConfirmation();
+  document.getElementById('modal-apply-defaults')?.showModal();
+};
+
+const closeDefaultsModal = () => {
+  resetDefaultsConfirmation();
+  document.getElementById('modal-apply-defaults')?.close();
+};
+
 const applyDefaults = () => {
+  if (!isDefaultsConfirmationValid.value) {
+    defaultsConfirmationError.value = 'Ketik CONFIRM dengan huruf besar untuk membuka tombol terapkan.';
+    return;
+  }
+
   defaultsForm.post(route('erp.accounting.coa-settings.apply-defaults'), {
     preserveScroll: true,
-    onSuccess: () => document.getElementById('modal-apply-defaults')?.close(),
+    onSuccess: () => closeDefaultsModal(),
   });
 };
 
@@ -202,7 +226,7 @@ const domainTitle = (domain) => (domain === 'cash_in' ? 'Kas Masuk' : 'Kas Kelua
       </div>
     </div>
 
-    <dialog id="modal-apply-defaults" class="modal">
+    <dialog id="modal-apply-defaults" class="modal" @close="resetDefaultsConfirmation">
       <div class="modal-box max-w-lg">
         <h3 class="font-bold text-lg">Terapkan Standar Akuntansi</h3>
         <div class="mt-4 space-y-3 text-sm">
@@ -219,12 +243,26 @@ const domainTitle = (domain) => (domain === 'cash_in' ? 'Kas Masuk' : 'Kas Kelua
           <div class="rounded-lg bg-warning/10 border border-warning/30 p-3">
             <p class="text-warning text-xs font-medium">Pengaturan yang sudah Anda ubah secara manual akan di-overwrite.</p>
           </div>
+          <div class="rounded-lg border border-base-300 bg-base-200/60 p-3">
+            <label class="label px-0 pt-0">
+              <span class="label-text text-xs font-semibold uppercase tracking-[0.16em]">Validasi Konfirmasi</span>
+            </label>
+            <p class="text-xs text-base-content/70">Untuk membuka tombol terapkan, ketik <span class="font-mono font-semibold">CONFIRM</span> dengan huruf besar.</p>
+            <input
+              v-model="defaultsConfirmation"
+              type="text"
+              class="input input-bordered input-sm mt-3 w-full font-mono"
+              placeholder="Ketik CONFIRM"
+              @input="defaultsConfirmationError = ''"
+            />
+            <p v-if="defaultsConfirmationError" class="mt-2 text-xs text-error">{{ defaultsConfirmationError }}</p>
+          </div>
         </div>
         <div class="modal-action">
-          <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
-          <button class="btn btn-primary" :disabled="defaultsForm.processing" @click="applyDefaults">
+          <button type="button" class="btn btn-ghost" @click="closeDefaultsModal">Batal</button>
+          <button class="btn btn-primary" :disabled="defaultsForm.processing || !isDefaultsConfirmationValid" @click="applyDefaults">
             <span v-if="defaultsForm.processing" class="loading loading-spinner loading-sm"></span>
-            Terapkan Semua
+            Terapkan Pengaturan
           </button>
         </div>
       </div>
@@ -268,4 +306,3 @@ const domainTitle = (domain) => (domain === 'cash_in' ? 'Kas Masuk' : 'Kas Kelua
     </dialog>
   </AppLayout>
 </template>
-
