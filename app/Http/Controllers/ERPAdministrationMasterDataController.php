@@ -6,8 +6,10 @@ use App\ERP\Core\Models\DocumentSequence;
 use App\ERP\Inventory\Models\Warehouse;
 use App\ERP\Purchasing\Models\GoodsReceiptLine;
 use App\ERP\Purchasing\Models\PurchaseOrderLine;
+use App\Exports\CrmCustomerImportTemplateExport;
 use App\Exports\MasterProductImportTemplateExport;
 use App\Exports\ProjectImportTemplateExport;
+use App\Imports\CrmCustomersImport;
 use App\Imports\MasterProductsImport;
 use App\Imports\ProjectsImport;
 use App\Models\ErpChatParserRule;
@@ -847,7 +849,7 @@ class ERPAdministrationMasterDataController extends Controller
     public function dataImport(Request $request): Response
     {
         $tab = $request->string('tab')->toString();
-        if (! in_array($tab, ['products', 'projects', 'seeders', 'backup'], true)) {
+        if (! in_array($tab, ['products', 'projects', 'customers', 'seeders', 'backup'], true)) {
             $tab = 'products';
         }
 
@@ -1210,6 +1212,11 @@ class ERPAdministrationMasterDataController extends Controller
         return Excel::download(new MasterProductImportTemplateExport, 'template-import-produk-master.xlsx');
     }
 
+    public function downloadCrmCustomerImportTemplate()
+    {
+        return Excel::download(new CrmCustomerImportTemplateExport, 'template-import-customer.xlsx');
+    }
+
     public function downloadProjectImportTemplate()
     {
         return Excel::download(new ProjectImportTemplateExport, 'template-import-project.xlsx');
@@ -1283,6 +1290,32 @@ class ERPAdministrationMasterDataController extends Controller
                 'import_errors' => $import->errors,
                 'imported_count' => $import->imported,
                 'import_kind' => 'projects',
+            ]);
+    }
+
+    public function importCrmCustomers(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:xlsx,xls,csv|max:10240',
+        ]);
+
+        $import = new CrmCustomersImport;
+        Excel::import($import, $request->file('file'));
+
+        $errCount = count($import->errors);
+        $msg = "Impor customer selesai: {$import->imported} baris disimpan.";
+        if ($errCount > 0) {
+            $msg .= " {$errCount} baris dilewati (lihat detail di bawah).";
+        }
+
+        return redirect()
+            ->route('erp.admin.data-import', ['tab' => 'customers'])
+            ->with('flash', [
+                'type' => $errCount && $import->imported === 0 ? 'error' : ($errCount ? 'warning' : 'success'),
+                'message' => $msg,
+                'import_errors' => $import->errors,
+                'imported_count' => $import->imported,
+                'import_kind' => 'customers',
             ]);
     }
 

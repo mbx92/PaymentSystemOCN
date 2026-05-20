@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, nextTick } from 'vue';
+import { ref, computed, nextTick, watch } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import {
     HomeIcon, CodeBracketIcon, ArrowDownCircleIcon, ArrowUpCircleIcon, ChartBarIcon,
@@ -13,15 +13,29 @@ import {
     GlobeAltIcon,
     ShareIcon,
     CalendarDaysIcon,
+    ChevronDoubleLeftIcon,
+    ChevronDoubleRightIcon,
 } from '@heroicons/vue/24/outline';
 import FlashMessage from '@/Components/FlashMessage.vue';
 
+const SIDEBAR_COLLAPSE_STORAGE_KEY = 'ocn_sidebar_collapsed';
 const page = usePage();
 const auth = computed(() => page.props.auth);
 const flash = computed(() => page.props.flash);
 const inventoryAlerts = computed(() => page.props.inventoryAlerts ?? { lowStockCount: 0, lowStockItems: [] });
 const erpSetting = computed(() => page.props.erpSetting ?? {});
+const uiPreferences = computed(() => page.props.uiPreferences ?? { module_menu_orders: {} });
 const sidebarOpen = ref(false);
+const readSidebarCollapsedPreference = () => {
+    try {
+        return localStorage.getItem(SIDEBAR_COLLAPSE_STORAGE_KEY) === 'true';
+    } catch {
+        return false;
+    }
+};
+const desktopSidebarCollapsed = ref(readSidebarCollapsedPreference());
+const hoveredSidebarItem = ref(null);
+const hoveredSidebarPosition = ref({ x: 0, y: 0 });
 const showAlertDropdown = ref(false);
 const chatPanelOpen = ref(false);
 const chatInput = ref('');
@@ -323,71 +337,120 @@ const sendChatMessage = async (overrideText = null) => {
         scrollChatToBottom();
     }
 };
+
+const toggleDesktopSidebar = () => {
+    desktopSidebarCollapsed.value = !desktopSidebarCollapsed.value;
+    hoveredSidebarItem.value = null;
+    try {
+        localStorage.setItem(SIDEBAR_COLLAPSE_STORAGE_KEY, desktopSidebarCollapsed.value ? 'true' : 'false');
+    } catch {
+        // ignore storage access issues
+    }
+};
+
+const handleSidebarItemMouseEnter = (itemName, event) => {
+    if (!desktopSidebarCollapsed.value) return;
+    hoveredSidebarItem.value = itemName;
+    hoveredSidebarPosition.value = {
+        x: event.clientX + 14,
+        y: event.clientY,
+    };
+};
+
+const handleSidebarItemMouseMove = (event) => {
+    if (!desktopSidebarCollapsed.value || !hoveredSidebarItem.value) return;
+    hoveredSidebarPosition.value = {
+        x: event.clientX + 14,
+        y: event.clientY,
+    };
+};
+
+const handleSidebarItemMouseLeave = () => {
+    hoveredSidebarItem.value = null;
+};
 </script>
 
 <template>
     <div class="min-h-screen ocn-shell">
-        <div v-if="sidebarOpen" class="fixed inset-0 z-40 bg-black/50 lg:hidden" @click="sidebarOpen = false" />
+        <div v-if="sidebarOpen" class="fixed inset-0 z-40 bg-black/50 md:hidden" @click="sidebarOpen = false" />
 
         <aside
-            :class="['fixed inset-y-0 left-0 z-50 w-72 ocn-sidebar flex flex-col transition-transform duration-300',
-                sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0']"
+            :class="['fixed inset-y-0 left-0 z-50 ocn-sidebar flex flex-col transition-all duration-300',
+                desktopSidebarCollapsed ? 'w-20' : 'w-72',
+                sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0']"
         >
-            <div class="flex items-center gap-3 px-6 py-5 border-b border-white/10">
-                <div v-if="erpSetting?.app_logo_url" class="w-10 h-10 rounded-xl overflow-hidden bg-white/95 flex items-center justify-center p-1">
+            <div :class="['flex items-center border-b border-white/10 py-5', desktopSidebarCollapsed ? 'justify-center px-3' : 'gap-3 px-6']">
+                <div v-if="erpSetting?.app_logo_url" class="h-10 w-10 rounded-xl overflow-hidden bg-white/95 flex items-center justify-center p-1">
                     <img :src="erpSetting.app_logo_url" alt="Logo" class="w-full h-full object-contain">
                 </div>
-                <div v-else class="w-10 h-10 ocn-brand-mark text-white rounded-xl flex items-center justify-center">
+                <div v-else class="h-10 w-10 ocn-brand-mark text-white rounded-xl flex items-center justify-center">
                     <span class="font-bold text-sm">ERP</span>
                 </div>
-                <div>
+                <div v-if="!desktopSidebarCollapsed">
                     <span class="block font-bold text-lg tracking-tight text-white leading-none">{{ erpSetting?.app_name || 'OCN ERP Suite' }}</span>
                     <span class="block text-xs text-slate-400 mt-1">{{ erpSetting?.app_tagline || 'Integrated Business Platform' }}</span>
                 </div>
-                <button class="ml-auto lg:hidden text-slate-300" @click="sidebarOpen = false">
+                <button class="ml-auto md:hidden text-slate-300" @click="sidebarOpen = false">
                     <XMarkIcon class="w-5 h-5" />
                 </button>
             </div>
 
-            <nav class="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+            <nav :class="['flex-1 overflow-y-auto py-6 space-y-4', desktopSidebarCollapsed ? 'px-2' : 'px-4']">
                 <div v-for="module in sidebarModules" :key="module.title" class="space-y-1.5">
-                    <p class="px-3 mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">{{ module.title }}</p>
+                    <p v-if="!desktopSidebarCollapsed" class="px-3 mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">{{ module.title }}</p>
                     <template v-for="item in module.items" :key="item.name">
                         <Link
                             :href="item.href"
-                            :class="['flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all',
+                            :title="desktopSidebarCollapsed ? item.name : null"
+                            :class="['flex items-center rounded-xl text-sm font-semibold transition-all',
+                                desktopSidebarCollapsed ? 'justify-center px-2 py-3' : 'gap-3 px-3 py-2.5',
                                 isActive(item.href) ? 'ocn-nav-active' : 'ocn-nav-item']"
+                            @mouseenter="handleSidebarItemMouseEnter(item.name, $event)"
+                            @mousemove="handleSidebarItemMouseMove($event)"
+                            @mouseleave="handleSidebarItemMouseLeave"
                             @click="sidebarOpen = false"
                         >
                             <component :is="item.icon" class="w-5 h-5 shrink-0 stroke-2" />
-                            {{ item.name }}
+                            <span v-if="!desktopSidebarCollapsed">{{ item.name }}</span>
                         </Link>
                     </template>
                 </div>
             </nav>
 
-            <div class="border-t border-white/10 p-4">
-                <div class="flex items-center gap-3 rounded-2xl bg-white/6 p-3 ring-1 ring-white/10">
+            <div :class="['border-t border-white/10', desktopSidebarCollapsed ? 'p-2' : 'p-4']">
+                <div :class="['rounded-2xl bg-white/6 ring-1 ring-white/10', desktopSidebarCollapsed ? 'p-2' : 'flex items-center gap-3 p-3']">
                     <div class="avatar placeholder">
                         <div class="w-9 h-9 rounded-full bg-white/10 text-white ring-1 ring-white/20 flex items-center justify-center">
                             <span class="text-sm font-bold">{{ auth?.user?.name?.charAt(0) }}</span>
                         </div>
                     </div>
-                    <div class="flex-1 min-w-0">
+                    <div v-if="!desktopSidebarCollapsed" class="flex-1 min-w-0">
                         <p class="text-sm font-semibold text-white truncate">{{ auth?.user?.name }}</p>
                         <span class="text-xs text-slate-400 capitalize">{{ auth?.user?.role }}</span>
                     </div>
-                    <Link :href="route('logout')" method="post" as="button" class="btn btn-ghost btn-xs text-slate-300 hover:text-white hover:bg-white/10">
+                    <Link :href="route('logout')" method="post" as="button" :class="['btn btn-ghost btn-xs text-slate-300 hover:text-white hover:bg-white/10', desktopSidebarCollapsed ? 'mt-2 flex w-full justify-center' : '']">
                         <ArrowRightOnRectangleIcon class="w-4 h-4" />
                     </Link>
                 </div>
             </div>
         </aside>
 
-        <div class="lg:pl-72 flex flex-col min-h-screen">
+        <div
+            v-if="desktopSidebarCollapsed && hoveredSidebarItem"
+            class="pointer-events-none fixed z-[70] -translate-y-1/2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-xl"
+            :style="{ left: `${hoveredSidebarPosition.x}px`, top: `${hoveredSidebarPosition.y}px` }"
+        >
+            {{ hoveredSidebarItem }}
+        </div>
+
+        <div :class="[desktopSidebarCollapsed ? 'md:pl-20' : 'md:pl-72', 'flex flex-col min-h-screen transition-all duration-300']">
             <header class="sticky top-0 z-30 ocn-topbar px-4 py-3 flex items-center gap-4">
-                <button class="btn btn-ghost btn-sm lg:hidden" @click="sidebarOpen = true">
+                <button class="btn btn-ghost btn-sm md:hidden" @click="sidebarOpen = true">
                     <Bars3Icon class="w-5 h-5" />
+                </button>
+                <button class="btn btn-ghost btn-sm hidden md:inline-flex" @click="toggleDesktopSidebar">
+                    <ChevronDoubleRightIcon v-if="desktopSidebarCollapsed" class="w-5 h-5" />
+                    <ChevronDoubleLeftIcon v-else class="w-5 h-5" />
                 </button>
                 <div class="hidden md:block">
                     <p class="text-xs uppercase tracking-[0.16em] font-bold text-primary/70">{{ topbarContext.label }}</p>

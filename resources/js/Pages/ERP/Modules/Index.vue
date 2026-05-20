@@ -34,10 +34,11 @@ import {
   Cog6ToothIcon,
   WrenchScrewdriverIcon,
 } from '@heroicons/vue/24/outline';
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 const props = defineProps({
   module: String,
+  moduleKey: String,
   menus: Array,
 });
 
@@ -76,13 +77,59 @@ const iconMap = {
 
 const iconFor = (menu) => iconMap[menu.icon] ?? Squares2X2Icon;
 const menuLayout = computed(() => page.props.erpSetting?.module_menu_layout ?? 'grid');
-const workspaceMenus = computed(() =>
-  (props.menus ?? []).map((menu) => ({
-    ...menu,
-    href: menu.url ?? route(menu.route),
-    iconComponent: iconFor(menu),
-  })),
+const localOrder = ref([]);
+
+const defaultOrder = computed(() => (props.menus ?? []).map((menu) => menu.key));
+const savedOrder = computed(() => page.props.uiPreferences?.module_menu_orders?.[props.moduleKey] ?? []);
+const normalizedOrder = (source) => {
+  const defaultKeys = defaultOrder.value;
+  const filtered = [];
+
+  for (const key of source ?? []) {
+    if (!defaultKeys.includes(key) || filtered.includes(key)) continue;
+    filtered.push(key);
+  }
+
+  for (const key of defaultKeys) {
+    if (!filtered.includes(key)) filtered.push(key);
+  }
+
+  return filtered;
+};
+
+watch(
+  () => [props.moduleKey, props.menus, savedOrder.value],
+  () => {
+    localOrder.value = normalizedOrder(savedOrder.value);
+  },
+  { immediate: true, deep: true },
 );
+
+const workspaceMenus = computed(() => {
+  const keyedMenus = new Map(
+    (props.menus ?? []).map((menu) => [menu.key, {
+      ...menu,
+      href: menu.url ?? route(menu.route),
+      iconComponent: iconFor(menu),
+    }]),
+  );
+
+  return normalizedOrder(localOrder.value).map((key) => keyedMenus.get(key)).filter(Boolean);
+});
+
+const hasCustomOrder = computed(() => JSON.stringify(localOrder.value) !== JSON.stringify(defaultOrder.value));
+
+const saveModuleMenuOrder = async (order) => {
+  localOrder.value = normalizedOrder(order);
+  await window.axios.patch(route('ui.preferences.update'), {
+    module_menu_order: {
+      module: props.moduleKey,
+      order: localOrder.value,
+    },
+  });
+};
+
+const resetOrder = () => saveModuleMenuOrder(defaultOrder.value);
 </script>
 
 <template>
@@ -93,22 +140,35 @@ const workspaceMenus = computed(() =>
         <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">ERP Module</p>
         <div class="mt-2 flex items-center justify-between gap-3">
           <h1 class="text-3xl font-bold tracking-tight">{{ module }}</h1>
-          <Link class="btn btn-ghost btn-sm gap-1.5" :href="route('dashboard')">
-            <ArrowLeftIcon class="h-4 w-4" />
-            Back
-          </Link>
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              v-if="workspaceMenus.length > 1"
+              type="button"
+              class="btn btn-outline btn-sm"
+              :disabled="!hasCustomOrder"
+              @click="resetOrder"
+            >
+              Reset urutan
+            </button>
+            <Link class="btn btn-ghost btn-sm gap-1.5" :href="route('dashboard')">
+              <ArrowLeftIcon class="h-4 w-4" />
+              Back
+            </Link>
+          </div>
         </div>
         <p class="mt-2 text-sm text-base-content/70">
-          Pilih submenu {{ module }} untuk lanjut ke workflow operasional.
+          Pilih submenu {{ module }} untuk lanjut ke workflow operasional. Seret card untuk mengatur urutan sesuai preferensi Anda.
         </p>
       </div>
 
       <WorkspaceMenuCollection
         :menus="workspaceMenus"
         :layout="menuLayout"
+        :reorderable="workspaceMenus.length > 1"
         empty-message="Belum ada submenu yang tersedia untuk modul ini."
         action-label="Open menu"
         action-new-tab-label="Open menu (New Tab)"
+        @reorder="saveModuleMenuOrder"
       />
     </div>
   </AppLayout>

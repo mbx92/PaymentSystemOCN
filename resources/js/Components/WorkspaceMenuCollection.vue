@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { Link } from '@inertiajs/vue3';
 import { ArrowTopRightOnSquareIcon, ChevronRightIcon } from '@heroicons/vue/24/outline';
 
@@ -24,9 +24,15 @@ const props = defineProps({
         type: String,
         default: 'Open menu (New Tab)',
     },
+    reorderable: {
+        type: Boolean,
+        default: false,
+    },
 });
+const emit = defineEmits(['reorder']);
 
 const resolvedLayout = computed(() => (props.layout === 'list' ? 'list' : 'grid'));
+const draggedKey = ref(null);
 
 const normalizedMenus = computed(() =>
     (props.menus ?? [])
@@ -36,6 +42,36 @@ const normalizedMenus = computed(() =>
         }))
         .filter((menu) => menu.href && menu.href !== '#'),
 );
+
+const handleDragStart = (event, menuKey) => {
+    if (!props.reorderable || !menuKey) return;
+
+    draggedKey.value = menuKey;
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', menuKey);
+};
+
+const handleDrop = (targetKey) => {
+    if (!props.reorderable || !draggedKey.value || draggedKey.value === targetKey) {
+        draggedKey.value = null;
+        return;
+    }
+
+    const currentOrder = normalizedMenus.value.map((menu) => menu.key);
+    const fromIndex = currentOrder.indexOf(draggedKey.value);
+    const toIndex = currentOrder.indexOf(targetKey);
+
+    if (fromIndex === -1 || toIndex === -1) {
+        draggedKey.value = null;
+        return;
+    }
+
+    const reordered = [...currentOrder];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+    emit('reorder', reordered);
+    draggedKey.value = null;
+};
 
 const linkAttrs = (menu) => (
     menu.newTab
@@ -61,9 +97,13 @@ const linkAttrs = (menu) => (
         <component
             :is="menu.newTab ? 'a' : Link"
             v-for="menu in normalizedMenus"
-            :key="`${menu.title}-${menu.href}`"
+            :key="menu.key ?? `${menu.title}-${menu.href}`"
             v-bind="linkAttrs(menu)"
+            :draggable="reorderable"
             class="group relative flex min-h-[210px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md"
+            @dragstart="handleDragStart($event, menu.key)"
+            @dragover.prevent
+            @drop.prevent="handleDrop(menu.key)"
         >
             <span class="absolute left-0 top-4 h-0 w-1 rounded-r bg-primary/70 transition-all duration-300 group-hover:h-16" />
             <component
@@ -81,12 +121,16 @@ const linkAttrs = (menu) => (
     <div v-else class="ocn-panel overflow-hidden">
         <div class="divide-y divide-base-200">
             <component
-                :is="menu.newTab ? 'a' : Link"
-                v-for="menu in normalizedMenus"
-                :key="`${menu.title}-${menu.href}`"
-                v-bind="linkAttrs(menu)"
-                class="group flex items-center gap-4 px-4 py-4 transition hover:bg-base-200/30 md:px-5"
-            >
+            :is="menu.newTab ? 'a' : Link"
+            v-for="menu in normalizedMenus"
+            :key="menu.key ?? `${menu.title}-${menu.href}`"
+            v-bind="linkAttrs(menu)"
+            class="group flex items-center gap-4 px-4 py-4 transition hover:bg-base-200/30 md:px-5"
+            :draggable="reorderable"
+            @dragstart="handleDragStart($event, menu.key)"
+            @dragover.prevent
+            @drop.prevent="handleDrop(menu.key)"
+        >
                 <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                     <component :is="menu.iconComponent" class="h-6 w-6" />
                 </div>

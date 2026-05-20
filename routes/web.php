@@ -52,6 +52,7 @@ use App\Http\Controllers\RndPurchaseController;
 use App\Http\Controllers\RndReportController;
 use App\Http\Controllers\RndResearchNoteController;
 use App\Http\Controllers\TeamDistributionController;
+use App\Http\Controllers\UiPreferenceController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\UserRolePermissionController;
 use Illuminate\Support\Facades\Route;
@@ -75,6 +76,7 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     Route::post('erp/chatbot/ask', [ErpChatbotController::class, 'ask'])->name('erp.chatbot.ask');
     Route::post('erp/context/company', [ErpCompanyContextController::class, 'update'])->name('erp.context.company');
+    Route::patch('ui/preferences', [UiPreferenceController::class, 'update'])->name('ui.preferences.update');
 
     Route::prefix('rnd')->name('rnd.')->middleware('can:manage-rnd')->group(function () {
         Route::get('/', [RndProjectController::class, 'index'])->name('dashboard');
@@ -252,6 +254,7 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/sales/project-invoices/{project}/sales-note', [ERPSalesController::class, 'downloadProjectSalesNote'])->name('erp.sales.project-invoices.sales-note');
         Route::get('erp/sales/project-invoices/{project}/payments/{cashIn}/receipt', [ERPSalesController::class, 'downloadProjectReceipt'])->name('erp.sales.project-invoices.receipt');
 
+        Route::get('projects/overview', [ProjectController::class, 'overview'])->name('projects.overview');
         Route::resource('projects', ProjectController::class);
         Route::get('erp/projects/budgets', [ProjectBudgetController::class, 'index'])->name('erp.projects.budgets.index');
         Route::post('erp/projects/budgets', [ProjectBudgetController::class, 'store'])->name('erp.projects.budgets.store');
@@ -382,6 +385,8 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/admin/data-import/backup', [ERPAdministrationMasterDataController::class, 'downloadDatabaseBackup'])->name('erp.admin.data-import.backup');
         Route::get('erp/admin/data-import/products/template', [ERPAdministrationMasterDataController::class, 'downloadMasterProductImportTemplate'])->name('erp.admin.data-import.products.template');
         Route::post('erp/admin/data-import/products', [ERPAdministrationMasterDataController::class, 'importMasterProducts'])->name('erp.admin.data-import.products.store');
+        Route::get('erp/admin/data-import/customers/template', [ERPAdministrationMasterDataController::class, 'downloadCrmCustomerImportTemplate'])->name('erp.admin.data-import.customers.template');
+        Route::post('erp/admin/data-import/customers', [ERPAdministrationMasterDataController::class, 'importCrmCustomers'])->name('erp.admin.data-import.customers.store');
         Route::get('erp/admin/data-import/projects/template', [ERPAdministrationMasterDataController::class, 'downloadProjectImportTemplate'])->name('erp.admin.data-import.projects.template');
         Route::post('erp/admin/data-import/projects', [ERPAdministrationMasterDataController::class, 'importProjects'])->name('erp.admin.data-import.projects.store');
         Route::post('erp/admin/data-import/run-seeder', [ERPAdministrationMasterDataController::class, 'runSeeder'])->name('erp.admin.data-import.run-seeder');

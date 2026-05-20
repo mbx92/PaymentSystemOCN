@@ -20,6 +20,7 @@ use App\Models\TeamDistribution;
 use App\Models\TeamRole;
 use App\Models\User;
 use App\Support\LegalVaultPath;
+use Illuminate\Support\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -31,6 +32,154 @@ use Inertia\Inertia;
 
 class ProjectController extends Controller
 {
+    public function overview(Request $request)
+    {
+        $selectedYear = (int) $request->integer('year', now()->year);
+
+        $projects = Project::query()
+            ->with([
+                'cashIns:id,project_id,amount,date',
+                'cashOuts:id,project_id,amount,date,category',
+                'tasks:id,project_id,status',
+                'materials:id,project_id,planned_qty,reserved_qty,issued_qty,unit_cost,unit_price,status',
+                'projectTypeDefinition:key,label,badge_color',
+            ])
+            ->latest()
+            ->get();
+
+        $projectCount = $projects->count();
+        $totalContractValue = (float) $projects->sum(fn (Project $project) => $project->resolveListTotalValue());
+        $totalCollected = (float) $projects->sum(fn (Project $project) => (float) $project->cashIns->sum('amount'));
+        $totalSpent = (float) $projects->sum(fn (Project $project) => (float) $project->cashOuts->sum('amount'));
+        $statusSummary = [
+            'negosiasi' => $projects->where('status', 'negosiasi')->count(),
+            'berjalan' => $projects->where('status', 'berjalan')->count(),
+            'selesai' => $projects->where('status', 'selesai')->count(),
+            'dibatalkan' => $projects->where('status', 'dibatalkan')->count(),
+        ];
+
+        $tasks = $projects->flatMap->tasks->values();
+        $taskSummary = [
+            'total' => $tasks->count(),
+            'todo' => $tasks->where('status', 'todo')->count(),
+            'in_progress' => $tasks->where('status', 'in_progress')->count(),
+            'done' => $tasks->where('status', 'done')->count(),
+        ];
+
+        $materials = $projects->flatMap->materials->values();
+        $materialSummary = [
+            'lines' => $materials->count(),
+            'planned_qty' => (float) $materials->sum('planned_qty'),
+            'reserved_qty' => (float) $materials->sum('reserved_qty'),
+            'issued_qty' => (float) $materials->sum('issued_qty'),
+            'cost_value' => (float) $materials->sum(fn ($material) => (float) $material->planned_qty * (float) $material->unit_cost),
+            'sell_value' => (float) $materials->sum(fn ($material) => (float) $material->planned_qty * (float) $material->unit_price),
+            'planned' => $materials->where('status', 'planned')->count(),
+            'partial' => $materials->where('status', 'partial')->count(),
+            'ready' => $materials->where('status', 'ready')->count(),
+            'issued' => $materials->where('status', 'issued')->count(),
+        ];
+
+        $collectionRate = $totalContractValue > 0
+            ? round(($totalCollected / $totalContractValue) * 100, 1)
+            : 0.0;
+        $taskCompletionRate = $taskSummary['total'] > 0
+            ? round(($taskSummary['done'] / $taskSummary['total']) * 100, 1)
+            : 0.0;
+        $materialReadinessRate = $materialSummary['planned_qty'] > 0
+            ? round(($materialSummary['reserved_qty'] / $materialSummary['planned_qty']) * 100, 1)
+            : 0.0;
+
+        $typeSummary = $projects
+            ->groupBy(fn (Project $project) => $project->project_type ?: 'lainnya')
+            ->map(function ($group, $key): array {
+                /** @var Project $sample */
+                $sample = $group->first();
+
+                return [
+                    'key' => (string) $key,
+                    'label' => $sample?->projectTypeDefinition?->label ?: (string) $key,
+                    'badge_color' => $sample?->projectTypeDefinition?->badge_color,
+                    'count' => $group->count(),
+                    'value' => (float) $group->sum(fn (Project $project) => $project->resolveListTotalValue()),
+                ];
+            })
+            ->sortByDesc('value')
+            ->values();
+
+        $recentProjects = $projects
+            ->take(8)
+            ->map(function (Project $project): array {
+                $totalValue = $project->resolveListTotalValue();
+                $paidAmount = (float) $project->cashIns->sum('amount');
+                $expenseAmount = (float) $project->cashOuts->sum('amount');
+                $taskTotal = $project->tasks->count();
+                $taskDone = $project->tasks->where('status', 'done')->count();
+
+                return [
+                    'id' => $project->id,
+                    'name' => $project->name,
+                    'client_name' => $project->client_name,
+                    'status' => $project->status,
+                    'project_type_label' => $project->projectTypeLabel(),
+                    'total_value' => $totalValue,
+                    'paid_amount' => $paidAmount,
+                    'expense_amount' => $expenseAmount,
+                    'remaining_amount' => max($totalValue - $paidAmount, 0),
+                    'task_progress' => $taskTotal > 0 ? round(($taskDone / $taskTotal) * 100, 1) : 0.0,
+                    'started_at' => $project->started_at?->format('Y-m-d'),
+                ];
+            })
+            ->values();
+
+        $monthlyData = collect(range(1, 12))->map(function (int $month) use ($projects, $selectedYear): array {
+            $income = (float) $projects->sum(function (Project $project) use ($selectedYear, $month) {
+                return $project->cashIns
+                    ->filter(fn ($cashIn) => $cashIn->date instanceof Carbon
+                        && (int) $cashIn->date->year === $selectedYear
+                        && (int) $cashIn->date->month === $month)
+                    ->sum('amount');
+            });
+            $expense = (float) $projects->sum(function (Project $project) use ($selectedYear, $month) {
+                return $project->cashOuts
+                    ->filter(fn ($cashOut) => $cashOut->date instanceof Carbon
+                        && (int) $cashOut->date->year === $selectedYear
+                        && (int) $cashOut->date->month === $month)
+                    ->sum('amount');
+            });
+
+            return [
+                'month' => $month,
+                'income' => $income,
+                'expense' => $expense,
+            ];
+        })->all();
+
+        return Inertia::render('Projects/Overview', [
+            'selected_year' => $selectedYear,
+            'stats' => [
+                'project_count' => $projectCount,
+                'active_count' => $statusSummary['berjalan'],
+                'completed_count' => $statusSummary['selesai'],
+                'total_contract_value' => $totalContractValue,
+                'total_collected' => $totalCollected,
+                'total_spent' => $totalSpent,
+                'outstanding_amount' => max($totalContractValue - $totalCollected, 0),
+                'gross_margin' => $totalCollected - $totalSpent,
+                'average_contract_value' => $projectCount > 0 ? $totalContractValue / $projectCount : 0,
+                'collection_rate' => $collectionRate,
+                'task_completion_rate' => $taskCompletionRate,
+                'material_readiness_rate' => $materialReadinessRate,
+            ],
+            'status_summary' => $statusSummary,
+            'task_summary' => $taskSummary,
+            'material_summary' => $materialSummary,
+            'type_summary' => $typeSummary,
+            'recent_projects' => $recentProjects,
+            'monthly_data' => $monthlyData,
+        ]);
+    }
+
     public function index(Request $request)
     {
         $query = Project::with(['materials', 'convertedBudget.items', 'projectTypeDefinition'])

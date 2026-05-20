@@ -18,13 +18,13 @@ const props = defineProps({
 
 const page = usePage();
 
-const tab = ref(['products', 'projects', 'seeders', 'backup'].includes(props.activeTab) ? props.activeTab : 'products');
+const tab = ref(['products', 'projects', 'customers', 'seeders', 'backup'].includes(props.activeTab) ? props.activeTab : 'products');
 const pageTitle = computed(() => (tab.value === 'backup' ? 'Administration - Backup Database' : 'Administration - Impor & Seeder Data'));
 
 watch(
   () => props.activeTab,
   (v) => {
-    if (v && ['products', 'projects', 'seeders', 'backup'].includes(v)) {
+    if (v && ['products', 'projects', 'customers', 'seeders', 'backup'].includes(v)) {
       tab.value = v;
     }
   },
@@ -39,9 +39,11 @@ function selectTab(k) {
 
 const productFileInput = ref(null);
 const projectFileInput = ref(null);
+const customerFileInput = ref(null);
 
 const productForm = useForm({ file: null });
 const projectForm = useForm({ file: null });
+const customerForm = useForm({ file: null });
 const clearWarehouseForm = useForm({ warehouse_id: '' });
 const syncOriginWarehouseForm = useForm({});
 const syncProjectMaterialWarehouseForm = useForm({});
@@ -54,6 +56,10 @@ const relocateProjectMaterialForm = useForm({
 const clearWarehouseDialogEl = ref(null);
 const clearWarehouseDeletePhrase = ref('');
 const clearWarehousePhraseInput = ref(null);
+const actionConfirmDialogEl = ref(null);
+const actionConfirmPhrase = ref('');
+const actionConfirmPhraseInput = ref(null);
+const pendingAction = ref(null);
 
 const warehouseClearTargetLabel = computed(() => {
   const w = props.warehouses.find((x) => String(x.id) === String(clearWarehouseForm.warehouse_id));
@@ -61,6 +67,7 @@ const warehouseClearTargetLabel = computed(() => {
 });
 
 const canConfirmWarehouseClear = computed(() => clearWarehouseDeletePhrase.value.trim() === 'DELETE');
+const canConfirmAction = computed(() => actionConfirmPhrase.value.trim().toUpperCase() === 'JALANKAN');
 
 const flash = computed(() => page.props.flash ?? {});
 const importErrors = computed(() => flash.value?.import_errors ?? []);
@@ -106,12 +113,40 @@ function submitProjects() {
   });
 }
 
+function pickCustomerFile() {
+  customerFileInput.value?.click();
+}
+function onCustomerFile(e) {
+  const f = e.target?.files?.[0];
+  customerForm.file = f || null;
+}
+function submitCustomers() {
+  if (!customerForm.file) return;
+  customerForm.post(route('erp.admin.data-import.customers.store'), {
+    forceFormData: true,
+    preserveScroll: true,
+    onSuccess: () => {
+      customerForm.reset('file');
+      if (customerFileInput.value) customerFileInput.value.value = '';
+    },
+  });
+}
+
 function onClearWarehouseModalClose() {
   clearWarehouseDeletePhrase.value = '';
 }
 
 function closeClearWarehouseModal() {
   clearWarehouseDialogEl.value?.close();
+}
+
+function onActionConfirmModalClose() {
+  actionConfirmPhrase.value = '';
+  pendingAction.value = null;
+}
+
+function closeActionConfirmModal() {
+  actionConfirmDialogEl.value?.close();
 }
 
 async function openClearWarehouseModal() {
@@ -122,6 +157,79 @@ async function openClearWarehouseModal() {
   clearWarehouseDialogEl.value?.showModal();
   await nextTick();
   clearWarehousePhraseInput.value?.focus();
+}
+
+const actionConfirmTitle = computed(() => {
+  if (!pendingAction.value) return 'Konfirmasi tindakan';
+
+  if (pendingAction.value.type === 'import-products') return 'Konfirmasi impor produk';
+  if (pendingAction.value.type === 'import-projects') return 'Konfirmasi impor project';
+  if (pendingAction.value.type === 'import-customers') return 'Konfirmasi impor customer';
+  if (pendingAction.value.type === 'run-all-seeders') return 'Konfirmasi jalankan semua seeder';
+
+  return 'Konfirmasi jalankan seeder';
+});
+
+const actionConfirmDescription = computed(() => {
+  if (!pendingAction.value) return '';
+
+  if (pendingAction.value.type === 'import-products') {
+    return `Anda akan mengimpor file produk${productForm.file?.name ? `: ${productForm.file.name}` : ''}. Pastikan template dan datanya sudah benar sebelum melanjutkan.`;
+  }
+
+  if (pendingAction.value.type === 'import-projects') {
+    return `Anda akan mengimpor file project${projectForm.file?.name ? `: ${projectForm.file.name}` : ''}. Proses ini dapat membuat atau memperbarui data project dan termin terkait.`;
+  }
+
+  if (pendingAction.value.type === 'import-customers') {
+    return `Anda akan mengimpor file customer${customerForm.file?.name ? `: ${customerForm.file.name}` : ''}. Baris dengan code yang sama akan diperbarui, sedangkan baris tanpa code akan dibuat sebagai customer baru.`;
+  }
+
+  if (pendingAction.value.type === 'run-all-seeders') {
+    return 'Anda akan menjalankan seluruh daftar seeder pada halaman ini secara berurutan. Gunakan hanya bila Anda memang ingin mengisi data master awal secara massal.';
+  }
+
+  return `Anda akan menjalankan seeder ${pendingAction.value.seeder?.label ?? pendingAction.value.seeder?.class ?? ''}. Pastikan aksi ini memang diperlukan untuk data saat ini.`;
+});
+
+function openActionConfirmModal(action) {
+  pendingAction.value = action;
+  actionConfirmPhrase.value = '';
+  actionConfirmDialogEl.value?.showModal();
+  nextTick(() => actionConfirmPhraseInput.value?.focus());
+}
+
+async function submitPendingAction() {
+  if (!pendingAction.value || !canConfirmAction.value) {
+    return;
+  }
+
+  const action = pendingAction.value;
+  closeActionConfirmModal();
+
+  if (action.type === 'import-products') {
+    submitProducts();
+    return;
+  }
+
+  if (action.type === 'import-projects') {
+    submitProjects();
+    return;
+  }
+
+  if (action.type === 'import-customers') {
+    submitCustomers();
+    return;
+  }
+
+  if (action.type === 'run-all-seeders') {
+    await runAllSeeders();
+    return;
+  }
+
+  if (action.type === 'run-seeder' && action.seeder) {
+    await runSeeder(action.seeder);
+  }
 }
 
 function submitClearWarehouseProductsFromModal() {
@@ -163,6 +271,7 @@ function relocateProjectMaterialWarehouse() {
 
 const productTemplateUrl = route('erp.admin.data-import.products.template');
 const projectTemplateUrl = route('erp.admin.data-import.projects.template');
+const customerTemplateUrl = route('erp.admin.data-import.customers.template');
 const backupUrl = route('erp.admin.data-import.backup');
 
 const seederState = reactive({});
@@ -253,6 +362,15 @@ async function runAllSeeders() {
         <button
           type="button"
           role="tab"
+          class="tab"
+          :class="tab === 'customers' ? 'tab-active' : ''"
+          @click="selectTab('customers')"
+        >
+          Data customer
+        </button>
+        <button
+          type="button"
+          role="tab"
           class="tab gap-1.5"
           :class="tab === 'seeders' ? 'tab-active' : ''"
           @click="selectTab('seeders')"
@@ -311,7 +429,7 @@ async function runAllSeeders() {
           <p v-if="productForm.errors.file" class="text-xs text-error">{{ productForm.errors.file }}</p>
 
           <div class="flex justify-end gap-2">
-            <button class="btn btn-primary" :disabled="!productForm.file || productForm.processing" @click="submitProducts">
+            <button class="btn btn-primary" :disabled="!productForm.file || productForm.processing" @click="openActionConfirmModal({ type: 'import-products' })">
               {{ productForm.processing ? 'Mengimpor…' : 'Impor produk' }}
             </button>
           </div>
@@ -465,6 +583,65 @@ async function runAllSeeders() {
         </div>
       </div>
 
+      <!-- Tab: customer -->
+      <div v-show="tab === 'customers'" class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Impor customer CRM</h2>
+          <p class="ocn-panel__desc">
+            Format: .xlsx, .xls, atau .csv (maks. 10 MB). Gunakan <strong>code</strong> bila ingin memperbarui customer yang sudah ada.
+          </p>
+        </div>
+        <div class="card-body space-y-4">
+          <div class="flex flex-wrap gap-2">
+            <a :href="customerTemplateUrl" class="btn btn-outline btn-sm gap-2">Unduh template customer (.xlsx)</a>
+            <Link :href="route('erp.crm.customers')" class="btn btn-ghost btn-sm">Ke daftar customer</Link>
+          </div>
+
+          <ul class="list-disc space-y-1 pl-5 text-sm text-base-content/80">
+            <li><strong>name</strong> wajib diisi.</li>
+            <li><strong>code</strong> opsional. Jika cocok dengan data existing, customer akan <strong>diperbarui</strong>. Jika kosong, sistem membuat kode customer otomatis.</li>
+            <li><strong>email</strong> opsional, tetapi bila diisi harus valid dan unik.</li>
+            <li><strong>source</strong> opsional. Kosong = <code class="rounded bg-base-200 px-1">import_excel</code>.</li>
+            <li><strong>pic_email</strong> atau <strong>pic_name</strong> opsional. Jika diisi, user harus sudah ada di sistem.</li>
+            <li><strong>is_active</strong>: 1/0, true/false, active/inactive.</li>
+          </ul>
+
+          <input
+            ref="customerFileInput"
+            type="file"
+            class="hidden"
+            accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+            @change="onCustomerFile"
+          >
+
+          <div class="flex flex-wrap items-center gap-3">
+            <button type="button" class="btn btn-sm" @click="pickCustomerFile">Pilih file</button>
+            <span v-if="customerForm.file" class="text-sm font-mono text-base-content/80">{{ customerForm.file.name }}</span>
+            <span v-else class="text-sm text-base-content/50">Belum ada file</span>
+          </div>
+          <p v-if="customerForm.errors.file" class="text-xs text-error">{{ customerForm.errors.file }}</p>
+
+          <div class="flex justify-end gap-2">
+            <button class="btn btn-primary" :disabled="!customerForm.file || customerForm.processing" @click="openActionConfirmModal({ type: 'import-customers' })">
+              {{ customerForm.processing ? 'Mengimpor…' : 'Impor customer' }}
+            </button>
+          </div>
+
+          <div v-if="importedCount != null && importKind === 'customers'" class="rounded-xl border border-base-200 bg-base-200/40 px-4 py-3 text-sm">
+            Baris tersimpan: <strong>{{ importedCount }}</strong>
+          </div>
+
+          <div v-if="importErrors.length && importKind === 'customers'" class="rounded-xl border border-warning/40 bg-warning/10 p-4">
+            <p class="font-medium text-base-content">Baris dilewati — customer ({{ importErrors.length }})</p>
+            <ul class="mt-2 max-h-64 overflow-y-auto space-y-1 text-xs font-mono">
+              <li v-for="(err, i) in importErrors" :key="i">
+                Baris {{ err.row }}: {{ err.message }}
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
       <div v-show="tab === 'backup'" class="ocn-panel">
         <div class="ocn-panel__head">
           <h2 class="ocn-panel__title">Backup Database</h2>
@@ -528,7 +705,7 @@ async function runAllSeeders() {
               type="button"
               class="btn btn-outline btn-sm gap-1.5"
               :disabled="seederState[projectFlowSeeder.key]?.loading"
-              @click="runSeeder(projectFlowSeeder)"
+              @click="openActionConfirmModal({ type: 'run-seeder', seeder: projectFlowSeeder })"
             >
               <ArrowPathIcon class="h-4 w-4" :class="seederState[projectFlowSeeder.key]?.loading ? 'animate-spin' : ''" />
               {{ seederState[projectFlowSeeder.key]?.loading ? 'Menjalankan…' : 'Seeder alur project' }}
@@ -565,7 +742,7 @@ async function runAllSeeders() {
           <p v-if="projectForm.errors.file" class="text-xs text-error">{{ projectForm.errors.file }}</p>
 
           <div class="flex justify-end gap-2">
-            <button class="btn btn-primary" :disabled="!projectForm.file || projectForm.processing" @click="submitProjects">
+            <button class="btn btn-primary" :disabled="!projectForm.file || projectForm.processing" @click="openActionConfirmModal({ type: 'import-projects' })">
               {{ projectForm.processing ? 'Mengimpor…' : 'Impor project' }}
             </button>
           </div>
@@ -599,7 +776,7 @@ async function runAllSeeders() {
               <button
                 class="btn btn-primary btn-sm gap-1.5"
                 :disabled="runAllLoading"
-                @click="runAllSeeders"
+                @click="openActionConfirmModal({ type: 'run-all-seeders' })"
               >
                 <ArrowPathIcon class="h-4 w-4" :class="runAllLoading ? 'animate-spin' : ''" />
                 {{ runAllLoading ? 'Menjalankan semua…' : 'Jalankan Semua Seeder' }}
@@ -639,7 +816,7 @@ async function runAllSeeders() {
                   <button
                     class="btn btn-outline btn-sm gap-1.5"
                     :disabled="seederState[seeder.key]?.loading"
-                    @click="runSeeder(seeder)"
+                    @click="openActionConfirmModal({ type: 'run-seeder', seeder })"
                   >
                     <ArrowPathIcon
                       class="h-4 w-4"
@@ -698,6 +875,58 @@ async function runAllSeeders() {
               @click="submitClearWarehouseProductsFromModal"
             >
               {{ clearWarehouseForm.processing ? 'Memproses…' : 'Hapus penempatan & produk (sesuai aturan)' }}
+            </button>
+          </div>
+        </div>
+        <form method="dialog" class="modal-backdrop">
+          <button type="submit" aria-label="Tutup">close</button>
+        </form>
+      </dialog>
+
+      <dialog
+        ref="actionConfirmDialogEl"
+        class="modal"
+        @close="onActionConfirmModalClose"
+      >
+        <div class="modal-box max-w-lg">
+          <h3 class="font-bold text-lg text-warning">Konfirmasi tindakan sensitif</h3>
+          <p class="mt-2 text-sm font-medium text-base-content">
+            {{ actionConfirmTitle }}
+          </p>
+          <p class="mt-2 text-sm text-base-content/80">
+            {{ actionConfirmDescription }}
+          </p>
+          <div class="alert alert-warning mt-3 text-sm">
+            <span>Tindakan ini sebaiknya hanya dijalankan bila Anda yakin file atau seeder yang dipilih memang benar.</span>
+          </div>
+          <div class="mt-4 space-y-2">
+            <label class="label py-0" for="action-confirm-phrase">
+              <span class="label-text font-medium">Ketik <kbd class="kbd kbd-sm font-mono">JALANKAN</kbd> untuk melanjutkan</span>
+            </label>
+            <input
+              id="action-confirm-phrase"
+              ref="actionConfirmPhraseInput"
+              v-model="actionConfirmPhrase"
+              type="text"
+              class="input input-bordered w-full font-mono text-sm"
+              placeholder="JALANKAN"
+              autocomplete="off"
+              autocapitalize="characters"
+              spellcheck="false"
+              @keydown.enter.prevent="canConfirmAction && submitPendingAction()"
+            >
+          </div>
+          <div class="modal-action mt-4 flex w-full flex-wrap items-center justify-end gap-2">
+            <button type="button" class="btn btn-ghost btn-sm" @click="closeActionConfirmModal">
+              Batal
+            </button>
+            <button
+              type="button"
+              class="btn btn-warning btn-sm"
+              :disabled="!canConfirmAction"
+              @click="submitPendingAction"
+            >
+              Lanjutkan tindakan
             </button>
           </div>
         </div>

@@ -6,6 +6,7 @@ use App\ERP\Core\Models\Company;
 use App\ERP\Core\Services\ErpCompanyResolver;
 use App\Models\ErpSetting;
 use App\Models\MasterProduct;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Middleware;
@@ -74,6 +75,7 @@ class HandleInertiaRequests extends Middleware
                 'module_menu_layout' => $erpSetting?->resolvedModuleMenuLayout() ?? ErpSetting::MODULE_MENU_LAYOUT_GRID,
             ],
             'erpCompanyContext' => fn () => $this->erpCompanyContextProps($request),
+            'uiPreferences' => fn () => $user ? $user->resolvedUiPreferences() : User::defaultUiPreferences(),
             'maintenance' => fn () => [
                 'global' => (bool) ($erpSetting?->maintenance_global_enabled ?? false),
                 'modules' => $erpSetting !== null

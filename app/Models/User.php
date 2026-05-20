@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\ERP\Core\Models\Company;
+use App\Support\ModuleWorkspaceRegistry;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -25,6 +26,7 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'ui_preferences',
     ];
 
     protected $hidden = [
@@ -37,6 +39,37 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'ui_preferences' => 'array',
+        ];
+    }
+
+    public static function defaultUiPreferences(): array
+    {
+        return [
+            'module_menu_orders' => [],
+        ];
+    }
+
+    public function resolvedUiPreferences(): array
+    {
+        $stored = $this->ui_preferences;
+        $defaults = self::defaultUiPreferences();
+        $preferences = is_array($stored) ? $stored : [];
+
+        $moduleOrders = [];
+        foreach (ModuleWorkspaceRegistry::moduleKeys() as $moduleKey) {
+            if (! isset($preferences['module_menu_orders'][$moduleKey]) || ! is_array($preferences['module_menu_orders'][$moduleKey])) {
+                continue;
+            }
+
+            $moduleOrders[$moduleKey] = ModuleWorkspaceRegistry::normalizeMenuOrder(
+                $moduleKey,
+                $preferences['module_menu_orders'][$moduleKey],
+            );
+        }
+
+        return [
+            'module_menu_orders' => $moduleOrders,
         ];
     }
 

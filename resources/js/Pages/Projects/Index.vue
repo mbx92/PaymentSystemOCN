@@ -108,6 +108,7 @@ const submitProject = () => {
               <p class="ocn-panel__desc mt-1">Kelola daftar project aktif dari tahap negosiasi sampai selesai.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
+              <Link :href="route('projects.overview')" class="btn btn-outline btn-sm shrink-0">Overview</Link>
               <Link :href="route('erp.projects')" class="btn btn-ghost btn-sm shrink-0 gap-1.5"><ArrowLeftIcon class="h-4 w-4" />
                             Back</Link>
             </div>
