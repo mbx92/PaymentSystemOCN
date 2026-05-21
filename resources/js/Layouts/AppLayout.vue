@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, nextTick, watch } from 'vue';
+import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import {
     HomeIcon, CodeBracketIcon, ArrowDownCircleIcon, ArrowUpCircleIcon, ChartBarIcon,
@@ -15,6 +15,11 @@ import {
     CalendarDaysIcon,
     ChevronDoubleLeftIcon,
     ChevronDoubleRightIcon,
+    CheckIcon,
+    ClipboardDocumentListIcon,
+    ExclamationTriangleIcon,
+    EyeSlashIcon,
+    WrenchScrewdriverIcon,
 } from '@heroicons/vue/24/outline';
 import FlashMessage from '@/Components/FlashMessage.vue';
 
@@ -23,6 +28,7 @@ const page = usePage();
 const auth = computed(() => page.props.auth);
 const flash = computed(() => page.props.flash);
 const inventoryAlerts = computed(() => page.props.inventoryAlerts ?? { lowStockCount: 0, lowStockItems: [] });
+const localNotificationCenter = ref(page.props.notificationCenter ?? { total_count: 0, groups: [], items: [] });
 const erpSetting = computed(() => page.props.erpSetting ?? {});
 const uiPreferences = computed(() => page.props.uiPreferences ?? { module_menu_orders: {} });
 const sidebarOpen = ref(false);
@@ -42,26 +48,83 @@ const chatInput = ref('');
 const chatLoading = ref(false);
 const chatBodyRef = ref(null);
 const chatInputRef = ref(null);
+let notificationPollTimer = null;
 
 const CHAT_STORAGE_KEY = 'erp_chat_history';
 const WELCOME_MSG = {
     role: 'assistant',
-    text: 'Halo! 👋 Saya asisten ERP Anda.\nSaya bisa bantu cek **stok**, **harga**, **penjualan**, **cashflow**, **invoice**, **expenses**, dan lainnya.\n\nKetik **bantuan** atau klik chip di bawah untuk mulai.',
+    text: 'Halo! 👋 Saya asisten ERP Anda.\nSebagian jawaban sekarang mengambil **data live** dari database, terutama untuk stok, harga, penjualan, cashflow, invoice, dan project.\n\nKetik **bantuan** atau pilih contoh pertanyaan di bawah untuk mulai.',
+    meta: {
+        label: 'built-in',
+        tone: 'neutral',
+    },
     ts: Date.now(),
 };
 
-const quickReplies = [
-    'bantuan',
-    'pos hari ini',
-    'pos kemarin',
-    'cashflow hari ini',
-    'pengeluaran',
-    'stok rendah',
-    'produk terlaris',
-    'invoice belum dibayar',
-    'invoice jatuh tempo',
-    'project aktif',
-    'biaya operasional',
+const chatbotIntentCatalog = [
+    {
+        key: 'stock_lookup',
+        label: 'Cek stok',
+        source: 'data',
+        examples: ['stok lid cup', 'cek stok kabel lan'],
+    },
+    {
+        key: 'product_price_lookup',
+        label: 'Cek harga',
+        source: 'data',
+        examples: ['harga standing pouch', 'berapa harga kabel lan'],
+    },
+    {
+        key: 'pos_sales_today',
+        label: 'POS hari ini',
+        source: 'data',
+        examples: ['pos hari ini', 'penjualan bulan ini'],
+    },
+    {
+        key: 'cashflow_today',
+        label: 'Cashflow',
+        source: 'data',
+        examples: ['cashflow hari ini', 'kas bulan ini'],
+    },
+    {
+        key: 'invoice_unpaid_list',
+        label: 'Invoice unpaid',
+        source: 'data',
+        examples: ['invoice belum dibayar', 'invoice jatuh tempo'],
+    },
+    {
+        key: 'project_active_list',
+        label: 'Project aktif',
+        source: 'data',
+        examples: ['project aktif', 'daftar project'],
+    },
+    {
+        key: 'send_invoice',
+        label: 'Kirim invoice',
+        source: 'action',
+        examples: ['kirim invoice INV-PRJ-000123 ke client@mail.com'],
+    },
+    {
+        key: 'help',
+        label: 'Bantuan',
+        source: 'built_in',
+        examples: ['bantuan'],
+    },
+];
+
+const quickReplyGroups = [
+    {
+        title: 'Produk',
+        chips: ['stok lid cup', 'harga standing pouch', 'stok rendah'],
+    },
+    {
+        title: 'Penjualan',
+        chips: ['pos hari ini', 'produk terlaris', 'cashflow hari ini'],
+    },
+    {
+        title: 'Invoice',
+        chips: ['invoice belum dibayar', 'invoice jatuh tempo', 'project aktif'],
+    },
 ];
 
 const loadHistory = () => {
@@ -121,6 +184,40 @@ const renderMarkdown = (text) => {
     }
     if (inList) out.push('</ul>');
     return out.join('');
+};
+
+const chatbotIntentMeta = computed(() => {
+    const map = new Map();
+    chatbotIntentCatalog.forEach((item) => {
+        map.set(item.key, item);
+    });
+    map.set('follow_up', { key: 'follow_up', label: 'Follow-up', source: 'data' });
+    return map;
+});
+
+const sourceBadgeClass = (source) => {
+    if (source === 'data') return 'badge-success';
+    if (source === 'action') return 'badge-warning';
+    return 'badge-ghost';
+};
+
+const sourceBadgeLabel = (source) => {
+    if (source === 'data') return 'data live';
+    if (source === 'action') return 'action';
+    return 'built-in';
+};
+
+const assistantMetaFromIntent = (intent) => {
+    const intentMeta = chatbotIntentMeta.value.get(intent);
+    if (!intentMeta) {
+        return { label: 'respons assistant', tone: 'neutral' };
+    }
+
+    return {
+        label: intentMeta.label,
+        source: intentMeta.source,
+        tone: intentMeta.source === 'action' ? 'warning' : intentMeta.source === 'data' ? 'success' : 'neutral',
+    };
 };
 
 const permissions = computed(() => page.props.auth?.permissions ?? []);
@@ -256,6 +353,106 @@ const topbarContext = computed(() => {
 });
 
 const isPosFullscreen = computed(() => page.url.split('?')[0].includes('/erp/sales/pos'));
+const notificationCenter = computed(() => localNotificationCenter.value ?? { total_count: 0, groups: [], items: [] });
+
+const notificationCardClass = (item) => ([
+    'block rounded-2xl border border-slate-200/80 bg-slate-200/35 p-2.5 backdrop-blur-sm transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-200/55 hover:shadow-sm',
+    item.read ? 'opacity-75' : '',
+]);
+
+const notificationIcon = (notificationId) => {
+    const prefix = String(notificationId || '').split('-').slice(0, 2).join('_');
+    if (prefix === 'low_stock' || prefix === 'reserved_stock') return ArchiveBoxIcon;
+    if (prefix === 'stock_mismatch') return ExclamationTriangleIcon;
+    if (prefix === 'project_task') return ClipboardDocumentListIcon;
+    if (prefix === 'payable') return WrenchScrewdriverIcon;
+    if (prefix === 'purchase_order') return ShoppingCartIcon;
+    return BellAlertIcon;
+};
+
+const markNotificationRead = (notificationId) => {
+    router.patch(route('notifications.mark-read'), { notification_id: notificationId }, {
+        preserveScroll: true,
+        preserveState: true,
+    });
+};
+
+const syncNotificationCenter = (payload) => {
+    localNotificationCenter.value = payload ?? { total_count: 0, groups: [], items: [] };
+};
+
+watch(() => page.props.notificationCenter, (val) => {
+    syncNotificationCenter(val);
+}, { immediate: true });
+
+const readSeenNotificationIds = () => {
+    try {
+        return JSON.parse(localStorage.getItem('ocn_seen_notification_ids') || '[]');
+    } catch {
+        return [];
+    }
+};
+
+const writeSeenNotificationIds = (ids) => {
+    try {
+        localStorage.setItem('ocn_seen_notification_ids', JSON.stringify(ids.slice(0, 200)));
+    } catch {
+        // ignore
+    }
+};
+
+const emitNewNotificationToasts = (payload) => {
+    const items = (payload?.items ?? []).filter((item) => !item.read);
+    const seen = new Set(readSeenNotificationIds());
+    const fresh = items.filter((item) => !seen.has(item.notification_id)).slice(0, 3);
+
+    fresh.forEach((item) => {
+        window.dispatchEvent(new CustomEvent('ocn:alert', {
+            detail: {
+                type: item.severity === 'error' ? 'error' : item.severity === 'warning' ? 'warning' : 'info',
+                message: item.meta ? `${item.title} — ${item.meta}` : item.title,
+            },
+        }));
+        seen.add(item.notification_id);
+    });
+
+    items.forEach((item) => seen.add(item.notification_id));
+    writeSeenNotificationIds(Array.from(seen));
+};
+
+const pollNotifications = async () => {
+    if (!auth.value?.user) return;
+
+    try {
+        const response = await fetch(route('notifications.poll'), {
+            headers: { Accept: 'application/json' },
+            credentials: 'same-origin',
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!data?.notificationCenter) return;
+        syncNotificationCenter(data.notificationCenter);
+        emitNewNotificationToasts(data.notificationCenter);
+    } catch {
+        // ignore
+    }
+};
+
+onMounted(() => {
+    emitNewNotificationToasts(localNotificationCenter.value);
+
+    if (auth.value?.user) {
+        notificationPollTimer = window.setInterval(() => {
+            pollNotifications();
+        }, 60000);
+    }
+});
+
+onBeforeUnmount(() => {
+    if (notificationPollTimer) {
+        window.clearInterval(notificationPollTimer);
+    }
+});
 
 const isActive = (href) => {
     if (!href) return false;
@@ -326,7 +523,13 @@ const sendChatMessage = async (overrideText = null) => {
         } else {
             const payload = await response.json();
             const answer = payload?.answer || 'Maaf, terjadi kendala saat memproses pertanyaan.';
-            chatMessages.value.push({ role: 'assistant', text: answer, ts: Date.now() });
+            chatMessages.value.push({
+                role: 'assistant',
+                text: answer,
+                intent: payload?.intent || null,
+                meta: assistantMetaFromIntent(payload?.intent || null),
+                ts: Date.now(),
+            });
         }
     } catch {
         chatMessages.value.push({ role: 'assistant', text: '⚠️ Koneksi ke chatbot gagal. Coba lagi sebentar.', ts: Date.now() });
@@ -461,22 +664,80 @@ const handleSidebarItemMouseLeave = () => {
                     <div class="relative">
                         <button class="btn btn-ghost btn-sm relative" @click="showAlertDropdown = !showAlertDropdown">
                             <BellAlertIcon class="w-5 h-5" />
-                            <span v-if="inventoryAlerts.lowStockCount > 0" class="absolute -top-1 -right-1 badge badge-error badge-xs">
-                                {{ inventoryAlerts.lowStockCount }}
+                            <span v-if="notificationCenter.total_count > 0" class="absolute -top-1 -right-1 badge badge-error badge-xs">
+                                {{ notificationCenter.total_count }}
                             </span>
                         </button>
-                        <div v-if="showAlertDropdown" class="absolute right-0 mt-2 w-80 rounded-xl border bg-white p-3 shadow-xl z-50">
+                        <div v-if="showAlertDropdown" class="absolute right-0 mt-2 w-[22rem] rounded-xl border bg-white p-3 shadow-xl z-50">
                             <div class="flex items-center justify-between mb-2">
-                                <p class="text-sm font-semibold">Notifikasi Stok Rendah</p>
-                                <span class="badge badge-warning badge-sm">{{ inventoryAlerts.lowStockCount }}</span>
-                            </div>
-                            <div class="space-y-2 max-h-64 overflow-auto">
-                                <div v-for="item in inventoryAlerts.lowStockItems" :key="item.id" class="rounded-lg border p-2">
-                                    <p class="font-mono text-xs text-base-content/60">{{ item.sku }}</p>
-                                    <p class="text-sm font-medium">{{ item.name }}</p>
-                                    <p class="text-xs text-error">Stok {{ item.stock }} / Min {{ item.min_stock }}</p>
+                                <p class="text-sm font-semibold">Notification Center</p>
+                                <div class="flex items-center gap-2">
+                                    <Link :href="route('notifications.index')" class="text-[11px] font-medium text-primary hover:underline" @click="showAlertDropdown = false">
+                                        Buka semua
+                                    </Link>
+                                    <span class="badge badge-warning badge-sm">{{ notificationCenter.total_count }}</span>
                                 </div>
-                                <p v-if="inventoryAlerts.lowStockItems.length === 0" class="text-sm text-base-content/60">Tidak ada alert stok rendah.</p>
+                            </div>
+                            <div class="space-y-3 max-h-80 overflow-auto">
+                                <div v-for="group in notificationCenter.groups" :key="group.key" class="space-y-2">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-2">
+                                            <p class="text-xs font-semibold uppercase tracking-wide text-base-content/60">{{ group.label }}</p>
+                                            <span v-if="group.unread_count > 0" class="badge badge-error badge-xs">{{ group.unread_count }}</span>
+                                        </div>
+                                        <Link
+                                            v-if="group.href"
+                                            :href="group.href"
+                                            class="text-[11px] font-medium text-primary hover:underline"
+                                            @click="showAlertDropdown = false"
+                                        >
+                                            Lihat
+                                        </Link>
+                                    </div>
+                                    <div class="space-y-2">
+                                        <Link
+                                            v-for="item in group.items"
+                                            :key="item.notification_id"
+                                            :href="item.href"
+                                            :class="notificationCardClass(item)"
+                                            @click="showAlertDropdown = false"
+                                        >
+                                            <div class="flex items-start justify-between gap-3">
+                                                <div class="flex min-w-0 items-start gap-2.5">
+                                                    <div class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/70 bg-white/70 text-slate-600">
+                                                        <component :is="notificationIcon(item.notification_id)" class="h-4 w-4" />
+                                                    </div>
+                                                    <div class="min-w-0">
+                                                        <div class="flex items-center gap-2">
+                                                            <p class="truncate text-sm font-medium text-base-content">{{ item.title }}</p>
+                                                            <span v-if="!item.read" class="badge badge-primary badge-xs">Baru</span>
+                                                        </div>
+                                                        <p v-if="item.meta" class="mt-1 text-xs text-base-content/70">{{ item.meta }}</p>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    v-if="!item.read"
+                                                    type="button"
+                                                    class="btn btn-ghost btn-xs rounded-full border border-slate-300/80 bg-white/65 text-slate-600 hover:border-slate-400 hover:bg-white"
+                                                    :title="`Tandai dibaca · ${item.notification_id}`"
+                                                    @click.prevent.stop="markNotificationRead(item.notification_id)"
+                                                >
+                                                    <CheckIcon class="h-3.5 w-3.5" />
+                                                </button>
+                                                <button
+                                                    v-else
+                                                    type="button"
+                                                    class="btn btn-ghost btn-xs rounded-full border border-slate-300/80 bg-white/65 text-slate-500"
+                                                    :title="`Sudah dibaca · ${item.notification_id}`"
+                                                    @click.prevent.stop
+                                                >
+                                                    <EyeSlashIcon class="h-3.5 w-3.5" />
+                                                </button>
+                                            </div>
+                                        </Link>
+                                    </div>
+                                </div>
+                                <p v-if="notificationCenter.groups.length === 0" class="text-sm text-base-content/60">Belum ada notifikasi penting saat ini.</p>
                             </div>
                         </div>
                     </div>
@@ -523,6 +784,14 @@ const handleSidebarItemMouseLeave = () => {
                     </div>
 
                     <div class="flex h-[calc(100dvh-7rem)] flex-col sm:h-[34rem]">
+                        <div class="border-b border-base-300 bg-base-200/40 px-3 py-2 sm:px-4">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="badge badge-success badge-sm">data live siap</span>
+                                <span class="badge badge-warning badge-sm">action perlu konfirmasi</span>
+                                <span class="text-xs text-base-content/60">Selaras dengan halaman setting chatbot.</span>
+                            </div>
+                        </div>
+
                         <!-- Message list -->
                         <div ref="chatBodyRef" class="flex-1 space-y-3 overflow-y-auto p-3 sm:p-4">
                             <div
@@ -536,6 +805,10 @@ const handleSidebarItemMouseLeave = () => {
                                         ? 'bg-primary text-primary-content'
                                         : 'bg-base-200 text-base-content/90'"
                                 >
+                                    <div v-if="msg.role === 'assistant' && msg.meta" class="mb-2 flex flex-wrap items-center gap-1.5">
+                                        <span class="badge badge-xs" :class="sourceBadgeClass(msg.meta.source)">{{ sourceBadgeLabel(msg.meta.source) }}</span>
+                                        <span class="text-[10px] font-semibold uppercase tracking-[0.12em] text-base-content/45">{{ msg.meta.label }}</span>
+                                    </div>
                                     <!-- eslint-disable-next-line vue/no-v-html -->
                                     <div v-if="msg.role === 'assistant'" class="leading-relaxed" v-html="renderMarkdown(msg.text)" />
                                     <p v-else class="leading-relaxed">{{ msg.text }}</p>
@@ -548,23 +821,33 @@ const handleSidebarItemMouseLeave = () => {
 
                             <!-- Typing indicator -->
                             <div v-if="chatLoading" class="flex justify-start">
-                                <div class="flex items-center gap-1 rounded-xl bg-base-200 px-4 py-3">
-                                    <span class="inline-block h-2 w-2 rounded-full bg-base-content/40 animate-bounce [animation-delay:0ms]" />
-                                    <span class="inline-block h-2 w-2 rounded-full bg-base-content/40 animate-bounce [animation-delay:150ms]" />
-                                    <span class="inline-block h-2 w-2 rounded-full bg-base-content/40 animate-bounce [animation-delay:300ms]" />
+                                <div class="rounded-xl bg-base-200 px-4 py-3">
+                                    <div class="flex items-center gap-1">
+                                        <span class="inline-block h-2 w-2 rounded-full bg-base-content/40 animate-bounce [animation-delay:0ms]" />
+                                        <span class="inline-block h-2 w-2 rounded-full bg-base-content/40 animate-bounce [animation-delay:150ms]" />
+                                        <span class="inline-block h-2 w-2 rounded-full bg-base-content/40 animate-bounce [animation-delay:300ms]" />
+                                    </div>
+                                    <p class="mt-2 text-[11px] text-base-content/55">Assistant sedang memproses intent dan membaca data yang diperlukan.</p>
                                 </div>
                             </div>
                         </div>
 
                         <!-- Quick reply chips -->
-                        <div class="flex gap-1.5 overflow-x-auto border-t border-base-300 px-3 py-2 sm:flex-wrap">
-                            <button
-                                v-for="chip in quickReplies"
-                                :key="chip"
-                                class="badge badge-outline badge-sm shrink-0 cursor-pointer hover:badge-primary transition-colors"
-                                :disabled="chatLoading"
-                                @click="sendChatMessage(chip)"
-                            >{{ chip }}</button>
+                        <div class="border-t border-base-300 px-3 py-2 sm:px-4">
+                            <div class="space-y-2">
+                                <div v-for="group in quickReplyGroups" :key="group.title" class="space-y-1">
+                                    <p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-base-content/45">{{ group.title }}</p>
+                                    <div class="flex gap-1.5 overflow-x-auto sm:flex-wrap">
+                                        <button
+                                            v-for="chip in group.chips"
+                                            :key="chip"
+                                            class="badge badge-outline badge-sm shrink-0 cursor-pointer transition-colors hover:border-primary hover:text-primary"
+                                            :disabled="chatLoading"
+                                            @click="sendChatMessage(chip)"
+                                        >{{ chip }}</button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Input bar -->
@@ -575,7 +858,7 @@ const handleSidebarItemMouseLeave = () => {
                                     v-model="chatInput"
                                     type="text"
                                     class="input input-bordered input-sm w-full"
-                                    placeholder="Tulis pertanyaan..."
+                                    placeholder="Tulis pertanyaan, mis. stok kabel lan atau invoice belum dibayar"
                                     @keyup.enter="sendChatMessage()"
                                 />
                                 <button class="btn btn-primary btn-sm" :disabled="chatLoading || !chatInput.trim()" @click="sendChatMessage()">

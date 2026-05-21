@@ -11,6 +11,12 @@ class CmsAccessLog extends Model
 
     public const KIND_CMS_ADMIN = 'cms_admin';
 
+    public const EVENT_PAGE_VIEW = 'page_view';
+
+    public const EVENT_CTA_CLICK = 'cta_click';
+
+    public const EVENT_PAGE_EXIT = 'page_exit';
+
     protected $fillable = [
         'kind',
         'landing_site_id',
@@ -28,7 +34,16 @@ class CmsAccessLog extends Model
         'browser',
         'os',
         'referrer',
+        'event_name',
+        'event_meta',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'event_meta' => 'array',
+        ];
+    }
 
     public function landingSite(): BelongsTo
     {

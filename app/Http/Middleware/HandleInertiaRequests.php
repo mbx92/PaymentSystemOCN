@@ -7,6 +7,7 @@ use App\ERP\Core\Services\ErpCompanyResolver;
 use App\Models\ErpSetting;
 use App\Models\MasterProduct;
 use App\Models\User;
+use App\Support\AppNotificationCenter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Middleware;
@@ -37,6 +38,8 @@ class HandleInertiaRequests extends Middleware
     {
         $user = $request->user();
         $erpSetting = ErpSetting::query()->first();
+        $notificationCenter = app(AppNotificationCenter::class)->buildFor($user);
+        $lowStockGroup = collect($notificationCenter['groups'] ?? [])->firstWhere('key', 'low_stock');
 
         return [
             ...parent::share($request),
@@ -55,11 +58,7 @@ class HandleInertiaRequests extends Middleware
             'flash' => fn () => $request->session()->get('flash'),
             'devLoginSeed' => fn () => $request->session()->get('devLoginSeed'),
             'inventoryAlerts' => fn () => [
-                'lowStockCount' => MasterProduct::query()
-                    ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
-                    ->where('low_stock_alert_enabled', true)
-                    ->whereColumn('stock', '<=', 'min_stock')
-                    ->count(),
+                'lowStockCount' => (int) ($lowStockGroup['count'] ?? 0),
                 'lowStockItems' => MasterProduct::query()
                     ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
                     ->where('low_stock_alert_enabled', true)
@@ -68,6 +67,7 @@ class HandleInertiaRequests extends Middleware
                     ->limit(5)
                     ->get(['id', 'sku', 'name', 'stock', 'min_stock', 'low_stock_alert_enabled']),
             ],
+            'notificationCenter' => fn () => $notificationCenter,
             'erpSetting' => fn () => [
                 'app_name' => $erpSetting?->app_name ?? 'OCN ERP Suite',
                 'app_tagline' => $erpSetting?->app_tagline ?? 'Integrated Business Platform',

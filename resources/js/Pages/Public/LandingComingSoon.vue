@@ -1,5 +1,6 @@
 <script setup>
 import { Head } from '@inertiajs/vue3';
+import { useLandingTracking } from '@/composables/useLandingTracking';
 
 defineProps({
   landing: {
@@ -7,6 +8,8 @@ defineProps({
     required: true,
   },
 });
+
+const { trackCtaClick } = useLandingTracking();
 </script>
 
 <template>
@@ -39,10 +42,10 @@ defineProps({
         <div v-if="landing?.content?.primary_cta_text || landing?.content?.secondary_cta_text || landing?.content?.contact_text" class="mt-8 space-y-3">
           <p v-if="landing?.content?.contact_text" class="text-sm text-slate-300/90">{{ landing.content.contact_text }}</p>
           <div class="flex flex-wrap gap-2">
-            <a v-if="landing?.content?.primary_cta_text && landing?.content?.primary_cta_url" :href="landing.content.primary_cta_url" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm">
+            <a v-if="landing?.content?.primary_cta_text && landing?.content?.primary_cta_url" :href="landing.content.primary_cta_url" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm" @click="trackCtaClick('primary', landing.content.primary_cta_text, landing.content.primary_cta_url)">
               {{ landing.content.primary_cta_text }}
             </a>
-            <a v-if="landing?.content?.secondary_cta_text && landing?.content?.secondary_cta_url" :href="landing.content.secondary_cta_url" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm border-white/30 text-slate-100 hover:bg-white/10">
+            <a v-if="landing?.content?.secondary_cta_text && landing?.content?.secondary_cta_url" :href="landing.content.secondary_cta_url" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm border-white/30 text-slate-100 hover:bg-white/10" @click="trackCtaClick('secondary', landing.content.secondary_cta_text, landing.content.secondary_cta_url)">
               {{ landing.content.secondary_cta_text }}
             </a>
           </div>

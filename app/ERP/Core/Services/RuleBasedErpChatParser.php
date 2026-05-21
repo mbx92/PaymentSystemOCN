@@ -8,6 +8,42 @@ use Illuminate\Support\Str;
 
 class RuleBasedErpChatParser
 {
+    private const BUILT_IN_RULES = [
+        ['name' => 'Greeting / sapaan', 'intent_key' => 'greeting', 'keywords' => ['halo', 'hai', 'hi', 'hello', 'hey', 'selamat'], 'match_mode' => 'or', 'priority' => 1, 'response_text' => null],
+        ['name' => 'Greeting / terima kasih', 'intent_key' => 'greeting', 'keywords' => ['terima kasih', 'makasih', 'thanks', 'thx', 'tq'], 'match_mode' => 'or', 'priority' => 2, 'response_text' => null],
+        ['name' => 'Lookup stok produk', 'intent_key' => 'stock_lookup', 'keywords' => ['stok'], 'match_mode' => 'and', 'priority' => 10, 'response_text' => null],
+        ['name' => 'Lookup stok barang (EN)', 'intent_key' => 'stock_lookup', 'keywords' => ['stock'], 'match_mode' => 'and', 'priority' => 11, 'response_text' => null],
+        ['name' => 'Cek sisa barang', 'intent_key' => 'stock_lookup', 'keywords' => ['sisa barang', 'barang tersedia', 'ada barang', 'persediaan'], 'match_mode' => 'or', 'priority' => 12, 'response_text' => null],
+        ['name' => 'Harga produk', 'intent_key' => 'product_price_lookup', 'keywords' => ['harga'], 'match_mode' => 'and', 'priority' => 20, 'response_text' => null],
+        ['name' => 'Harga produk (EN)', 'intent_key' => 'product_price_lookup', 'keywords' => ['price'], 'match_mode' => 'or', 'priority' => 21, 'response_text' => null],
+        ['name' => 'Berapa harga produk', 'intent_key' => 'product_price_lookup', 'keywords' => ['berapa harga', 'brp harga', 'harga berapa', 'biaya produk'], 'match_mode' => 'or', 'priority' => 22, 'response_text' => null],
+        ['name' => 'Detail produk', 'intent_key' => 'product_detail', 'keywords' => ['detail produk', 'info produk', 'data produk', 'detail barang'], 'match_mode' => 'or', 'priority' => 23, 'response_text' => null],
+        ['name' => 'Detail produk (informal)', 'intent_key' => 'product_detail', 'keywords' => ['lihat produk', 'cek produk', 'cari produk', 'info barang'], 'match_mode' => 'or', 'priority' => 24, 'response_text' => null],
+        ['name' => 'Stok rendah / low stock', 'intent_key' => 'low_stock_alert', 'keywords' => ['stok rendah', 'stock rendah', 'low stock', 'stok menipis', 'stok habis', 'hampir habis'], 'match_mode' => 'or', 'priority' => 25, 'response_text' => null],
+        ['name' => 'Produk terlaris', 'intent_key' => 'top_selling_products', 'keywords' => ['terlaris', 'produk terlaris', 'best seller', 'paling laku', 'top produk', 'paling banyak terjual'], 'match_mode' => 'or', 'priority' => 26, 'response_text' => null],
+        ['name' => 'Invoice belum dibayar', 'intent_key' => 'invoice_unpaid_list', 'keywords' => ['invoice', 'belum dibayar'], 'match_mode' => 'and', 'priority' => 30, 'response_text' => null],
+        ['name' => 'Invoice belum lunas', 'intent_key' => 'invoice_unpaid_list', 'keywords' => ['invoice belum lunas', 'tagihan belum dibayar', 'piutang belum masuk'], 'match_mode' => 'or', 'priority' => 31, 'response_text' => null],
+        ['name' => 'Invoice jatuh tempo', 'intent_key' => 'invoice_due_list', 'keywords' => ['invoice', 'jatuh tempo'], 'match_mode' => 'and', 'priority' => 32, 'response_text' => null],
+        ['name' => 'Invoice overdue', 'intent_key' => 'invoice_due_list', 'keywords' => ['overdue', 'terlambat bayar', 'tagihan terlambat', 'lewat tempo'], 'match_mode' => 'or', 'priority' => 33, 'response_text' => null],
+        ['name' => 'Penjualan POS hari ini', 'intent_key' => 'pos_sales_today', 'keywords' => ['pos', 'hari ini'], 'match_mode' => 'and', 'priority' => 40, 'response_text' => null],
+        ['name' => 'Penjualan hari ini (umum)', 'intent_key' => 'pos_sales_today', 'keywords' => ['penjualan hari ini', 'sales hari ini', 'omset hari ini', 'omzet hari ini'], 'match_mode' => 'or', 'priority' => 40, 'response_text' => null],
+        ['name' => 'Penjualan POS kemarin', 'intent_key' => 'pos_sales_yesterday', 'keywords' => ['pos', 'kemarin'], 'match_mode' => 'and', 'priority' => 41, 'response_text' => null],
+        ['name' => 'Penjualan kemarin (umum)', 'intent_key' => 'pos_sales_yesterday', 'keywords' => ['penjualan kemarin', 'sales kemarin', 'omset kemarin'], 'match_mode' => 'or', 'priority' => 41, 'response_text' => null],
+        ['name' => 'Penjualan POS bulan ini', 'intent_key' => 'pos_sales_month', 'keywords' => ['pos bulan ini', 'penjualan bulan ini', 'sales bulan ini', 'omset bulan ini'], 'match_mode' => 'or', 'priority' => 42, 'response_text' => null],
+        ['name' => 'Penjualan POS bulan lalu', 'intent_key' => 'pos_sales_last_month', 'keywords' => ['pos bulan lalu', 'penjualan bulan lalu', 'sales bulan lalu', 'omset bulan lalu'], 'match_mode' => 'or', 'priority' => 43, 'response_text' => null],
+        ['name' => 'Cashflow hari ini', 'intent_key' => 'cashflow_today', 'keywords' => ['cashflow', 'hari ini'], 'match_mode' => 'and', 'priority' => 50, 'response_text' => null],
+        ['name' => 'Kas hari ini', 'intent_key' => 'cashflow_today', 'keywords' => ['kas hari ini', 'arus kas hari ini', 'cash hari ini'], 'match_mode' => 'or', 'priority' => 50, 'response_text' => null],
+        ['name' => 'Cashflow kemarin', 'intent_key' => 'cashflow_yesterday', 'keywords' => ['cashflow', 'kemarin'], 'match_mode' => 'and', 'priority' => 51, 'response_text' => null],
+        ['name' => 'Kas kemarin', 'intent_key' => 'cashflow_yesterday', 'keywords' => ['kas kemarin', 'arus kas kemarin'], 'match_mode' => 'or', 'priority' => 51, 'response_text' => null],
+        ['name' => 'Cashflow bulan ini', 'intent_key' => 'cashflow_month', 'keywords' => ['cashflow bulan ini', 'kas bulan ini', 'arus kas bulan ini'], 'match_mode' => 'or', 'priority' => 52, 'response_text' => null],
+        ['name' => 'Cashflow bulan lalu', 'intent_key' => 'cashflow_last_month', 'keywords' => ['cashflow bulan lalu', 'kas bulan lalu', 'arus kas bulan lalu'], 'match_mode' => 'or', 'priority' => 53, 'response_text' => null],
+        ['name' => 'Project aktif', 'intent_key' => 'project_active_list', 'keywords' => ['project aktif', 'proyek aktif', 'project berjalan', 'daftar project'], 'match_mode' => 'or', 'priority' => 60, 'response_text' => null],
+        ['name' => 'Biaya operasional', 'intent_key' => 'operational_summary', 'keywords' => ['biaya operasional', 'pengeluaran', 'cost operational', 'operating cost'], 'match_mode' => 'or', 'priority' => 70, 'response_text' => null],
+        ['name' => 'Kirim invoice', 'intent_key' => 'send_invoice', 'keywords' => ['kirim invoice', 'send invoice', 'email invoice'], 'match_mode' => 'or', 'priority' => 80, 'response_text' => null],
+        ['name' => 'List invoice terkirim', 'intent_key' => 'invoice_sent_list', 'keywords' => ['list invoice yang dikirim', 'invoice terkirim', 'riwayat kirim invoice'], 'match_mode' => 'or', 'priority' => 81, 'response_text' => null],
+        ['name' => 'Bantuan', 'intent_key' => 'help', 'keywords' => ['bantuan', 'help', 'cara pakai', 'tutorial'], 'match_mode' => 'or', 'priority' => 90, 'response_text' => null],
+    ];
+
     private array $synonyms = [
         // Invoice
         'invoice jatuh tempo'  => 'invoice jatuh tempo',
@@ -124,6 +160,7 @@ class RuleBasedErpChatParser
     {
         $normalized = $this->normalize($message);
         $activeRules = ($rules ?? $this->activeRules())->sortBy('priority')->values();
+        $matches = collect();
 
         foreach ($activeRules as $rule) {
             $keywords = collect($rule->keywords)
@@ -144,8 +181,19 @@ class RuleBasedErpChatParser
                 continue;
             }
 
-            return [
-                'matched' => true,
+            $matchedKeywords = $keywords
+                ->filter(fn ($kw) => $this->fuzzyContains($normalized, $kw))
+                ->values();
+
+            $specificityScore = $matchedKeywords->reduce(function (int $carry, string $kw): int {
+                $wordCount = count(preg_split('/\s+/', $kw) ?: []);
+
+                return max($carry, ($wordCount * 100) + strlen($kw));
+            }, 0);
+
+            $matches->push([
+                'specificity' => $specificityScore,
+                'priority' => (int) ($rule->priority ?? 9999),
                 'rule' => [
                     'id'            => $rule->id,
                     'name'          => $rule->name,
@@ -155,6 +203,20 @@ class RuleBasedErpChatParser
                     'match_mode'    => $matchMode,
                     'response_text' => $rule->response_text,
                 ],
+            ]);
+        }
+
+        if ($matches->isNotEmpty()) {
+            $selected = $matches
+                ->sortBy([
+                    ['specificity', 'desc'],
+                    ['priority', 'asc'],
+                ])
+                ->first();
+
+            return [
+                'matched' => true,
+                'rule' => $selected['rule'],
             ];
         }
 
@@ -166,11 +228,28 @@ class RuleBasedErpChatParser
 
     public function activeRules(): Collection
     {
-        return ErpChatParserRule::query()
+        $databaseRules = ErpChatParserRule::query()
             ->where('is_active', true)
             ->orderBy('priority')
             ->orderBy('id')
             ->get();
+
+        if ($databaseRules->isNotEmpty()) {
+            return $databaseRules;
+        }
+
+        return collect(self::BUILT_IN_RULES)->map(function (array $rule, int $index): object {
+            return (object) [
+                'id' => 'builtin-'.($index + 1),
+                'name' => $rule['name'],
+                'intent_key' => $rule['intent_key'],
+                'keywords' => $rule['keywords'],
+                'match_mode' => $rule['match_mode'],
+                'priority' => $rule['priority'],
+                'response_text' => $rule['response_text'],
+                'is_active' => true,
+            ];
+        })->sortBy('priority')->values();
     }
 
     /**
@@ -251,20 +330,22 @@ class RuleBasedErpChatParser
      */
     private function fuzzyContains(string $haystack, string $needle): bool
     {
-        if (Str::contains($haystack, $needle)) {
-            return true;
-        }
-
         // For multi-word keywords, try exact containment only (already handled by synonyms)
         if (str_contains($needle, ' ')) {
-            return false;
+            return Str::contains($haystack, $needle);
+        }
+
+        $haystackWords = preg_split('/\s+/', $haystack) ?: [];
+
+        if (in_array($needle, $haystackWords, true)) {
+            return true;
         }
 
         // Single-word: check known typos
         foreach ($this->typoMap as $canonical => $typos) {
             if ($needle === $canonical) {
                 foreach ($typos as $typo) {
-                    if (Str::contains($haystack, $typo)) {
+                    if (in_array($typo, $haystackWords, true)) {
                         return true;
                     }
                 }
@@ -272,9 +353,8 @@ class RuleBasedErpChatParser
         }
 
         // Levenshtein on each word in haystack
-        $haystackWords = preg_split('/\s+/', $haystack) ?: [];
         foreach ($haystackWords as $word) {
-            if (strlen($word) < 3 || strlen($needle) < 3) {
+            if (strlen($word) < 4 || strlen($needle) < 4) {
                 continue;
             }
             $dist = levenshtein($word, $needle);

@@ -2,6 +2,7 @@
 import { Head } from '@inertiajs/vue3';
 import { RocketLaunchIcon } from '@heroicons/vue/24/outline';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useLandingTracking } from '@/composables/useLandingTracking';
 
 const props = defineProps({
   landing: {
@@ -13,6 +14,8 @@ const props = defineProps({
     required: true,
   },
 });
+
+const { trackCtaClick } = useLandingTracking();
 
 const nowTs = ref(Date.now());
 let timer = null;
@@ -98,6 +101,7 @@ onBeforeUnmount(() => {
               target="_blank"
               rel="noopener noreferrer"
               class="btn btn-primary border-0 bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+              @click="trackCtaClick('primary', landing.content.primary_cta_text, landing.content.primary_cta_url)"
             >
               {{ landing.content.primary_cta_text }}
             </a>
@@ -107,6 +111,7 @@ onBeforeUnmount(() => {
               target="_blank"
               rel="noopener noreferrer"
               class="btn btn-outline border-white/20 text-white hover:bg-white/10"
+              @click="trackCtaClick('secondary', landing.content.secondary_cta_text, landing.content.secondary_cta_url)"
             >
               {{ landing.content.secondary_cta_text }}
             </a>

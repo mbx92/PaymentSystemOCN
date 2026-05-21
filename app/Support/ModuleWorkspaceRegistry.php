@@ -5,6 +5,13 @@ namespace App\Support;
 final class ModuleWorkspaceRegistry
 {
     /**
+     * @var array<string, string>
+     */
+    private const PINNED_FIRST_MENU_KEYS = [
+        'accounting' => 'overview-accounting',
+    ];
+
+    /**
      * @return array<string, array{label: string, menus: list<array<string, mixed>>}>
      */
     public static function definitions(): array
@@ -13,6 +20,7 @@ final class ModuleWorkspaceRegistry
             'accounting' => [
                 'label' => 'Accounting',
                 'menus' => [
+                    ['key' => 'overview-accounting', 'title' => 'Overview Accounting', 'description' => 'Dashboard accounting khusus arus kas, saldo akun kas/bank, dan breakdown COA per usaha.', 'route' => 'erp.accounting.overview', 'icon' => 'chart-bar'],
                     ['key' => 'master-perusahaan', 'title' => 'Master perusahaan', 'description' => 'Kelola entitas usaha (nama legal, NPWP) untuk jurnal dan laporan per perusahaan.', 'route' => 'erp.admin.companies', 'icon' => 'building-office-2'],
                     ['key' => 'chart-of-accounts', 'title' => 'CoA / Chart Of Account', 'description' => 'Daftar akun chart of accounts untuk semua posting akuntansi.', 'route' => 'erp.accounting.coa', 'icon' => 'book-open'],
                     ['key' => 'pengaturan-coa', 'title' => 'Pengaturan COA', 'description' => 'Atur mapping akun untuk posting otomatis POS, invoice project, dan kategori cashflow.', 'route' => 'erp.accounting.coa-settings', 'icon' => 'cog-6-tooth'],
@@ -143,10 +151,10 @@ final class ModuleWorkspaceRegistry
      */
     public static function defaultMenuOrderFor(string $moduleKey): array
     {
-        return array_values(array_map(
+        return self::pinMenuFirst($moduleKey, array_values(array_map(
             static fn (array $menu): string => (string) $menu['key'],
             self::menusFor($moduleKey),
-        ));
+        )));
     }
 
     /**
@@ -177,6 +185,24 @@ final class ModuleWorkspaceRegistry
             }
         }
 
-        return $normalized;
+        return self::pinMenuFirst($moduleKey, $normalized);
+    }
+
+    /**
+     * @param  list<string>  $order
+     * @return list<string>
+     */
+    private static function pinMenuFirst(string $moduleKey, array $order): array
+    {
+        $pinnedKey = self::PINNED_FIRST_MENU_KEYS[$moduleKey] ?? null;
+
+        if (! is_string($pinnedKey) || ! in_array($pinnedKey, $order, true)) {
+            return $order;
+        }
+
+        return array_values([
+            $pinnedKey,
+            ...array_values(array_filter($order, static fn (string $key): bool => $key !== $pinnedKey)),
+        ]);
     }
 }

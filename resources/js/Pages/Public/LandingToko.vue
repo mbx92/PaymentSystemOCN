@@ -1,5 +1,6 @@
 <script setup>
 import { Head } from '@inertiajs/vue3';
+import { useLandingTracking } from '@/composables/useLandingTracking';
 
 defineProps({
   landing: {
@@ -7,6 +8,8 @@ defineProps({
     required: true,
   },
 });
+
+const { trackCtaClick } = useLandingTracking();
 </script>
 
 <template>
@@ -36,10 +39,10 @@ defineProps({
             {{ landing.content.contact_text }}
           </p>
           <div v-if="landing?.content?.primary_cta_text || landing?.content?.secondary_cta_text" class="mt-6 flex flex-wrap justify-center gap-2">
-            <a v-if="landing?.content?.primary_cta_text && landing?.content?.primary_cta_url" :href="landing.content.primary_cta_url" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm">
+            <a v-if="landing?.content?.primary_cta_text && landing?.content?.primary_cta_url" :href="landing.content.primary_cta_url" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm" @click="trackCtaClick('primary', landing.content.primary_cta_text, landing.content.primary_cta_url)">
               {{ landing.content.primary_cta_text }}
             </a>
-            <a v-if="landing?.content?.secondary_cta_text && landing?.content?.secondary_cta_url" :href="landing.content.secondary_cta_url" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">
+            <a v-if="landing?.content?.secondary_cta_text && landing?.content?.secondary_cta_url" :href="landing.content.secondary_cta_url" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm" @click="trackCtaClick('secondary', landing.content.secondary_cta_text, landing.content.secondary_cta_url)">
               {{ landing.content.secondary_cta_text }}
             </a>
           </div>

@@ -63,7 +63,7 @@ const submitCategory = () => {
 const defaultsForm = useForm({});
 const defaultsConfirmation = ref('');
 const defaultsConfirmationError = ref('');
-const isDefaultsConfirmationValid = computed(() => defaultsConfirmation.value === 'CONFIRM');
+const isDefaultsConfirmationValid = computed(() => defaultsConfirmation.value === 'CONFRIM');
 
 const resetDefaultsConfirmation = () => {
   defaultsConfirmation.value = '';
@@ -82,7 +82,7 @@ const closeDefaultsModal = () => {
 
 const applyDefaults = () => {
   if (!isDefaultsConfirmationValid.value) {
-    defaultsConfirmationError.value = 'Ketik CONFIRM dengan huruf besar untuk membuka tombol terapkan.';
+    defaultsConfirmationError.value = 'Ketik CONFRIM dengan huruf besar untuk membuka tombol terapkan.';
     return;
   }
 
@@ -247,12 +247,12 @@ const domainTitle = (domain) => (domain === 'cash_in' ? 'Kas Masuk' : 'Kas Kelua
             <label class="label px-0 pt-0">
               <span class="label-text text-xs font-semibold uppercase tracking-[0.16em]">Validasi Konfirmasi</span>
             </label>
-            <p class="text-xs text-base-content/70">Untuk membuka tombol terapkan, ketik <span class="font-mono font-semibold">CONFIRM</span> dengan huruf besar.</p>
+            <p class="text-xs text-base-content/70">Untuk membuka tombol terapkan, ketik <span class="font-mono font-semibold">CONFRIM</span> dengan huruf besar.</p>
             <input
               v-model="defaultsConfirmation"
               type="text"
               class="input input-bordered input-sm mt-3 w-full font-mono"
-              placeholder="Ketik CONFIRM"
+              placeholder="Ketik CONFRIM"
               @input="defaultsConfirmationError = ''"
             />
             <p v-if="defaultsConfirmationError" class="mt-2 text-xs text-error">{{ defaultsConfirmationError }}</p>

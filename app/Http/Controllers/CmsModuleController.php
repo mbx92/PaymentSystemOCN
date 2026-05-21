@@ -200,6 +200,8 @@ class CmsModuleController extends Controller
             'at_display' => $log->created_at?->format('d M Y, H:i'),
             'kind' => $log->kind,
             'kind_label' => $log->kind === CmsAccessLog::KIND_LANDING_PUBLIC ? 'Landing publik' : 'Panel CMS',
+            'event_name' => $log->event_name,
+            'event_label' => $this->eventLabel($log->event_name),
             'ip' => $log->ip_address,
             'location' => $loc === [] ? '—' : implode(', ', $loc),
             'device_type' => $log->device_type,
@@ -208,7 +210,41 @@ class CmsModuleController extends Controller
             'site' => $log->landingSite?->name,
             'user' => $log->user?->email,
             'path' => $log->path,
+            'event_summary' => $this->eventSummary($log),
         ];
+    }
+
+    private function eventLabel(?string $eventName): string
+    {
+        return match ($eventName) {
+            CmsAccessLog::EVENT_PAGE_VIEW => 'Buka halaman',
+            CmsAccessLog::EVENT_CTA_CLICK => 'Klik CTA',
+            CmsAccessLog::EVENT_PAGE_EXIT => 'Keluar halaman',
+            default => 'Akses',
+        };
+    }
+
+    private function eventSummary(CmsAccessLog $log): string
+    {
+        $meta = is_array($log->event_meta) ? $log->event_meta : [];
+
+        return (match ($log->event_name) {
+            CmsAccessLog::EVENT_CTA_CLICK => trim(implode(' · ', array_filter([
+                isset($meta['cta_kind']) ? 'CTA '.ucfirst((string) $meta['cta_kind']) : null,
+                $meta['cta_text'] ?? null,
+                $meta['cta_url'] ?? null,
+            ]))),
+            CmsAccessLog::EVENT_PAGE_EXIT => trim(implode(' · ', array_filter([
+                isset($meta['active_ms']) ? 'aktif '.round(((int) $meta['active_ms']) / 1000, 1).' dtk' : null,
+                isset($meta['visible_ms']) ? 'terlihat '.round(((int) $meta['visible_ms']) / 1000, 1).' dtk' : null,
+                isset($meta['max_scroll_percent']) ? 'scroll '.round((float) $meta['max_scroll_percent'], 1).'%' : null,
+            ]))),
+            CmsAccessLog::EVENT_PAGE_VIEW => trim(implode(' · ', array_filter([
+                $log->landingSite?->domain,
+                $meta['query'] ?? null,
+            ]))),
+            default => $log->path,
+        }) ?: $log->path;
     }
 
     /**

@@ -81,6 +81,18 @@ const localOrder = ref([]);
 
 const defaultOrder = computed(() => (props.menus ?? []).map((menu) => menu.key));
 const savedOrder = computed(() => page.props.uiPreferences?.module_menu_orders?.[props.moduleKey] ?? []);
+const pinnedFirstKey = computed(() => (props.moduleKey === 'accounting' ? 'overview-accounting' : null));
+
+const pinFirst = (source) => {
+  const pinnedKey = pinnedFirstKey.value;
+
+  if (!pinnedKey || !Array.isArray(source) || !source.includes(pinnedKey)) {
+    return source;
+  }
+
+  return [pinnedKey, ...source.filter((key) => key !== pinnedKey)];
+};
+
 const normalizedOrder = (source) => {
   const defaultKeys = defaultOrder.value;
   const filtered = [];
@@ -94,7 +106,7 @@ const normalizedOrder = (source) => {
     if (!filtered.includes(key)) filtered.push(key);
   }
 
-  return filtered;
+  return pinFirst(filtered);
 };
 
 watch(

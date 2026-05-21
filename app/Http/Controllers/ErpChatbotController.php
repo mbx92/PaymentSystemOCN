@@ -4,13 +4,15 @@ namespace App\Http\Controllers;
 
 use App\ERP\Core\Services\RuleBasedErpChatParser;
 use App\Mail\ProjectInvoiceMail;
-use App\Models\CashIn;
-use App\Models\CashOut;
 use App\Models\InvoiceSendLog;
 use App\Models\MasterProduct;
-use App\Models\PosSale;
 use App\Models\Project;
 use App\Models\ProjectPayment;
+use App\Services\ErpChatbot\CashflowQueryService;
+use App\Services\ErpChatbot\InvoiceQueryService;
+use App\Services\ErpChatbot\ProductQueryService;
+use App\Services\ErpChatbot\ProjectQueryService;
+use App\Services\ErpChatbot\SalesQueryService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -22,6 +24,14 @@ use Illuminate\Support\Str;
 
 class ErpChatbotController extends Controller
 {
+    public function __construct(
+        private readonly ProductQueryService $productQueries,
+        private readonly SalesQueryService $salesQueries,
+        private readonly CashflowQueryService $cashflowQueries,
+        private readonly ProjectQueryService $projectQueries,
+        private readonly InvoiceQueryService $invoiceQueries,
+    ) {}
+
     public function ask(Request $request, RuleBasedErpChatParser $parser): JsonResponse
     {
         $validated = $request->validate([
@@ -168,7 +178,7 @@ class ErpChatbotController extends Controller
             return null;
         }
 
-        $product = MasterProduct::find($ctx['product_id']);
+        $product = $this->productQueries->findActiveProductById((int) $ctx['product_id']);
         if (! $product) {
             return null;
         }
@@ -469,12 +479,7 @@ class ErpChatbotController extends Controller
 
     private function answerUnpaidInvoiceList(): string
     {
-        $unpaid = ProjectPayment::query()
-            ->with('project:id,name,invoice_number')
-            ->whereNull('paid_at')
-            ->orderByDesc('id')
-            ->limit(8)
-            ->get();
+        $unpaid = $this->invoiceQueries->unpaidProjectPayments();
 
         if ($unpaid->isEmpty()) {
             return '✅ Tidak ada invoice termin yang belum dibayar saat ini.';
@@ -496,14 +501,7 @@ class ErpChatbotController extends Controller
 
     private function answerInvoiceDueList(): string
     {
-        $soon = ProjectPayment::query()
-            ->with('project:id,name,invoice_number')
-            ->whereNull('paid_at')
-            ->whereNotNull('due_date')
-            ->where('due_date', '<=', now()->addDays(14)->toDateString())
-            ->orderBy('due_date')
-            ->limit(8)
-            ->get();
+        $soon = $this->invoiceQueries->dueProjectPaymentsWithinDays(14);
 
         if ($soon->isEmpty()) {
             return '✅ Tidak ada invoice yang jatuh tempo dalam 14 hari ke depan.';
@@ -560,16 +558,16 @@ class ErpChatbotController extends Controller
 
     private function formatPosSalesSummary(string $startDate, string $endDate, string $label): string
     {
-        $q = PosSale::query()->whereBetween('sold_at', [$startDate.' 00:00:00', $endDate.' 23:59:59']);
-        $count = $q->count();
-        $total = (float) $q->sum('grand_total');
+        $summary = $this->salesQueries->summarizePeriod($startDate, $endDate);
+        $count = $summary['count'];
+        $total = $summary['total'];
         $totalFmt = number_format($total, 0, ',', '.');
 
         if ($count === 0) {
             return "Belum ada transaksi {$label}.";
         }
 
-        $avg = $count > 0 ? number_format($total / $count, 0, ',', '.') : '0';
+        $avg = number_format($summary['average'], 0, ',', '.');
 
         return "**{$label}**\nTransaksi: {$count}\nTotal penjualan: Rp {$totalFmt}\nRata-rata/trx: Rp {$avg}";
     }
@@ -607,9 +605,10 @@ class ErpChatbotController extends Controller
 
     private function formatCashflowSummary(string $startDate, string $endDate, string $label): string
     {
-        $cashIn = (float) CashIn::query()->whereBetween('date', [$startDate, $endDate])->sum('amount');
-        $cashOut = (float) CashOut::query()->whereBetween('date', [$startDate, $endDate])->sum('amount');
-        $net = $cashIn - $cashOut;
+        $summary = $this->cashflowQueries->summarizePeriod($startDate, $endDate);
+        $cashIn = $summary['cash_in'];
+        $cashOut = $summary['cash_out'];
+        $net = $summary['net'];
 
         $inFmt = number_format($cashIn, 0, ',', '.');
         $outFmt = number_format($cashOut, 0, ',', '.');
@@ -621,11 +620,7 @@ class ErpChatbotController extends Controller
 
     private function answerProjectActiveList(): string
     {
-        $projects = Project::query()
-            ->where('status', 'berjalan')
-            ->orderByDesc('created_at')
-            ->limit(10)
-            ->get(['id', 'name', 'client_name', 'total_value', 'started_at']);
+        $projects = $this->projectQueries->activeProjects();
 
         if ($projects->isEmpty()) {
             return 'Tidak ada project yang sedang berjalan saat ini.';
@@ -646,14 +641,7 @@ class ErpChatbotController extends Controller
 
     private function answerLowStockAlert(): string
     {
-        $low = MasterProduct::query()
-            ->where('status', 'active')
-            ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
-            ->where('low_stock_alert_enabled', true)
-            ->whereColumn('stock', '<=', 'min_stock')
-            ->orderBy('stock')
-            ->limit(10)
-            ->get(['id', 'name', 'sku', 'stock', 'min_stock', 'uom', 'low_stock_alert_enabled']);
+        $low = $this->productQueries->lowStockProducts();
 
         if ($low->isEmpty()) {
             return '✅ Semua produk aktif memiliki stok di atas minimum.';
@@ -666,23 +654,15 @@ class ErpChatbotController extends Controller
 
     private function answerOperationalSummary(): string
     {
-        $thisMonth = CashOut::query()
-            ->where('category', 'operasional')
-            ->whereYear('date', now()->year)
-            ->whereMonth('date', now()->month)
-            ->sum('amount');
-
-        $lastMonth = CashOut::query()
-            ->where('category', 'operasional')
-            ->whereYear('date', now()->subMonth()->year)
-            ->whereMonth('date', now()->subMonth()->month)
-            ->sum('amount');
+        $comparison = $this->cashflowQueries->operationalComparison(now());
+        $thisMonth = $comparison['this_month'];
+        $lastMonth = $comparison['last_month'];
 
         $month = now()->translatedFormat('F Y');
         $thisFmt = number_format((float) $thisMonth, 0, ',', '.');
         $lastFmt = number_format((float) $lastMonth, 0, ',', '.');
 
-        $diff = (float) $thisMonth - (float) $lastMonth;
+        $diff = $comparison['diff'];
         $trend = $diff > 0 ? '📈 Naik' : ($diff < 0 ? '📉 Turun' : '➡️ Sama');
         $diffFmt = number_format(abs($diff), 0, ',', '.');
         $trendLine = $diff !== 0.0 ? "\nTren: {$trend} Rp {$diffFmt} dari bulan lalu" : '';
@@ -693,17 +673,11 @@ class ErpChatbotController extends Controller
     private function answerTopSellingProducts(): string
     {
         $month = now()->translatedFormat('F Y');
-        $start = now()->startOfMonth()->toDateString().' 00:00:00';
-        $end = now()->toDateString().' 23:59:59';
 
-        $topProducts = \App\Models\PosSaleItem::query()
-            ->join('pos_sales', 'pos_sales.id', '=', 'pos_sale_items.pos_sale_id')
-            ->whereBetween('pos_sales.sold_at', [$start, $end])
-            ->selectRaw('pos_sale_items.product_name, SUM(pos_sale_items.qty) as total_qty, SUM(pos_sale_items.line_total) as total_revenue')
-            ->groupBy('pos_sale_items.product_name')
-            ->orderByDesc('total_qty')
-            ->limit(10)
-            ->get();
+        $topProducts = $this->salesQueries->topSellingProducts(
+            now()->startOfMonth()->toDateString(),
+            now()->toDateString(),
+        );
 
         if ($topProducts->isEmpty()) {
             return "Belum ada data penjualan bulan {$month}.";
@@ -760,21 +734,7 @@ class ErpChatbotController extends Controller
             return "Format belum lengkap.\nGunakan:\n- kirim invoice INV-PRJ-000123 ke client@mail.com\n- lalu: konfirmasi kirim invoice INV-PRJ-000123 ke client@mail.com";
         }
 
-        $project = Project::query()
-            ->where('status', 'selesai')
-            ->whereRaw('LOWER(invoice_number) = ?', [Str::lower($invoiceNo)])
-            ->first();
-
-        if (! $project) {
-            $project = Project::query()
-                ->where('status', 'selesai')
-                ->latest('finished_at')
-                ->limit(200)
-                ->get()
-                ->first(function (Project $candidate) use ($invoiceNo): bool {
-                    return Str::lower($this->invoiceNumber($candidate)) === Str::lower($invoiceNo);
-                });
-        }
+        $project = $this->projectQueries->findCompletedProjectByInvoiceNumber($invoiceNo);
 
         if (! $project) {
             return "Invoice **{$invoiceNo}** tidak ditemukan pada project selesai.";
@@ -858,11 +818,7 @@ class ErpChatbotController extends Controller
 
     private function answerInvoiceSentList(): string
     {
-        $logs = InvoiceSendLog::query()
-            ->latest('sent_at')
-            ->latest('id')
-            ->limit(10)
-            ->get(['invoice_number', 'recipient_email', 'status', 'sent_at']);
+        $logs = $this->invoiceQueries->recentSendLogs();
 
         if ($logs->isEmpty()) {
             return 'Belum ada riwayat pengiriman invoice dari chatbot.';
@@ -915,19 +871,7 @@ class ErpChatbotController extends Controller
 
     private function searchProducts(string $term)
     {
-        $termLower = Str::lower($term);
-
-        return MasterProduct::query()
-            ->where('status', 'active')
-            ->where(function ($query) use ($termLower): void {
-                $query
-                    ->whereRaw('LOWER(name) LIKE ?', ['%'.$termLower.'%'])
-                    ->orWhereRaw('LOWER(sku) LIKE ?', ['%'.$termLower.'%'])
-                    ->orWhereRaw('LOWER(barcode) LIKE ?', ['%'.$termLower.'%']);
-            })
-            ->orderBy('name')
-            ->limit(6)
-            ->get(['id', 'name', 'sku', 'barcode', 'uom', 'stock', 'min_stock', 'selling_price']);
+        return $this->productQueries->searchActiveProducts($term);
     }
 
     private function parseSendInvoiceCommand(string $message): array

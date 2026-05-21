@@ -66,8 +66,8 @@ const warehouseClearTargetLabel = computed(() => {
   return w ? `${w.name} (${w.code})` : '';
 });
 
-const canConfirmWarehouseClear = computed(() => clearWarehouseDeletePhrase.value.trim() === 'DELETE');
-const canConfirmAction = computed(() => actionConfirmPhrase.value.trim().toUpperCase() === 'JALANKAN');
+const canConfirmWarehouseClear = computed(() => clearWarehouseDeletePhrase.value.trim().toUpperCase() === 'CONFRIM');
+const canConfirmAction = computed(() => actionConfirmPhrase.value.trim().toUpperCase() === 'CONFRIM');
 
 const flash = computed(() => page.props.flash ?? {});
 const importErrors = computed(() => flash.value?.import_errors ?? []);
@@ -849,7 +849,7 @@ async function runAllSeeders() {
           </div>
           <div class="mt-4 space-y-2">
             <label class="label py-0" for="clear-warehouse-delete-phrase">
-              <span class="label-text font-medium">Ketik <kbd class="kbd kbd-sm font-mono">DELETE</kbd> untuk melanjutkan</span>
+              <span class="label-text font-medium">Ketik <kbd class="kbd kbd-sm font-mono">CONFRIM</kbd> untuk melanjutkan</span>
             </label>
             <input
               id="clear-warehouse-delete-phrase"
@@ -857,7 +857,7 @@ async function runAllSeeders() {
               v-model="clearWarehouseDeletePhrase"
               type="text"
               class="input input-bordered w-full font-mono text-sm"
-              placeholder="DELETE"
+              placeholder="CONFRIM"
               autocomplete="off"
               autocapitalize="characters"
               spellcheck="false"
@@ -901,7 +901,7 @@ async function runAllSeeders() {
           </div>
           <div class="mt-4 space-y-2">
             <label class="label py-0" for="action-confirm-phrase">
-              <span class="label-text font-medium">Ketik <kbd class="kbd kbd-sm font-mono">JALANKAN</kbd> untuk melanjutkan</span>
+              <span class="label-text font-medium">Ketik <kbd class="kbd kbd-sm font-mono">CONFRIM</kbd> untuk melanjutkan</span>
             </label>
             <input
               id="action-confirm-phrase"
@@ -909,7 +909,7 @@ async function runAllSeeders() {
               v-model="actionConfirmPhrase"
               type="text"
               class="input input-bordered w-full font-mono text-sm"
-              placeholder="JALANKAN"
+              placeholder="CONFRIM"
               autocomplete="off"
               autocapitalize="characters"
               spellcheck="false"
@@ -926,7 +926,7 @@ async function runAllSeeders() {
               :disabled="!canConfirmAction"
               @click="submitPendingAction"
             >
-              Lanjutkan tindakan
+              CONFRIM
             </button>
           </div>
         </div>

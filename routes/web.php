@@ -12,6 +12,7 @@ use App\Http\Controllers\CrmCustomerController;
 use App\Http\Controllers\CrmLeadController;
 use App\Http\Controllers\CrmPipelineController;
 use App\Http\Controllers\ERPAccountingCoaSettingsController;
+use App\Http\Controllers\ERPAccountingOverviewController;
 use App\Http\Controllers\ERPAccountingOpeningBalanceController;
 use App\Http\Controllers\ERPAccountingPaymentController;
 use App\Http\Controllers\ERPAccountingUtilityController;
@@ -33,6 +34,7 @@ use App\Http\Controllers\HREmployeeController;
 use App\Http\Controllers\HRLegalController;
 use App\Http\Controllers\LabelProfileController;
 use App\Http\Controllers\OperationalController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PersonalFinanceController;
 use App\Http\Controllers\PersonalModuleController;
 use App\Http\Controllers\ProfileController;
@@ -67,7 +69,12 @@ Route::get('/storage/{path}', function (string $path) {
     return response()->file($disk->path($path));
 })->where('path', '.*')->name('storage.serve');
 
-Route::get('/', [PublicHomeController::class, 'index'])->name('dashboard');
+Route::get('/', [PublicHomeController::class, 'index'])
+    ->middleware('throttle:landing-public')
+    ->name('dashboard');
+Route::post('/landing/track', [PublicHomeController::class, 'track'])
+    ->middleware('throttle:landing-track')
+    ->name('landing.track');
 
 Route::middleware('auth')->group(function () {
     // Profile (Breeze default)
@@ -77,6 +84,11 @@ Route::middleware('auth')->group(function () {
     Route::post('erp/chatbot/ask', [ErpChatbotController::class, 'ask'])->name('erp.chatbot.ask');
     Route::post('erp/context/company', [ErpCompanyContextController::class, 'update'])->name('erp.context.company');
     Route::patch('ui/preferences', [UiPreferenceController::class, 'update'])->name('ui.preferences.update');
+    Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    Route::get('notifications/poll', [NotificationController::class, 'poll'])->name('notifications.poll');
+    Route::post('notifications/mark-all-read', [NotificationController::class, 'markAllRead'])->name('notifications.mark-all-read');
+    Route::patch('notifications/mark-read', [NotificationController::class, 'markRead'])->name('notifications.mark-read');
+    Route::delete('notifications/mark-read', [NotificationController::class, 'markUnread'])->name('notifications.mark-unread');
 
     Route::prefix('rnd')->name('rnd.')->middleware('can:manage-rnd')->group(function () {
         Route::get('/', [RndProjectController::class, 'index'])->name('dashboard');
@@ -110,6 +122,7 @@ Route::middleware('auth')->group(function () {
 
     Route::middleware('role_or_permission:admin|manajer|finance|menu.erp.accounting|erp.accounting.post-journal|erp.reporting.view')->group(function () {
         Route::get('erp/accounting', [ERPModuleController::class, 'accounting'])->name('erp.accounting');
+        Route::get('erp/accounting/overview', [ERPAccountingOverviewController::class, 'index'])->name('erp.accounting.overview');
         Route::get('erp/accounting/cashflow', [CashflowController::class, 'index'])->name('erp.accounting.cashflow');
         Route::get('erp/accounting/cash-flow', fn () => redirect()->route('erp.accounting.cashflow', request()->query()))->name('erp.accounting.cashflow.redirect-legacy');
         Route::get('erp/accounting/opening-balance', [ERPAccountingOpeningBalanceController::class, 'index'])->name('erp.accounting.opening-balance');

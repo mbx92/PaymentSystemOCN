@@ -8,6 +8,7 @@ import { computed, ref } from 'vue';
 const props = defineProps({
   rules: Object,
   filters: Object,
+  capabilities: Object,
 });
 
 const filterSearch = ref(props.filters?.search || '');
@@ -38,6 +39,11 @@ const onPerPage = (n) => {
 };
 
 const filteredRules = computed(() => props.rules?.data ?? []);
+const builtInIntents = computed(() => props.capabilities?.built_in_intents ?? []);
+const capabilityNotes = computed(() => props.capabilities?.notes ?? []);
+const activeRulesCount = computed(() => filteredRules.value.filter((rule) => rule.is_active).length);
+const dataBackedCount = computed(() => builtInIntents.value.filter((intent) => intent.source === 'data').length);
+const actionBackedCount = computed(() => builtInIntents.value.filter((intent) => intent.source === 'action').length);
 
 /** Contoh template custom reply (harga string — hindari {{ }} literal di atribut template Vue) */
 const parserReplyPlaceholderExample = 'Contoh:\n**{{name}}**\nStok: {{stock}} {{uom}}\n{{stock_status}}';
@@ -57,6 +63,84 @@ const form = useForm(emptyForm());
 const editForm = useForm(emptyForm());
 const selectedRule = ref(null);
 const deleteTarget = ref(null);
+const chatMessages = ref([
+  {
+    role: 'assistant',
+    text: 'Panel ini menguji endpoint chatbot yang sama dengan widget utama. Coba contoh seperti "stok lid cup" atau "invoice belum dibayar".',
+  },
+]);
+const chatInput = ref('');
+const chatLoading = ref(false);
+
+const getCookieValue = (name) => {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : '';
+};
+
+const quickPrompt = async (example) => {
+  chatInput.value = example;
+  await sendTestMessage();
+};
+
+const sendTestMessage = async () => {
+  const message = chatInput.value.trim();
+  if (!message || chatLoading.value) return;
+
+  chatMessages.value.push({ role: 'user', text: message });
+  chatInput.value = '';
+  chatLoading.value = true;
+
+  try {
+    const response = await fetch(route('erp.chatbot.ask'), {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-XSRF-TOKEN': getCookieValue('XSRF-TOKEN'),
+      },
+      body: JSON.stringify({
+        message,
+        history: chatMessages.value
+          .filter((item) => item.role === 'user' || item.role === 'assistant')
+          .slice(-10)
+          .map((item) => ({ role: item.role, text: item.text })),
+      }),
+    });
+
+    if (!response.ok) {
+      const errPayload = await response.json().catch(() => ({}));
+      const errMsg = errPayload?.message || `Server error ${response.status}.`;
+      chatMessages.value.push({ role: 'assistant', text: `⚠️ ${errMsg}` });
+      return;
+    }
+
+    const payload = await response.json();
+    chatMessages.value.push({
+      role: 'assistant',
+      text: payload?.answer || 'Maaf, terjadi kendala saat memproses pertanyaan.',
+    });
+  } catch {
+    chatMessages.value.push({
+      role: 'assistant',
+      text: '⚠️ Koneksi ke chatbot gagal. Coba lagi sebentar.',
+    });
+  } finally {
+    chatLoading.value = false;
+  }
+};
+
+const sourceBadgeClass = (source) => {
+  if (source === 'data') return 'badge-success';
+  if (source === 'action') return 'badge-warning';
+  return 'badge-ghost';
+};
+
+const sourceLabel = (source) => {
+  if (source === 'data') return 'data live';
+  if (source === 'action') return 'action';
+  return 'built-in';
+};
 
 const toKeywordsArray = (value) => value
   .split(',')
@@ -151,7 +235,7 @@ const confirmDelete = () => {
             <div>
               <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Administration Workspace</p>
               <h1 class="ocn-panel__title mt-1">Parser Rules Chatbot</h1>
-              <p class="ocn-panel__desc mt-1">Atur rule berbasis keyword untuk intent chatbot ERP. Mode <span class="font-mono text-xs">AND</span> = semua keyword harus ada, <span class="font-mono text-xs">OR</span> = cukup salah satu.</p>
+              <p class="ocn-panel__desc mt-1">Atur rule berbasis keyword untuk intent chatbot ERP. Tahap 1 backend sudah dipisah ke query service per domain, jadi rule di halaman ini tetap mengenali intent, sementara sebagian jawaban sudah mengambil data live.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
               <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.administration')">
@@ -160,6 +244,132 @@ const confirmDelete = () => {
             </Link>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div class="grid gap-4 xl:grid-cols-[1.2fr,0.8fr]">
+        <div class="ocn-panel">
+          <div class="ocn-panel__head">
+            <h2 class="ocn-panel__title">Capability overview</h2>
+            <p class="ocn-panel__desc">Ringkasan kemampuan chatbot yang saat ini sudah ditopang backend modular.</p>
+          </div>
+          <div class="grid gap-3 p-5 md:grid-cols-3">
+            <div class="rounded-2xl border border-emerald-200/70 bg-emerald-50/70 p-4">
+              <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700/80">Intent data live</p>
+              <p class="mt-2 text-3xl font-bold text-emerald-800">{{ dataBackedCount }}</p>
+              <p class="mt-1 text-xs text-emerald-800/70">Jawaban mengambil data database saat request dijalankan.</p>
+            </div>
+            <div class="rounded-2xl border border-amber-200/70 bg-amber-50/70 p-4">
+              <p class="text-xs font-semibold uppercase tracking-wide text-amber-700/80">Intent action</p>
+              <p class="mt-2 text-3xl font-bold text-amber-800">{{ actionBackedCount }}</p>
+              <p class="mt-1 text-xs text-amber-800/70">Melakukan aksi dengan langkah konfirmasi, misalnya kirim invoice.</p>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-700/80">Rule aktif di halaman ini</p>
+              <p class="mt-2 text-3xl font-bold text-slate-800">{{ activeRulesCount }}</p>
+              <p class="mt-1 text-xs text-slate-800/70">Rule parser masih menjadi pintu masuk untuk klasifikasi intent.</p>
+            </div>
+          </div>
+          <div class="px-5 pb-5">
+            <div class="rounded-2xl border border-base-200 bg-base-100 p-4">
+              <p class="text-sm font-semibold">Catatan integrasi</p>
+              <ul class="mt-3 space-y-2 text-sm text-base-content/75">
+                <li v-for="note in capabilityNotes" :key="note" class="flex gap-2">
+                  <span class="mt-[2px] text-primary">•</span>
+                  <span>{{ note }}</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="ocn-panel">
+          <div class="ocn-panel__head">
+            <h2 class="ocn-panel__title">Uji chatbot</h2>
+            <p class="ocn-panel__desc">Tes endpoint yang sama dengan widget chat utama tanpa keluar dari halaman admin.</p>
+          </div>
+          <div class="flex h-full min-h-[420px] flex-col p-5">
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="intent in builtInIntents.slice(0, 4)"
+                :key="intent.key"
+                type="button"
+                class="btn btn-xs btn-outline"
+                @click="quickPrompt(intent.examples?.[0] || intent.label)"
+              >
+                {{ intent.examples?.[0] || intent.label }}
+              </button>
+            </div>
+            <div class="mt-4 flex-1 space-y-3 overflow-y-auto rounded-2xl border border-base-200 bg-base-100 p-4">
+              <div
+                v-for="(message, index) in chatMessages"
+                :key="`${message.role}-${index}`"
+                class="flex"
+                :class="message.role === 'user' ? 'justify-end' : 'justify-start'"
+              >
+                <div
+                  class="max-w-[92%] rounded-2xl px-4 py-3 text-sm whitespace-pre-line"
+                  :class="message.role === 'user' ? 'bg-primary text-primary-content' : 'bg-base-200 text-base-content'"
+                >
+                  {{ message.text }}
+                </div>
+              </div>
+            </div>
+            <div class="mt-4 flex gap-2">
+              <input
+                v-model="chatInput"
+                type="text"
+                class="input input-bordered flex-1"
+                placeholder="Contoh: stok kabel lan"
+                @keydown.enter.prevent="sendTestMessage"
+              />
+              <button class="btn btn-primary" :disabled="chatLoading" @click="sendTestMessage">
+                {{ chatLoading ? 'Mengirim...' : 'Kirim' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Intent bawaan</h2>
+          <p class="ocn-panel__desc">Peta intent bawaan yang saat ini ditangani backend modular. Ini membantu admin memahami rule mana yang hanya memetakan intent dan mana yang sudah data-backed.</p>
+        </div>
+        <div class="grid gap-3 p-5 lg:grid-cols-2">
+          <article
+            v-for="intent in builtInIntents"
+            :key="intent.key"
+            class="rounded-2xl border border-base-200 bg-base-100 p-4 shadow-sm"
+          >
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 class="font-semibold">{{ intent.label }}</h3>
+                <p class="mt-1 font-mono text-xs text-base-content/60">{{ intent.key }}</p>
+              </div>
+              <div class="flex gap-2">
+                <span class="badge badge-sm" :class="sourceBadgeClass(intent.source)">{{ sourceLabel(intent.source) }}</span>
+                <span
+                  class="badge badge-sm"
+                  :class="intent.custom_reply_supported ? 'badge-info' : 'badge-ghost'"
+                >
+                  {{ intent.custom_reply_supported ? 'custom reply template' : 'reply bawaan' }}
+                </span>
+              </div>
+            </div>
+            <p class="mt-3 text-sm text-base-content/75">{{ intent.description }}</p>
+            <div class="mt-4 flex flex-wrap gap-2">
+              <button
+                v-for="example in intent.examples || []"
+                :key="example"
+                type="button"
+                class="badge badge-outline cursor-pointer px-3 py-3"
+                @click="quickPrompt(example)"
+              >
+                {{ example }}
+              </button>
+            </div>
+          </article>
         </div>
       </div>
 

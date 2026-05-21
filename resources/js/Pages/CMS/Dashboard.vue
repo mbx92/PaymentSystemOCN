@@ -331,17 +331,21 @@ const applyRecentPerPage = (n) => {
           <tbody>
             <tr v-for="row in recentAccess?.data ?? []" :key="row.at + row.ip + row.path">
               <td class="whitespace-nowrap text-sm">{{ row.at_display ?? '—' }}</td>
-              <td class="whitespace-nowrap text-sm">{{ row.kind_label }}</td>
+              <td class="whitespace-nowrap text-sm">
+                <div>{{ row.kind_label }}</div>
+                <div class="text-[11px] text-base-content/50">{{ row.event_label || 'Akses' }}</div>
+              </td>
               <td class="font-mono text-xs">{{ row.ip }}</td>
               <td class="max-w-[200px] truncate text-sm" :title="row.location">{{ row.location }}</td>
               <td class="text-sm capitalize">{{ deviceLabel(row.device_type) }}</td>
               <td class="max-w-[180px] truncate text-xs" :title="`${row.browser} · ${row.os}`">
                 {{ row.browser }} · {{ row.os }}
               </td>
-              <td class="max-w-[220px] truncate text-xs" :title="row.site || row.user || row.path">
+              <td class="max-w-[220px] truncate text-xs" :title="row.event_summary || row.site || row.user || row.path">
                 <span v-if="row.site">Situs: {{ row.site }}</span>
                 <span v-else-if="row.user">{{ row.user }}</span>
                 <span v-else>{{ row.path }}</span>
+                <span v-if="row.event_summary" class="block text-[11px] text-base-content/60">{{ row.event_summary }}</span>
               </td>
             </tr>
             <tr v-if="!(recentAccess?.data ?? []).length">

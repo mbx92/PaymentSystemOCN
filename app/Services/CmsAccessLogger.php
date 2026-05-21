@@ -17,6 +17,26 @@ class CmsAccessLogger
             CmsAccessLog::KIND_LANDING_PUBLIC,
             $landingSiteId,
             $request->user()?->id,
+            CmsAccessLog::EVENT_PAGE_VIEW,
+            [
+                'host' => $request->getHost(),
+                'query' => $request->getQueryString(),
+            ],
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $eventMeta
+     */
+    public static function logLandingEvent(Request $request, int $landingSiteId, string $eventName, array $eventMeta = []): void
+    {
+        self::insert(
+            $request,
+            CmsAccessLog::KIND_LANDING_PUBLIC,
+            $landingSiteId,
+            $request->user()?->id,
+            $eventName,
+            $eventMeta,
         );
     }
 
@@ -27,10 +47,15 @@ class CmsAccessLogger
             CmsAccessLog::KIND_CMS_ADMIN,
             null,
             $request->user()?->id,
+            null,
+            [],
         );
     }
 
-    private static function insert(Request $request, string $kind, ?int $landingSiteId, ?int $userId): void
+    /**
+     * @param  array<string, mixed>  $eventMeta
+     */
+    private static function insert(Request $request, string $kind, ?int $landingSiteId, ?int $userId, ?string $eventName, array $eventMeta): void
     {
         $ip = self::clientIp($request);
         $ua = $request->userAgent();
@@ -38,11 +63,16 @@ class CmsAccessLogger
         $geo = self::lookupGeo($ip);
 
         try {
+            $path = '/'.ltrim($request->path(), '/');
+            if ($path === '//') {
+                $path = '/';
+            }
+
             CmsAccessLog::query()->create([
                 'kind' => $kind,
                 'landing_site_id' => $landingSiteId,
                 'user_id' => $userId,
-                'path' => '/'.$request->path(),
+                'path' => $path,
                 'route_name' => $request->route()?->getName(),
                 'method' => $request->method(),
                 'ip_address' => $ip ?? '',
@@ -55,6 +85,8 @@ class CmsAccessLogger
                 'browser' => $parsed['browser'],
                 'os' => $parsed['os'],
                 'referrer' => self::truncateReferrer($request->header('referer')),
+                'event_name' => $eventName,
+                'event_meta' => self::sanitizeEventMeta($eventMeta),
             ]);
         } catch (\Throwable $e) {
             Log::warning('cms_access_log_failed', ['message' => $e->getMessage()]);
@@ -184,5 +216,43 @@ class CmsAccessLogger
         }
 
         return $ref;
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     * @return array<string, mixed>
+     */
+    private static function sanitizeEventMeta(array $meta): array
+    {
+        $out = [];
+
+        foreach ($meta as $key => $value) {
+            if (! is_string($key) || $key === '') {
+                continue;
+            }
+
+            if (is_string($value)) {
+                $trimmed = trim($value);
+                if ($trimmed === '') {
+                    continue;
+                }
+                $out[$key] = mb_substr($trimmed, 0, 500);
+                continue;
+            }
+
+            if (is_bool($value) || is_int($value) || is_float($value)) {
+                $out[$key] = $value;
+                continue;
+            }
+
+            if (is_array($value)) {
+                $nested = self::sanitizeEventMeta($value);
+                if ($nested !== []) {
+                    $out[$key] = $nested;
+                }
+            }
+        }
+
+        return $out;
     }
 }
