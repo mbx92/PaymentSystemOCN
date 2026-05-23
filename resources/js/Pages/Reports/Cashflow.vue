@@ -13,6 +13,7 @@ const props = defineProps({
   transactions: Object,
   filters: Object,
   filtersMeta: Object,
+  companyOptions: Array,
   projectOptions: Array,
   sourceOptions: Array,
   groupByOptions: Array,
@@ -27,6 +28,7 @@ const filters = ref({
   source: props.filters?.source ?? 'all',
   project_id: props.filters?.project_id ?? 'all',
   group_by: props.filters?.group_by ?? 'day',
+  company_id: props.filters?.company_id ?? 'all',
   per_page: props.filtersMeta?.per_page ?? props.transactions?.per_page ?? 25,
 });
 
@@ -66,7 +68,7 @@ watch(filters, (val) => {
           <h2 class="ocn-panel__title">Filter</h2>
         </div>
         <div class="card-body">
-          <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
             <input v-model="filters.date_from" type="date" class="input input-bordered input-sm w-full" />
             <input v-model="filters.date_to" type="date" class="input input-bordered input-sm w-full" />
             <select v-model="filters.source" class="select select-bordered select-sm w-full">
@@ -78,6 +80,10 @@ watch(filters, (val) => {
             </select>
             <select v-model="filters.group_by" class="select select-bordered select-sm w-full">
               <option v-for="opt in groupByOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </select>
+            <select v-model="filters.company_id" class="select select-bordered select-sm w-full">
+              <option value="all">Semua Perusahaan</option>
+              <option v-for="opt in companyOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
           </div>
         </div>

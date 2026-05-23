@@ -34,6 +34,16 @@ class ReportController extends Controller
             'pivot' => $report['pivot'],
             'transactions' => $report['transactions'],
             'filters' => $report['filters'],
+            'companyOptions' => Company::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn (Company $company) => [
+                    'value' => (string) $company->id,
+                    'label' => $company->name,
+                ])
+                ->values()
+                ->all(),
             'projectOptions' => Project::query()
                 ->orderBy('name')
                 ->get(['id', 'name'])
@@ -46,13 +56,15 @@ class ReportController extends Controller
                 ['value' => 'all', 'label' => 'Semua Sumber'],
                 ['value' => 'project', 'label' => 'Project'],
                 ['value' => 'manual', 'label' => 'Manual / Umum'],
+                ['value' => 'pos', 'label' => 'POS'],
+                ['value' => 'supplier_payment', 'label' => 'Pembayaran Supplier'],
             ],
             'groupByOptions' => [
                 ['value' => 'day', 'label' => 'Harian'],
                 ['value' => 'week', 'label' => 'Mingguan'],
                 ['value' => 'month', 'label' => 'Bulanan'],
             ],
-            'filtersMeta' => $this->filtersWithPerPage($request, ['date_from', 'date_to', 'source', 'project_id', 'group_by']),
+            'filtersMeta' => $this->filtersWithPerPage($request, ['date_from', 'date_to', 'source', 'project_id', 'group_by', 'company_id']),
         ]);
     }
 

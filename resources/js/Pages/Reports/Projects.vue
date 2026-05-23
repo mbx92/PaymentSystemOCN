@@ -79,12 +79,29 @@ watch(filters, (val) => {
         </div>
       </div>
 
-      <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-        <div class="ocn-panel"><div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Jumlah Project</h2></div><div class="card-body py-4"><p class="text-xl font-bold">{{ summary?.project_count ?? 0 }}</p></div></div>
-        <div class="ocn-panel"><div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Nilai Kontrak</h2></div><div class="card-body py-4"><p class="text-xl font-bold">{{ format(summary?.contract_value ?? 0) }}</p></div></div>
-        <div class="ocn-panel"><div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Cash In</h2></div><div class="card-body py-4"><p class="text-xl font-bold text-success">{{ format(summary?.cash_in ?? 0) }}</p></div></div>
-        <div class="ocn-panel"><div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Cash Out</h2></div><div class="card-body py-4"><p class="text-xl font-bold text-error">{{ format(summary?.cash_out ?? 0) }}</p></div></div>
-        <div class="ocn-panel"><div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Profit</h2></div><div class="card-body py-4"><p class="text-xl font-bold" :class="(summary?.profit ?? 0) >= 0 ? 'text-primary' : 'text-error'">{{ format(summary?.profit ?? 0) }}</p></div></div>
+      <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+        <div class="ocn-panel xl:col-span-2"><div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Jumlah Project</h2></div><div class="card-body py-4"><p class="text-xl font-bold">{{ summary?.project_count ?? 0 }}</p></div></div>
+        <div class="ocn-panel xl:col-span-2"><div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Nilai Kontrak</h2></div><div class="card-body py-4"><p class="text-xl font-bold">{{ format(summary?.contract_value ?? 0) }}</p></div></div>
+        <div class="ocn-panel xl:col-span-2"><div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Cash In</h2></div><div class="card-body py-4"><p class="text-xl font-bold text-success">{{ format(summary?.cash_in ?? 0) }}</p></div></div>
+        <div class="ocn-panel xl:col-span-1">
+          <div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Biaya Lain</h2></div>
+          <div class="card-body py-4">
+            <p class="text-xl font-bold text-error">{{ format(summary?.operational_cash_out ?? 0) }}</p>
+          </div>
+        </div>
+        <div class="ocn-panel xl:col-span-1">
+          <div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Pembelian Material</h2></div>
+          <div class="card-body py-4">
+            <p class="text-xl font-bold text-warning">{{ format(summary?.purchase_cost ?? 0) }}</p>
+          </div>
+        </div>
+        <div class="ocn-panel xl:col-span-2">
+          <div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Cash Out</h2></div>
+          <div class="card-body py-4">
+            <p class="text-xl font-bold text-error">{{ format(summary?.cash_out ?? 0) }}</p>
+          </div>
+        </div>
+        <div class="ocn-panel xl:col-span-2"><div class="ocn-panel__head py-3"><h2 class="ocn-panel__title text-sm font-medium">Profit</h2></div><div class="card-body py-4"><p class="text-xl font-bold" :class="(summary?.profit ?? 0) >= 0 ? 'text-primary' : 'text-error'">{{ format(summary?.profit ?? 0) }}</p></div></div>
       </div>
 
       <div class="grid gap-5 xl:grid-cols-2">
@@ -130,7 +147,7 @@ watch(filters, (val) => {
       <div class="ocn-panel">
         <div class="ocn-panel__head"><h2 class="ocn-panel__title">Daftar Project</h2></div>
         <div class="overflow-x-auto">
-          <table class="table table-sm">
+          <table class="table table-xs">
             <thead>
               <tr>
                 <th>Project</th>
@@ -140,6 +157,7 @@ watch(filters, (val) => {
                 <th>Tanggal</th>
                 <th class="text-right">Nilai</th>
                 <th class="text-right">Cash In</th>
+                <th class="text-right">Biaya Lain</th>
                 <th class="text-right">Cash Out</th>
                 <th class="text-right">Profit</th>
                 <th class="text-right">Collection</th>
@@ -147,21 +165,25 @@ watch(filters, (val) => {
             </thead>
             <tbody>
               <tr v-for="row in (projects?.data || [])" :key="row.id">
-                <td>
-                  <div class="font-medium">{{ row.name }}</div>
-                  <div class="text-xs text-base-content/60 font-mono">{{ row.invoice_number || '-' }}</div>
+                <td class="max-w-[220px]">
+                  <div class="truncate font-medium" :title="row.name">{{ row.name }}</div>
+                  <div class="truncate text-[11px] text-base-content/60 font-mono" :title="row.invoice_number || '-'">{{ row.invoice_number || '-' }}</div>
                 </td>
-                <td>{{ row.client_name }}</td>
-                <td>{{ row.project_type_label }}</td>
-                <td><StatusBadge :status="row.status" /></td>
-                <td>{{ formatDate(row.finished_at || row.started_at || row.created_at) }}</td>
-                <td class="text-right">{{ format(row.contract_value) }}</td>
-                <td class="text-right text-success">{{ format(row.cash_in) }}</td>
-                <td class="text-right text-error">{{ format(row.cash_out) }}</td>
-                <td class="text-right font-semibold" :class="row.profit >= 0 ? 'text-primary' : 'text-error'">{{ format(row.profit) }}</td>
-                <td class="text-right">{{ row.collection_rate }}%</td>
+                <td class="max-w-[160px] truncate" :title="row.client_name">{{ row.client_name }}</td>
+                <td class="whitespace-nowrap">{{ row.project_type_label }}</td>
+                <td class="whitespace-nowrap"><StatusBadge :status="row.status" /></td>
+                <td class="whitespace-nowrap">{{ formatDate(row.finished_at || row.started_at || row.created_at) }}</td>
+                <td class="whitespace-nowrap text-right">{{ format(row.contract_value) }}</td>
+                <td class="whitespace-nowrap text-right text-success">{{ format(row.cash_in) }}</td>
+                <td class="whitespace-nowrap text-right text-error">{{ format(row.operational_cash_out) }}</td>
+                <td class="whitespace-nowrap text-right text-error">
+                  <div>{{ format(row.cash_out) }}</div>
+                  <div class="text-[10px] text-base-content/60">Beli {{ format(row.purchase_cost) }}</div>
+                </td>
+                <td class="whitespace-nowrap text-right font-semibold" :class="row.profit >= 0 ? 'text-primary' : 'text-error'">{{ format(row.profit) }}</td>
+                <td class="whitespace-nowrap text-right">{{ row.collection_rate }}%</td>
               </tr>
-              <tr v-if="!(projects?.data || []).length"><td colspan="10" class="text-center py-10 text-base-content/50">Tidak ada project pada filter ini.</td></tr>
+              <tr v-if="!(projects?.data || []).length"><td colspan="11" class="text-center py-10 text-base-content/50">Tidak ada project pada filter ini.</td></tr>
             </tbody>
           </table>
         </div>

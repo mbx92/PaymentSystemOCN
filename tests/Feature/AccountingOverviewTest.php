@@ -4,9 +4,14 @@ namespace Tests\Feature;
 
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\JournalEntry;
+use App\ERP\Accounting\Models\Payable;
+use App\ERP\Accounting\Models\PayablePayment;
 use App\ERP\Core\Models\Company;
+use App\ERP\Purchasing\Models\Vendor;
+use App\ERP\Shared\Enums\DocumentStatus;
 use App\Models\CashIn;
 use App\Models\CashOut;
+use App\Models\PosSale;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -132,6 +137,259 @@ class AccountingOverviewTest extends TestCase
                 ->has('company_summaries', 1)
                 ->has('transaction_breakdown.labels', 2)
                 ->has('transaction_highlights', 2)
+            );
+    }
+
+    public function test_accounting_overview_filters_by_creator_company_when_journal_company_is_missing(): void
+    {
+        $this->disableErpMiddleware();
+
+        $companyA = Company::query()->create([
+            'name' => 'OCN A',
+            'legal_name' => 'PT OCN A',
+            'is_active' => true,
+        ]);
+        $companyB = Company::query()->create([
+            'name' => 'OCN B',
+            'legal_name' => 'PT OCN B',
+            'is_active' => true,
+        ]);
+        $userA = User::factory()->create(['company_id' => $companyA->id]);
+        $userB = User::factory()->create(['company_id' => $companyB->id]);
+        $cashAccount = Account::query()->create([
+            'code' => '1102',
+            'name' => 'Kas Cabang',
+            'type' => 'asset',
+            'normal_balance' => 'debit',
+            'is_active' => true,
+            'is_cash_bank' => true,
+        ]);
+
+        CashIn::query()->create([
+            'cash_account_id' => $cashAccount->id,
+            'category' => 'pendapatan_jasa',
+            'amount' => 3000000,
+            'date' => now()->toDateString(),
+            'created_by' => $userA->id,
+        ]);
+        CashOut::query()->create([
+            'cash_account_id' => $cashAccount->id,
+            'category' => 'operasional',
+            'amount' => 1000000,
+            'date' => now()->toDateString(),
+            'recipient_name' => 'Vendor A',
+            'created_by' => $userA->id,
+        ]);
+        CashIn::query()->create([
+            'cash_account_id' => $cashAccount->id,
+            'category' => 'pendapatan_jasa',
+            'amount' => 900000,
+            'date' => now()->toDateString(),
+            'created_by' => $userB->id,
+        ]);
+
+        $this->actingAs($userA)
+            ->get(route('erp.accounting.overview', ['company_id' => $companyA->id, 'year' => now()->year]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Accounting/Overview')
+                ->where('stats.cash_in_year', 3000000)
+                ->where('stats.cash_out_year', 1000000)
+                ->where('stats.net_year', 2000000)
+                ->where('stats.company_count', 1)
+            );
+    }
+
+    public function test_accounting_overview_includes_pos_only_company(): void
+    {
+        $this->disableErpMiddleware();
+
+        $ocn = Company::query()->create([
+            'name' => 'OC Network',
+            'legal_name' => 'PT OC Network',
+            'is_active' => true,
+        ]);
+        $numa = Company::query()->create([
+            'name' => 'Numa Packaging',
+            'legal_name' => 'PT Numa Packaging',
+            'is_active' => true,
+        ]);
+        $viewer = User::factory()->create(['company_id' => $ocn->id]);
+        $cashier = User::factory()->create(['company_id' => $numa->id]);
+        $cashAccount = Account::query()->updateOrCreate(['code' => '1001'], [
+            'code' => '1001',
+            'name' => 'Kas POS',
+            'type' => 'asset',
+            'normal_balance' => 'debit',
+            'is_active' => true,
+            'is_cash_bank' => true,
+        ]);
+        $revenueAccount = Account::query()->updateOrCreate(['code' => '4002'], [
+            'code' => '4002',
+            'name' => 'Penjualan POS',
+            'type' => 'revenue',
+            'normal_balance' => 'credit',
+            'is_active' => true,
+            'is_cash_bank' => false,
+        ]);
+
+        PosSale::query()->create([
+            'number' => 'POS-NUMA-001',
+            'gross_total' => 750000,
+            'discount_total' => 0,
+            'grand_total' => 750000,
+            'cash_paid' => 750000,
+            'change_amount' => 0,
+            'status' => 'paid',
+            'sold_at' => now()->toDateTimeString(),
+            'sold_by' => $cashier->id,
+        ]);
+
+        $journal = JournalEntry::query()->create([
+            'company_id' => $numa->id,
+            'entry_no' => 'JE-POS-NUMA-001',
+            'entry_date' => now()->toDateString(),
+            'description' => 'Penjualan POS Numa',
+            'status' => 'posted',
+            'source_module' => 'pos_sale',
+            'source_reference' => 'POS-NUMA-001',
+        ]);
+        $journal->lines()->createMany([
+            [
+                'account_id' => $cashAccount->id,
+                'description' => 'Kas masuk POS',
+                'debit' => 750000,
+                'credit' => 0,
+            ],
+            [
+                'account_id' => $revenueAccount->id,
+                'description' => 'Penjualan POS',
+                'debit' => 0,
+                'credit' => 750000,
+            ],
+        ]);
+
+        $this->actingAs($viewer)
+            ->get(route('erp.accounting.overview', ['company_id' => $numa->id, 'year' => now()->year]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Accounting/Overview')
+                ->where('stats.cash_in_year', 750000)
+                ->where('stats.cash_out_year', 0)
+                ->where('stats.net_year', 750000)
+                ->where('stats.cash_balance', 750000)
+                ->where('stats.company_count', 1)
+                ->where('company_summaries.0.company_name', 'Numa Packaging')
+            );
+    }
+
+    public function test_accounting_overview_reduces_net_cashflow_by_supplier_payments(): void
+    {
+        $this->disableErpMiddleware();
+
+        $company = Company::query()->create([
+            'name' => 'Numa Packaging',
+            'legal_name' => 'PT Numa Packaging',
+            'is_active' => true,
+        ]);
+        $viewer = User::factory()->create(['company_id' => $company->id]);
+        $cashier = User::factory()->create(['company_id' => $company->id]);
+        $cashAccount = Account::query()->updateOrCreate(['code' => '1001'], [
+            'code' => '1001',
+            'name' => 'Kas POS',
+            'type' => 'asset',
+            'normal_balance' => 'debit',
+            'is_active' => true,
+            'is_cash_bank' => true,
+        ]);
+        $revenueAccount = Account::query()->updateOrCreate(['code' => '4002'], [
+            'code' => '4002',
+            'name' => 'Penjualan POS',
+            'type' => 'revenue',
+            'normal_balance' => 'credit',
+            'is_active' => true,
+            'is_cash_bank' => false,
+        ]);
+
+        PosSale::query()->create([
+            'number' => 'POS-NUMA-002',
+            'gross_total' => 750000,
+            'discount_total' => 0,
+            'grand_total' => 750000,
+            'cash_paid' => 750000,
+            'change_amount' => 0,
+            'status' => 'paid',
+            'sold_at' => now()->toDateTimeString(),
+            'sold_by' => $cashier->id,
+        ]);
+
+        $posJournal = JournalEntry::query()->create([
+            'company_id' => $company->id,
+            'entry_no' => 'JE-POS-NUMA-002',
+            'entry_date' => now()->toDateString(),
+            'description' => 'Penjualan POS Numa 2',
+            'status' => 'posted',
+            'source_module' => 'pos_sale',
+            'source_reference' => 'POS-NUMA-002',
+        ]);
+        $posJournal->lines()->createMany([
+            [
+                'account_id' => $cashAccount->id,
+                'description' => 'Kas masuk POS',
+                'debit' => 750000,
+                'credit' => 0,
+            ],
+            [
+                'account_id' => $revenueAccount->id,
+                'description' => 'Penjualan POS',
+                'debit' => 0,
+                'credit' => 750000,
+            ],
+        ]);
+
+        $vendor = Vendor::query()->create([
+            'code' => 'SUP-NUMA',
+            'name' => 'Supplier Numa',
+            'lead_time_days' => 7,
+            'is_active' => true,
+        ]);
+        $payable = Payable::query()->create([
+            'vendor_id' => $vendor->id,
+            'bill_no' => 'BILL-NUMA-001',
+            'bill_date' => now()->toDateString(),
+            'due_date' => now()->addDays(14)->toDateString(),
+            'amount' => 300000,
+            'paid_amount' => 0,
+            'status' => DocumentStatus::Posted,
+        ]);
+        $supplierJournal = JournalEntry::query()->create([
+            'company_id' => $company->id,
+            'entry_no' => 'JE-AP-NUMA-001',
+            'entry_date' => now()->toDateString(),
+            'description' => 'Bayar supplier Numa',
+            'status' => 'posted',
+            'source_module' => 'supplier_payment',
+            'source_reference' => 'BILL-NUMA-001',
+        ]);
+        PayablePayment::query()->create([
+            'payable_id' => $payable->id,
+            'payment_date' => now()->toDateString(),
+            'amount' => 300000,
+            'cash_account_id' => $cashAccount->id,
+            'note' => 'Pembelian bahan',
+            'journal_entry_id' => $supplierJournal->id,
+            'paid_by' => $viewer->id,
+        ]);
+
+        $this->actingAs($viewer)
+            ->get(route('erp.accounting.overview', ['company_id' => $company->id, 'year' => now()->year]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Accounting/Overview')
+                ->where('stats.cash_in_year', 750000)
+                ->where('stats.cash_out_year', 300000)
+                ->where('stats.net_year', 450000)
+                ->where('stats.cash_balance', 450000)
             );
     }
 
