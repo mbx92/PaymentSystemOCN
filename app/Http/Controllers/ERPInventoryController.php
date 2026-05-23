@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\ERP\Core\Models\Company;
 use App\ERP\Inventory\Models\Warehouse;
 use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
@@ -348,15 +349,32 @@ class ERPInventoryController extends Controller
     {
         $selectedYear = (int) $request->integer('year', now()->year);
         $selectedProductId = $request->filled('product_id') ? (int) $request->integer('product_id') : null;
+        $selectedCompanyId = $request->filled('company_id') && $request->string('company_id')->toString() !== 'all'
+            ? (int) $request->integer('company_id')
+            : null;
 
         $products = MasterProduct::query()
             ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
+            ->when($selectedCompanyId, function ($query) use ($selectedCompanyId): void {
+                $query->where(function ($inner) use ($selectedCompanyId): void {
+                    $inner
+                        ->whereHas('warehouse', fn ($warehouse) => $warehouse->where('company_id', $selectedCompanyId))
+                        ->orWhereHas('warehouseStocks.warehouse', fn ($warehouse) => $warehouse->where('company_id', $selectedCompanyId));
+                });
+            })
             ->orderBy('name')
             ->get();
 
-        $stockChart = $products->take(10)->map(fn (MasterProduct $item) => [
+        $chartProducts = $selectedProductId
+            ? $products->where('id', $selectedProductId)->values()
+            : $products->sortByDesc('stock')->take(10)->values();
+
+        $stockChart = $chartProducts->map(fn (MasterProduct $item) => [
+            'id' => $item->id,
             'label' => $item->sku,
-            'stock' => $item->stock,
+            'stock' => (float) $item->stock,
+            'min_stock' => (float) $item->min_stock,
+            'total_sold' => (float) $item->total_sold,
         ])->values();
 
         $lowStockAlerts = $products
@@ -382,17 +400,27 @@ class ERPInventoryController extends Controller
                 'total_sold' => $item->total_sold,
             ]);
 
+        $movementQuery = ProductStockMovement::query()
+            ->whereYear('movement_date', $selectedYear)
+            ->when($selectedCompanyId, fn ($query) => $query->whereHas('warehouse', fn ($warehouse) => $warehouse->where('company_id', $selectedCompanyId)))
+            ->when($selectedProductId, fn ($query) => $query->where('master_product_id', $selectedProductId));
+
+        $movementRows = $movementQuery->get(['movement_type', 'qty']);
+
         $summary = [
             'total_products' => $products->count(),
             'low_stock_count' => $lowStockAlerts->count(),
             'total_units_in_stock' => $products->sum('stock'),
             'total_units_sold' => $products->sum('total_sold'),
+            'out_of_stock_count' => $products->where('stock', '<=', 0)->count(),
+            'reorder_count' => $products->filter(fn (MasterProduct $item) => $item->stock < $item->min_stock)->count(),
         ];
 
-        $monthlyTrend = collect(range(1, 12))->map(function (int $month) use ($selectedYear, $selectedProductId) {
+        $monthlyTrend = collect(range(1, 12))->map(function (int $month) use ($selectedYear, $selectedProductId, $selectedCompanyId) {
             $rows = ProductStockMovement::query()
                 ->whereYear('movement_date', $selectedYear)
                 ->whereMonth('movement_date', $month)
+                ->when($selectedCompanyId, fn ($query) => $query->whereHas('warehouse', fn ($warehouse) => $warehouse->where('company_id', $selectedCompanyId)))
                 ->when($selectedProductId, fn ($q) => $q->where('master_product_id', $selectedProductId))
                 ->get(['movement_type', 'qty']);
 
@@ -408,6 +436,7 @@ class ERPInventoryController extends Controller
                 'month' => $month,
                 'in' => (float) $in,
                 'out' => (float) $out,
+                'net' => (float) $in - (float) $out,
             ];
         });
 
@@ -430,6 +459,61 @@ class ERPInventoryController extends Controller
             ->take(10)
             ->values();
 
+        $movementBreakdown = collect([
+            [
+                'label' => 'Masuk',
+                'value' => (float) $movementRows
+                    ->filter(fn (ProductStockMovement $item) => str_contains($item->movement_type, 'in'))
+                    ->sum('qty'),
+            ],
+            [
+                'label' => 'Keluar',
+                'value' => (float) $movementRows
+                    ->filter(fn (ProductStockMovement $item) => str_contains($item->movement_type, 'out'))
+                    ->sum('qty'),
+            ],
+            [
+                'label' => 'Adjustment',
+                'value' => (float) $movementRows
+                    ->reject(fn (ProductStockMovement $item) => str_contains($item->movement_type, 'in') || str_contains($item->movement_type, 'out'))
+                    ->sum('qty'),
+            ],
+        ])->values();
+
+        $stockHealth = collect([
+            [
+                'label' => 'Aman',
+                'value' => $products->filter(fn (MasterProduct $item) => $item->stock > $item->min_stock)->count(),
+            ],
+            [
+                'label' => 'Menipis',
+                'value' => $products->filter(fn (MasterProduct $item) => $item->stock > 0 && $item->stock <= $item->min_stock)->count(),
+            ],
+            [
+                'label' => 'Kosong',
+                'value' => $products->where('stock', '<=', 0)->count(),
+            ],
+        ])->values();
+
+        $stockRisk = $products
+            ->map(function (MasterProduct $item) {
+                $gap = max((float) $item->min_stock - (float) $item->stock, 0);
+
+                return [
+                    'id' => $item->id,
+                    'sku' => $item->sku,
+                    'name' => $item->name,
+                    'stock' => (float) $item->stock,
+                    'min_stock' => (float) $item->min_stock,
+                    'gap' => $gap,
+                    'total_sold' => (float) $item->total_sold,
+                ];
+            })
+            ->filter(fn (array $item) => $item['gap'] > 0 || $item['stock'] <= 0)
+            ->sortByDesc(fn (array $item) => ($item['gap'] * 10) + $item['total_sold'])
+            ->take(10)
+            ->values();
+
         return Inertia::render('ERP/Inventory/StockReport', [
             'summary' => $summary,
             'stockChart' => $stockChart,
@@ -437,11 +521,23 @@ class ERPInventoryController extends Controller
             'topSelling' => $topSelling,
             'monthlyTrend' => $monthlyTrend,
             'reorderSuggestions' => $reorderSuggestions,
+            'movementBreakdown' => $movementBreakdown,
+            'stockHealth' => $stockHealth,
+            'stockRisk' => $stockRisk,
             'filters' => [
                 'year' => $selectedYear,
                 'product_id' => $selectedProductId,
+                'company_id' => $selectedCompanyId ?? 'all',
             ],
             'years' => range(now()->year, now()->year - 4),
+            'companies' => Company::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn (Company $company) => [
+                    'id' => $company->id,
+                    'name' => $company->name,
+                ]),
             'products' => $products->map(fn (MasterProduct $item) => [
                 'id' => $item->id,
                 'sku' => $item->sku,

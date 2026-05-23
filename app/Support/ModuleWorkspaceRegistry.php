@@ -100,9 +100,11 @@ final class ModuleWorkspaceRegistry
             'reporting' => [
                 'label' => 'Reporting',
                 'menus' => [
+                    ['key' => 'cashflow-report', 'title' => 'Cashflow Report', 'description' => 'Laporan arus kas dengan filter periode dan pivot kategori/project.', 'route' => 'reports.cashflow', 'icon' => 'arrows-right-left'],
+                    ['key' => 'project-report', 'title' => 'Project Report', 'description' => 'Laporan project dengan nilai kontrak, cash in/out, dan pivot status/tipe.', 'route' => 'reports.projects', 'icon' => 'presentation-chart-line'],
+                    ['key' => 'pos-report', 'title' => 'POS Report', 'description' => 'Laporan transaksi POS dengan pivot status, channel, dan metode bayar.', 'route' => 'reports.pos', 'icon' => 'shopping-cart'],
                     ['key' => 'general-ledger', 'title' => 'General Ledger', 'description' => 'Laporan buku besar terintegrasi.', 'route' => 'reports.general-ledger', 'icon' => 'book-open'],
                     ['key' => 'neraca-saldo', 'title' => 'Neraca Saldo', 'description' => 'Laporan neraca saldo akun.', 'route' => 'reports.trial-balance', 'icon' => 'scale'],
-                    ['key' => 'profit-project', 'title' => 'Profit Project', 'description' => 'Laporan laba per project.', 'route' => 'reports.project-profit', 'icon' => 'chart-bar'],
                     ['key' => 'rekap-bulanan', 'title' => 'Rekap Bulanan', 'description' => 'Laporan periodik bulanan.', 'route' => 'reports.monthly', 'icon' => 'calendar-days'],
                     ['key' => 'rekap-stok-bulanan', 'title' => 'Rekap Stok Bulanan', 'description' => 'Ringkasan data stok per bulan untuk inventory.', 'route' => 'erp.inventory.stock-report', 'icon' => 'archive-box'],
                 ],

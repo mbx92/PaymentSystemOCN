@@ -32,6 +32,7 @@ use App\Http\Controllers\ErpSystemLogController;
 use App\Http\Controllers\ExpenseCategoryController;
 use App\Http\Controllers\HREmployeeController;
 use App\Http\Controllers\HRLegalController;
+use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\LabelProfileController;
 use App\Http\Controllers\OperationalController;
 use App\Http\Controllers\NotificationController;
@@ -89,6 +90,10 @@ Route::middleware('auth')->group(function () {
     Route::post('notifications/mark-all-read', [NotificationController::class, 'markAllRead'])->name('notifications.mark-all-read');
     Route::patch('notifications/mark-read', [NotificationController::class, 'markRead'])->name('notifications.mark-read');
     Route::delete('notifications/mark-read', [NotificationController::class, 'markUnread'])->name('notifications.mark-unread');
+    Route::get('/invoice/{id}', [InvoiceController::class, 'show'])->name('invoice.show');
+    Route::get('/invoice/{id}/download', [InvoiceController::class, 'download'])->name('invoice.download');
+    Route::get('/sales-note/{id}', [InvoiceController::class, 'showSalesNote'])->name('sales-note.show');
+    Route::get('/sales-note/{id}/download', [InvoiceController::class, 'downloadSalesNote'])->name('sales-note.download');
 
     Route::prefix('rnd')->name('rnd.')->middleware('can:manage-rnd')->group(function () {
         Route::get('/', [RndProjectController::class, 'index'])->name('dashboard');
@@ -296,6 +301,7 @@ Route::middleware('auth')->group(function () {
         // Termin
         Route::patch('project-payments/{payment}/mark-paid', [ProjectPaymentController::class, 'markPaid'])->name('project-payments.mark-paid');
         Route::patch('project-payments/{payment}/mark-unpaid', [ProjectPaymentController::class, 'markUnpaid'])->name('project-payments.mark-unpaid');
+        Route::get('projects/{project}/payment-invoice/download', [ProjectPaymentController::class, 'downloadInvoice'])->name('projects.payment-invoice.download');
 
         // Kas Masuk
         Route::get('kas-masuk', [CashInController::class, 'index'])->name('cash-in.index');
@@ -319,7 +325,9 @@ Route::middleware('auth')->group(function () {
         Route::post('team-distribution/save', [TeamDistributionController::class, 'save'])->name('team-distribution.save');
 
         // Reports
-        Route::get('laporan/project-profit', [ReportController::class, 'projectProfit'])->name('reports.project-profit');
+        Route::get('laporan/cashflow', [ReportController::class, 'cashflow'])->name('reports.cashflow');
+        Route::get('laporan/project', [ReportController::class, 'projects'])->name('reports.projects');
+        Route::get('laporan/pos', [ReportController::class, 'pos'])->name('reports.pos');
         Route::get('laporan/bulanan', [ReportController::class, 'monthly'])->name('reports.monthly');
         Route::get('laporan/anggota', fn () => redirect()->route('erp.accounting.payments.member', request()->query()))->name('reports.member-payments');
         Route::get('erp/accounting/chart-of-accounts', [ERPReportingController::class, 'chartOfAccounts'])->name('erp.accounting.coa');
@@ -330,7 +338,6 @@ Route::middleware('auth')->group(function () {
         Route::get('laporan/neraca-saldo', [ERPReportingController::class, 'trialBalance'])->name('reports.trial-balance');
 
         // Export
-        Route::get('export/project-profit', [ReportController::class, 'exportProjectProfitExcel'])->name('export.project-profit');
         Route::get('export/bulanan', [ReportController::class, 'exportMonthlyExcel'])->name('export.monthly');
         Route::get('export/anggota', [ReportController::class, 'exportMemberPaymentsExcel'])->name('export.member-payments');
 

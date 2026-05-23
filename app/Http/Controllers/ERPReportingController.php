@@ -71,6 +71,8 @@ class ERPReportingController extends Controller
     public function generalLedger(Request $request): Response
     {
         $companyId = ErpCompanyResolver::resolveForReporting($request);
+        $source = $this->sourceFilter($request);
+        $accountId = $request->integer('account_id');
 
         $query = JournalEntry::query()->with('lines.account');
 
@@ -94,29 +96,125 @@ class ERPReportingController extends Controller
             });
         }
 
+        if ($source !== '') {
+            $this->applyJournalSourceFilter($query, $source);
+        }
+
+        if ($accountId > 0) {
+            $query->whereHas('lines', fn ($line) => $line->where('account_id', $accountId));
+        }
+
         $entries = $query->latest('entry_date')->latest('id')->paginate($this->resolvedPerPage($request))->withQueryString();
 
-        $filterProps = $this->filtersWithPerPage($request, ['date_from', 'date_to', 'q', 'company_id']);
+        $filterProps = $this->filtersWithPerPage($request, ['date_from', 'date_to', 'q', 'company_id', 'source', 'account_id']);
         if ($companyId && ! $request->filled('company_id')) {
             $filterProps['company_id'] = $companyId;
         }
 
-        $totalsQuery = JournalLine::query()->whereHas('journalEntry', function ($q) use ($request, $companyId): void {
-            if ($companyId) {
-                $q->where('company_id', $companyId);
-            }
-            if ($request->filled('date_from')) {
-                $q->where('entry_date', '>=', $request->string('date_from')->toString());
-            }
-            if ($request->filled('date_to')) {
-                $q->where('entry_date', '<=', $request->string('date_to')->toString());
-            }
-        });
+        $totalsQuery = JournalLine::query()
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->when($companyId, fn ($q) => $q->where('journal_entries.company_id', $companyId))
+            ->when($request->filled('date_from'), fn ($q) => $q->where('journal_entries.entry_date', '>=', $request->string('date_from')->toString()))
+            ->when($request->filled('date_to'), fn ($q) => $q->where('journal_entries.entry_date', '<=', $request->string('date_to')->toString()))
+            ->when($request->filled('q'), function ($q) use ($request): void {
+                $term = $request->string('q')->toString();
+                $q->where(function ($inner) use ($term): void {
+                    $inner->where('journal_entries.entry_no', 'like', '%'.$term.'%')
+                        ->orWhere('journal_entries.description', 'like', '%'.$term.'%');
+                });
+            });
+
+        if ($source !== '') {
+            $this->applyJournalSourceFilter($totalsQuery, $source);
+        }
+
+        if ($accountId > 0) {
+            $totalsQuery->where('account_id', $accountId);
+        }
 
         $totals = $totalsQuery->select([
             DB::raw('SUM(debit) as total_debit'),
             DB::raw('SUM(credit) as total_credit'),
+            DB::raw('COUNT(*) as line_count'),
+            DB::raw('COUNT(DISTINCT account_id) as account_count'),
         ])->first();
+
+        $sourcePivotQuery = JournalEntry::query()
+            ->select('source_module')
+            ->selectRaw('COUNT(*) as entry_count')
+            ->selectRaw('COALESCE(SUM(journal_lines.debit), 0) as total_debit')
+            ->selectRaw('COALESCE(SUM(journal_lines.credit), 0) as total_credit')
+            ->join('journal_lines', 'journal_lines.journal_entry_id', '=', 'journal_entries.id')
+            ->when($companyId, fn ($q) => $q->where('journal_entries.company_id', $companyId))
+            ->when($request->filled('date_from'), fn ($q) => $q->where('journal_entries.entry_date', '>=', $request->string('date_from')->toString()))
+            ->when($request->filled('date_to'), fn ($q) => $q->where('journal_entries.entry_date', '<=', $request->string('date_to')->toString()))
+            ->when($request->filled('q'), function ($q) use ($request): void {
+                $term = $request->string('q')->toString();
+                $q->where(function ($inner) use ($term): void {
+                    $inner->where('journal_entries.entry_no', 'like', '%'.$term.'%')
+                        ->orWhere('journal_entries.description', 'like', '%'.$term.'%');
+                });
+            })
+            ->when($accountId > 0, fn ($q) => $q->where('journal_lines.account_id', $accountId));
+
+        if ($source !== '') {
+            $this->applyJournalSourceFilter($sourcePivotQuery, $source);
+        }
+
+        $sourcePivot = $sourcePivotQuery
+            ->groupBy('source_module')
+            ->orderBy('source_module')
+            ->get()
+            ->map(fn ($row) => [
+                'label' => $this->journalSourceLabel((string) $row->source_module),
+                'entry_count' => (int) $row->entry_count,
+                'total_debit' => (float) $row->total_debit,
+                'total_credit' => (float) $row->total_credit,
+                'balance' => (float) $row->total_debit - (float) $row->total_credit,
+            ])
+            ->values();
+
+        $accountPivot = JournalLine::query()
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
+            ->select('accounts.id', 'accounts.code', 'accounts.name')
+            ->selectRaw('COUNT(*) as line_count')
+            ->selectRaw('COALESCE(SUM(journal_lines.debit), 0) as total_debit')
+            ->selectRaw('COALESCE(SUM(journal_lines.credit), 0) as total_credit')
+            ->when($companyId, fn ($q) => $q->where('journal_entries.company_id', $companyId))
+            ->when($request->filled('date_from'), fn ($q) => $q->where('journal_entries.entry_date', '>=', $request->string('date_from')->toString()))
+            ->when($request->filled('date_to'), fn ($q) => $q->where('journal_entries.entry_date', '<=', $request->string('date_to')->toString()))
+            ->when($request->filled('q'), function ($q) use ($request): void {
+                $term = $request->string('q')->toString();
+                $q->where(function ($inner) use ($term): void {
+                    $inner->where('journal_entries.entry_no', 'like', '%'.$term.'%')
+                        ->orWhere('journal_entries.description', 'like', '%'.$term.'%');
+                });
+            });
+
+        if ($source !== '') {
+            $this->applyJournalSourceFilter($accountPivot, $source);
+        }
+
+        if ($accountId > 0) {
+            $accountPivot->where('journal_lines.account_id', $accountId);
+        }
+
+        $accountPivot = $accountPivot
+            ->groupBy('accounts.id', 'accounts.code', 'accounts.name')
+            ->orderBy('accounts.code')
+            ->limit(15)
+            ->get()
+            ->map(fn ($row) => [
+                'id' => (int) $row->id,
+                'code' => $row->code,
+                'name' => $row->name,
+                'line_count' => (int) $row->line_count,
+                'total_debit' => (float) $row->total_debit,
+                'total_credit' => (float) $row->total_credit,
+                'balance' => (float) $row->total_debit - (float) $row->total_credit,
+            ])
+            ->values();
 
         return Inertia::render('ERP/Reports/GeneralLedger', [
             'entries' => $entries,
@@ -124,14 +222,32 @@ class ERPReportingController extends Controller
                 'total_debit' => (float) ($totals->total_debit ?? 0),
                 'total_credit' => (float) ($totals->total_credit ?? 0),
                 'entry_count' => $entries->total(),
+                'line_count' => (int) ($totals->line_count ?? 0),
+                'account_count' => (int) ($totals->account_count ?? 0),
             ],
             'filters' => $filterProps,
+            'sourceOptions' => $this->sourceOptions(),
+            'accountOptions' => Account::query()
+                ->orderBy('code')
+                ->get(['id', 'code', 'name'])
+                ->map(fn (Account $account) => [
+                    'value' => $account->id,
+                    'label' => $account->code.' - '.$account->name,
+                ]),
+            'pivot' => [
+                'sources' => $sourcePivot,
+                'accounts' => $accountPivot,
+            ],
         ]);
     }
 
     public function trialBalance(Request $request): Response
     {
         $companyId = ErpCompanyResolver::resolveForReporting($request);
+        $source = $this->sourceFilter($request);
+        $type = $request->string('type')->toString();
+        $type = in_array($type, ['asset', 'liability', 'equity', 'revenue', 'expense'], true) ? $type : '';
+        $term = $request->string('q')->toString();
 
         $query = JournalLine::query()
             ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
@@ -141,14 +257,37 @@ class ERPReportingController extends Controller
             $query->where('journal_entries.company_id', $companyId);
         }
 
-        $this->applyJournalSourceFilter($query, $this->sourceFilter($request));
+        if ($request->filled('date_from')) {
+            $query->where('journal_entries.entry_date', '>=', $request->string('date_from')->toString());
+        }
+
+        if ($request->filled('date_to')) {
+            $query->where('journal_entries.entry_date', '<=', $request->string('date_to')->toString());
+        }
+
+        if ($type !== '') {
+            $query->where('accounts.type', $type);
+        }
+
+        if ($term !== '') {
+            $query->where(function ($inner) use ($term): void {
+                $inner->where('accounts.code', 'like', '%'.$term.'%')
+                    ->orWhere('accounts.name', 'like', '%'.$term.'%')
+                    ->orWhere('journal_entries.entry_no', 'like', '%'.$term.'%')
+                    ->orWhere('journal_entries.description', 'like', '%'.$term.'%');
+            });
+        }
+
+        $this->applyJournalSourceFilter($query, $source);
 
         $balances = $query
             ->groupBy('accounts.id', 'accounts.code', 'accounts.name', 'accounts.type')
             ->select([
+                'accounts.id',
                 'accounts.code',
                 'accounts.name',
                 'accounts.type',
+                DB::raw('COUNT(journal_lines.account_id) as line_count'),
                 DB::raw('SUM(journal_lines.debit) as debit_total'),
                 DB::raw('SUM(journal_lines.credit) as credit_total'),
             ])
@@ -169,10 +308,23 @@ class ERPReportingController extends Controller
         );
         $paginatedBalances->withQueryString();
 
-        $filterProps = $this->filtersWithPerPage($request, ['source', 'company_id']);
+        $filterProps = $this->filtersWithPerPage($request, ['source', 'company_id', 'date_from', 'date_to', 'type', 'q']);
         if ($companyId && ! $request->filled('company_id')) {
             $filterProps['company_id'] = $companyId;
         }
+
+        $typePivot = $balances
+            ->groupBy('type')
+            ->map(function ($rows, $accountType): array {
+                return [
+                    'type' => $accountType,
+                    'account_count' => $rows->count(),
+                    'total_debit' => (float) $rows->sum('debit_total'),
+                    'total_credit' => (float) $rows->sum('credit_total'),
+                    'balance' => (float) $rows->sum(fn ($row) => (float) $row->debit_total - (float) $row->credit_total),
+                ];
+            })
+            ->values();
 
         return Inertia::render('ERP/Reports/TrialBalance', [
             'balances' => $paginatedBalances,
@@ -180,9 +332,22 @@ class ERPReportingController extends Controller
                 'debit' => (float) $totalDebit,
                 'credit' => (float) $totalCredit,
                 'balanced' => abs($totalDebit - $totalCredit) < 0.01,
+                'account_count' => $balances->count(),
+                'line_count' => (int) $balances->sum('line_count'),
             ],
             'filters' => $filterProps,
             'sourceOptions' => $this->sourceOptions(),
+            'typeOptions' => [
+                ['value' => '', 'label' => 'Semua Tipe'],
+                ['value' => 'asset', 'label' => 'Aset'],
+                ['value' => 'liability', 'label' => 'Liabilitas'],
+                ['value' => 'equity', 'label' => 'Ekuitas'],
+                ['value' => 'revenue', 'label' => 'Pendapatan'],
+                ['value' => 'expense', 'label' => 'Beban'],
+            ],
+            'pivot' => [
+                'types' => $typePivot,
+            ],
         ]);
     }
 
@@ -264,6 +429,19 @@ class ERPReportingController extends Controller
         $source = $request->string('source')->toString();
 
         return in_array($source, ['project', 'pos', 'manual', 'opening_balance'], true) ? $source : '';
+    }
+
+    private function journalSourceLabel(string $sourceModule): string
+    {
+        return match ($sourceModule) {
+            'project_invoice_payment' => 'Project Invoice Payment',
+            'cash_in' => 'Cash In',
+            'cash_out' => 'Cash Out',
+            'operational_cash_out' => 'Operational Cash Out',
+            'pos_sale', 'pos_sale_refund', 'pos_sale_reopen' => 'POS',
+            'opening_balance' => 'Opening Balance',
+            default => str($sourceModule)->replace('_', ' ')->title()->toString(),
+        };
     }
 
     public function storeChartOfAccount(Request $request): RedirectResponse

@@ -1204,6 +1204,7 @@ class ERPSalesController extends Controller
             'project' => $project,
             'cashIn' => $cashIn,
             'invoice' => $this->mapProjectInvoice($project),
+            'brand' => $this->pdfBrand(),
             'generatedAt' => now(),
         ])->setPaper('a4');
 
