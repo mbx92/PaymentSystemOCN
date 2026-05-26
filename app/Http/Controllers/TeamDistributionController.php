@@ -6,15 +6,17 @@ use App\Models\Project;
 use App\Models\TeamDistribution;
 use App\Models\TeamRole;
 use App\Models\User;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
+use Inertia\Response;
 
 class TeamDistributionController extends Controller
 {
-    public function calculator(Request $request)
+    public function calculator(Request $request): Response|RedirectResponse
     {
         $projectId = $request->query('project_id');
 
@@ -22,34 +24,32 @@ class TeamDistributionController extends Controller
             return redirect()->route('team-distribution.calculator');
         }
 
-        $projects = Project::whereIn('status', ['berjalan', 'selesai'])
-            ->orderBy('name')
-            ->get(['id', 'name', 'total_value', 'status']);
+        $projects = Project::query()
+            ->with(['cashIns', 'referrals', 'cashOuts', 'materials.product', 'convertedBudget.items', 'teamDistributions'])
+            ->latest('started_at')
+            ->latest('created_at')
+            ->get();
 
         $members = User::role('anggota')->orWhereHas('roles', fn ($q) => $q->where('name', 'manajer'))
             ->orderBy('name')
             ->get(['id', 'name']);
         $teamRoles = $this->activeTeamRoles();
 
+        $projectRows = $projects
+            ->map(fn (Project $project) => $this->projectDistributionSnapshot($project))
+            ->values();
+
         $selectedProject = null;
         $existingDistributions = [];
 
         if (filled($projectId)) {
-            $project = Project::with(['referrals', 'cashOuts' => fn ($q) => $q->where('category', 'operasional')])
-                ->findOrFail($projectId);
+            $project = $projects->firstWhere('id', $projectId);
 
-            $referralTotal    = (float) $project->referrals()->sum('commission_amount');
-            $operationalTotal = (float) $project->cashOuts()->where('category', 'operasional')->sum('amount');
-            $netValue         = $project->total_value - $referralTotal - $operationalTotal;
+            if (! $project instanceof Project) {
+                abort(404);
+            }
 
-            $selectedProject = [
-                'id'                => $project->id,
-                'name'              => $project->name,
-                'total_value'       => (float) $project->total_value,
-                'referral_total'    => $referralTotal,
-                'operational_total' => $operationalTotal,
-                'net_value'         => $netValue,
-            ];
+            $selectedProject = $this->projectDistributionSnapshot($project);
 
             $existingDistributions = TeamDistribution::with('user')
                 ->where('project_id', $projectId)
@@ -68,7 +68,7 @@ class TeamDistributionController extends Controller
         }
 
         return Inertia::render('TeamDistribution/Calculator', [
-            'projects'              => $projects,
+            'projects'              => $projectRows,
             'members'               => $members,
             'teamRoles'             => $teamRoles,
             'selectedProject'       => $selectedProject,
@@ -83,6 +83,7 @@ class TeamDistributionController extends Controller
 
         $validated = $request->validate([
             'project_id'    => 'required|uuid|exists:projects,id',
+            'distribution_rate' => 'required|numeric|min:0|max:100',
             'distributions' => 'required|array|min:1',
             'distributions.*.user_id'         => 'required|exists:users,id',
             'distributions.*.role_in_project' => ['required', 'string', 'max:20', Rule::in($roleNames)],
@@ -97,6 +98,12 @@ class TeamDistributionController extends Controller
         }
 
         DB::transaction(function () use ($validated) {
+            Project::query()
+                ->whereKey($validated['project_id'])
+                ->update([
+                    'team_distribution_rate' => number_format((float) $validated['distribution_rate'], 2, '.', ''),
+                ]);
+
             TeamDistribution::where('project_id', $validated['project_id'])->delete();
 
             foreach ($validated['distributions'] as $dist) {
@@ -127,5 +134,56 @@ class TeamDistributionController extends Controller
             ->where('is_active', true)
             ->orderBy('name')
             ->get(['id', 'name']);
+    }
+
+    private function projectDistributionSnapshot(Project $project): array
+    {
+        $project->loadMissing(['cashIns', 'referrals', 'cashOuts', 'materials.product', 'convertedBudget.items', 'teamDistributions']);
+
+        $cashInTotal = (float) $project->cashIns->sum('amount');
+        $cashOutTotal = (float) $project->cashOuts->sum('amount');
+        $materialItems = $project->materials;
+        $referralTotal = (float) $project->referrals->sum('commission_amount');
+        $operationalTotal = (float) $project->cashOuts->where('category', 'operasional')->sum('amount');
+        $paidAmount = $cashInTotal;
+        $materialCostTotal = (float) $materialItems
+            ->filter(fn ($item) => $item->product?->product_type !== 'service')
+            ->sum(fn ($item) => (float) $item->planned_qty * (float) $item->unit_cost);
+        $serviceCostTotal = (float) $materialItems
+            ->filter(fn ($item) => $item->product?->product_type === 'service')
+            ->sum(fn ($item) => (float) $item->planned_qty * (float) $item->unit_cost);
+        $directCostTotal = $materialCostTotal + $serviceCostTotal;
+        $marginAmount = $paidAmount - $directCostTotal - $operationalTotal;
+
+        $distributionRate = (float) ($project->team_distribution_rate ?? 30);
+        $companyReserveAmount = max($marginAmount * ($distributionRate / 100), 0);
+        $distributableAmount = max($marginAmount - $companyReserveAmount, 0);
+        $totalDistributed = (float) $project->teamDistributions->sum('total_pay');
+
+        return [
+            'id' => $project->id,
+            'name' => $project->name,
+            'status' => $project->status,
+            'status_key' => Str::lower((string) $project->status),
+            'client_name' => $project->client_name,
+            'started_at' => $project->started_at?->format('Y-m-d'),
+            'total_value' => $paidAmount,
+            'paid_amount' => $paidAmount,
+            'material_cost_total' => $materialCostTotal,
+            'service_cost_total' => $serviceCostTotal,
+            'direct_cost_total' => $directCostTotal,
+            'cash_in_total' => $cashInTotal,
+            'cash_out_total' => $cashOutTotal,
+            'referral_total' => $referralTotal,
+            'operational_total' => $operationalTotal,
+            'margin_amount' => $marginAmount,
+            'margin_source' => 'paid_minus_material_service_operational',
+            'distribution_rate' => $distributionRate,
+            'company_reserve_amount' => $companyReserveAmount,
+            'distributable_amount' => $distributableAmount,
+            'distributed_total' => $totalDistributed,
+            'remaining_distributable' => $distributableAmount - $totalDistributed,
+            'team_member_count' => $project->teamDistributions->count(),
+        ];
     }
 }

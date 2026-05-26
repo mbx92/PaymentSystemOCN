@@ -4,7 +4,7 @@ import { Link, usePage } from '@inertiajs/vue3';
 import {
     HomeIcon, CodeBracketIcon, ArrowDownCircleIcon, ArrowUpCircleIcon, ChartBarIcon,
     UsersIcon, Bars3Icon, XMarkIcon, ArrowRightOnRectangleIcon, BuildingOffice2Icon, BellAlertIcon,
-    ShoppingCartIcon, ArchiveBoxIcon, UserCircleIcon, BanknotesIcon, CircleStackIcon, ChatBubbleLeftRightIcon, PaperAirplaneIcon,
+    ShoppingCartIcon, ArchiveBoxIcon, UserCircleIcon, BanknotesIcon, ChatBubbleLeftRightIcon, PaperAirplaneIcon,
     TrashIcon,
     BeakerIcon,
     WalletIcon,

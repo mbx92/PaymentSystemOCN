@@ -142,7 +142,7 @@ class ERPAccountingPaymentController extends Controller
         $members = User::role(['anggota', 'manajer'])->orderBy('name')->get(['id', 'name']);
 
         $distributions = TeamDistribution::query()
-            ->with(['project:id,name,status', 'user:id,name', 'cashOut:id,date,journal_entry_id'])
+            ->with(['project:id,name,status,import_key,finished_at', 'user:id,name', 'cashOut:id,date,journal_entry_id'])
             ->when($request->filled('user_id'), fn ($q) => $q->where('user_id', $request->integer('user_id')))
             ->when($request->filled('year'), fn ($q) => $q->whereYear('created_at', $request->integer('year')))
             ->when($request->string('status')->toString() === 'unpaid', fn ($q) => $q->whereNull('paid_at'))
@@ -156,6 +156,10 @@ class ERPAccountingPaymentController extends Controller
                 'project_id' => $distribution->project_id,
                 'project_name' => $distribution->project?->name ?? '-',
                 'project_status' => $distribution->project?->status,
+                'is_legacy_import' => filled($distribution->project?->import_key),
+                'legacy_payment_date' => $distribution->project?->import_key
+                    ? $distribution->project?->finished_at?->toDateString()
+                    : null,
                 'role_in_project' => $distribution->role_in_project,
                 'percentage' => (float) $distribution->percentage,
                 'base_pay' => (float) $distribution->base_pay,
@@ -216,6 +220,7 @@ class ERPAccountingPaymentController extends Controller
             $category = 'biaya_tim';
             $this->assertCashOutCategoryExists($category);
             $expenseAccountId = $this->resolveCashOutAccountId($category);
+            $paymentDate = $this->resolvedMemberPaymentDate($locked, (string) $validated['payment_date']);
 
             $recipientName = $locked->user?->name ?? 'Anggota Tim';
             $note = trim(collect([
@@ -229,7 +234,7 @@ class ERPAccountingPaymentController extends Controller
                 'cash_account_id' => (int) $validated['cash_account_id'],
                 'category' => $category,
                 'amount' => $amount,
-                'date' => $validated['payment_date'],
+                'date' => $paymentDate,
                 'note' => $note,
                 'recipient_name' => $recipientName,
                 'created_by' => Auth::id(),
@@ -249,7 +254,7 @@ class ERPAccountingPaymentController extends Controller
                 sourceModule: 'member_payment',
                 sourceReference: (string) $locked->id,
                 description: 'Pembayaran anggota '.$recipientName.' — '.($locked->project?->name ?? 'Project'),
-                entryDate: $validated['payment_date'],
+                entryDate: $paymentDate,
                 lines: [
                     ['account_id' => $expenseAccount->id, 'debit' => $amount, 'credit' => 0],
                     ['account_id' => $cashAccount->id, 'debit' => 0, 'credit' => $amount],
@@ -260,7 +265,7 @@ class ERPAccountingPaymentController extends Controller
 
             $locked->update([
                 'cash_out_id' => $cashOut->id,
-                'paid_at' => $validated['payment_date'],
+                'paid_at' => $paymentDate,
             ]);
         });
 
@@ -305,5 +310,16 @@ class ERPAccountingPaymentController extends Controller
         }
 
         return (int) $accountId;
+    }
+
+    private function resolvedMemberPaymentDate(TeamDistribution $distribution, string $requestedDate): string
+    {
+        $project = $distribution->project;
+
+        if ($project && filled($project->import_key) && $project->finished_at) {
+            return $project->finished_at->toDateString();
+        }
+
+        return $requestedDate;
     }
 }

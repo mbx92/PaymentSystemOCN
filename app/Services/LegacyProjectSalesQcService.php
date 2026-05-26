@@ -375,7 +375,7 @@ class LegacyProjectSalesQcService
                     'status' => $existingErpProject->status,
                 ] : null,
                 'import_status' => $importStatus,
-                'is_importable' => $importStatus['key'] === 'pending_import',
+                'is_importable' => in_array($importStatus['key'], ['pending_import', 'procurement_converted_pending_project'], true),
                 'sale_date' => $saleDate?->toDateString(),
                 'sale_date_source' => $saleDateSource,
                 'expected_value_source' => $expectedValueSource,
@@ -550,6 +550,15 @@ class LegacyProjectSalesQcService
                 'label' => 'Sudah diimport',
                 'description' => 'Project ERP sudah ada, tanpa procurement staging.',
                 'badge' => 'badge-info',
+            ];
+        }
+
+        if (! $existingErpProject && $procurementStaging?->status === 'converted') {
+            return [
+                'key' => 'procurement_converted_pending_project',
+                'label' => 'Procurement selesai',
+                'description' => 'PO/GR legacy sudah dibuat dan diposting. Project ERP belum dibuat dan siap diimport.',
+                'badge' => 'badge-primary',
             ];
         }
 
@@ -739,12 +748,15 @@ class LegacyProjectSalesQcService
                 'quantity' => (float) ($item->quantity ?? 0),
                 'price' => (float) ($item->price ?? 0),
                 'total_price' => (float) ($item->total_price ?? 0),
+                'cost' => (float) ($item->cost ?? 0),
+                'total_cost' => (float) ($item->total_cost ?? 0),
                 'type' => (string) ($item->type ?? ''),
                 'status' => $status,
                 'matched_product' => $matchedProduct,
                 'existing_material' => $existingMaterial ? [
                     'id' => $existingMaterial->id,
                     'planned_qty' => (float) $existingMaterial->planned_qty,
+                    'unit_cost' => (float) $existingMaterial->unit_cost,
                     'unit_price' => (float) $existingMaterial->unit_price,
                 ] : null,
             ];

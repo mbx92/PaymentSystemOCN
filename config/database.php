@@ -109,6 +109,21 @@ return [
             'sslmode' => env('LEGACY_DB_SSLMODE', 'prefer'),
         ],
 
+        'production_ocn_erp' => [
+            'driver' => 'pgsql',
+            'url' => env('PRODUCTION_DB_URL'),
+            'host' => env('PRODUCTION_DB_HOST', '127.0.0.1'),
+            'port' => env('PRODUCTION_DB_PORT', '5432'),
+            'database' => env('PRODUCTION_DB_DATABASE'),
+            'username' => env('PRODUCTION_DB_USERNAME'),
+            'password' => env('PRODUCTION_DB_PASSWORD', ''),
+            'charset' => env('PRODUCTION_DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => env('PRODUCTION_DB_SCHEMA', 'public'),
+            'sslmode' => env('PRODUCTION_DB_SSLMODE', 'prefer'),
+        ],
+
         'sqlsrv' => [
             'driver' => 'sqlsrv',
             'url' => env('DB_URL'),

@@ -7,24 +7,33 @@ import { showGlobalAlert } from '@/utils/globalAlert';
 
 const props = defineProps({
   legacyQcReport: { type: Object, default: null },
+  legacySupplierReport: { type: Object, default: null },
+  legacySupplierReportError: { type: String, default: null },
   procurementVendors: { type: Array, default: () => [] },
   procurementImportStagings: { type: Array, default: () => [] },
 });
 
 const legacyQcForm = useForm({});
+const legacySupplierImportForm = useForm({ legacy_ids: [] });
 const legacyImportForm = useForm({ import_keys: [] });
 const procurementStagingSaveForm = useForm({ procurement_date: '', notes: '', lines: [] });
 const procurementStagingConvertForm = useForm({});
 const reconcileStagingForm = useForm({});
 
 const legacyQcReport = computed(() => props.legacyQcReport);
+const legacySupplierReport = computed(() => props.legacySupplierReport);
 const legacyQcProjects = computed(() => legacyQcReport.value?.projects ?? []);
 const legacyImportStatusCounts = computed(() => legacyQcReport.value?.summary?.import_status_counts ?? {});
 const procurementVendorOptions = computed(() => props.procurementVendors ?? []);
 
 const importChecklistStorageKey = 'legacy-import-page-checklist-v1';
+const supplierChecklistStorageKey = 'legacy-supplier-import-page-checklist-v1';
 const selectedLegacyImportKeys = ref([]);
+const selectedLegacySupplierIds = ref([]);
 const selectedLegacyProjects = computed(() => legacyQcProjects.value.filter((project) => selectedLegacyImportKeys.value.includes(project.import_key)));
+const legacySuppliers = computed(() => legacySupplierReport.value?.suppliers ?? []);
+const selectableLegacySuppliers = computed(() => legacySuppliers.value.filter((supplier) => supplier.is_importable));
+const selectedLegacySuppliers = computed(() => legacySuppliers.value.filter((supplier) => selectedLegacySupplierIds.value.includes(supplier.legacy_id)));
 const selectableLegacyProjects = computed(() => legacyQcProjects.value.filter((project) => project.readiness !== 'blocked' && project.is_importable));
 const selectedLegacyProjectsWithCompareIssues = computed(() => selectedLegacyProjects.value.filter((project) => {
   const summary = project.compare_summary || {};
@@ -41,6 +50,41 @@ function runLegacyQc() {
   legacyQcForm.post(route('erp.admin.data-import.legacy-sales.qc'), {
     preserveScroll: true,
   });
+}
+
+function importLegacySuppliers() {
+  if (!selectedLegacySuppliers.value.length) {
+    showGlobalAlert('Pilih minimal satu supplier dari checklist terlebih dahulu.', 'warning');
+    return;
+  }
+
+  legacySupplierImportForm.legacy_ids = selectedLegacySuppliers.value.map((supplier) => supplier.legacy_id);
+  legacySupplierImportForm.post(route('erp.admin.data-import.legacy-suppliers.import'), {
+    preserveScroll: true,
+  });
+}
+
+function isLegacySupplierChecked(legacyId) {
+  return selectedLegacySupplierIds.value.includes(legacyId);
+}
+
+function toggleLegacySupplierChecklist(legacyId, checked) {
+  if (checked) {
+    if (!selectedLegacySupplierIds.value.includes(legacyId)) {
+      selectedLegacySupplierIds.value = [...selectedLegacySupplierIds.value, legacyId];
+    }
+    return;
+  }
+
+  selectedLegacySupplierIds.value = selectedLegacySupplierIds.value.filter((id) => id !== legacyId);
+}
+
+function selectAllImportableLegacySuppliers() {
+  selectedLegacySupplierIds.value = selectableLegacySuppliers.value.map((supplier) => supplier.legacy_id);
+}
+
+function clearLegacySupplierChecklist() {
+  selectedLegacySupplierIds.value = [];
 }
 
 function isLegacyProjectChecked(importKey) {
@@ -198,6 +242,15 @@ watch(
 );
 
 watch(
+  legacySuppliers,
+  (suppliers) => {
+    const validIds = new Set(suppliers.filter((supplier) => supplier.is_importable).map((supplier) => supplier.legacy_id));
+    selectedLegacySupplierIds.value = selectedLegacySupplierIds.value.filter((id) => validIds.has(id));
+  },
+  { immediate: true },
+);
+
+watch(
   selectedLegacyImportKeys,
   (keys) => {
     if (typeof window === 'undefined') {
@@ -205,6 +258,18 @@ watch(
     }
 
     window.localStorage.setItem(importChecklistStorageKey, JSON.stringify(keys));
+  },
+  { deep: true },
+);
+
+watch(
+  selectedLegacySupplierIds,
+  (ids) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(supplierChecklistStorageKey, JSON.stringify(ids));
   },
   { deep: true },
 );
@@ -223,6 +288,13 @@ if (typeof window !== 'undefined') {
     selectedLegacyImportKeys.value = raw ? JSON.parse(raw) : [];
   } catch {
     selectedLegacyImportKeys.value = [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(supplierChecklistStorageKey);
+    selectedLegacySupplierIds.value = raw ? JSON.parse(raw) : [];
+  } catch {
+    selectedLegacySupplierIds.value = [];
   }
 }
 </script>
@@ -251,6 +323,128 @@ if (typeof window !== 'undefined') {
           </div>
         </div>
       </div>
+
+      <details class="ocn-panel">
+        <summary class="ocn-panel__head cursor-pointer list-none">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 class="ocn-panel__title">Supplier legacy ke ERP vendor</h2>
+              <p class="ocn-panel__desc">
+                Membaca tabel <strong>Supplier</strong> dari database legacy dan menghubungkannya ke tabel <strong>vendors</strong> di ERP.
+                Field <strong>contactPerson</strong> disimpan ke catatan vendor karena belum ada field khusus di ERP.
+              </p>
+            </div>
+            <div v-if="legacySupplierReport" class="flex flex-wrap gap-2 text-xs">
+              <span class="badge badge-ghost badge-sm">Total {{ legacySupplierReport.summary?.total_suppliers ?? 0 }}</span>
+              <span class="badge badge-success badge-sm">Terhubung {{ legacySupplierReport.summary?.already_imported ?? 0 }}</span>
+              <span class="badge badge-warning badge-sm">Match {{ legacySupplierReport.summary?.matched_existing_vendor ?? 0 }}</span>
+              <span class="badge badge-outline badge-sm">Pending {{ legacySupplierReport.summary?.pending_import ?? 0 }}</span>
+            </div>
+          </div>
+        </summary>
+        <div class="card-body space-y-4">
+          <div v-if="legacySupplierReportError" class="rounded-xl border border-error/30 bg-error/10 p-4 text-sm">
+            Preview supplier legacy gagal dimuat: {{ legacySupplierReportError }}
+          </div>
+
+          <template v-else-if="legacySupplierReport">
+            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div class="rounded-xl border border-base-200 bg-base-200/30 p-4">
+                <div class="text-xs uppercase tracking-[0.14em] text-base-content/60">Total supplier</div>
+                <div class="mt-2 text-2xl font-semibold">{{ legacySupplierReport.summary?.total_suppliers ?? 0 }}</div>
+              </div>
+              <div class="rounded-xl border border-success/30 bg-success/10 p-4">
+                <div class="text-xs uppercase tracking-[0.14em] text-base-content/60">Sudah terhubung</div>
+                <div class="mt-2 text-2xl font-semibold">{{ legacySupplierReport.summary?.already_imported ?? 0 }}</div>
+              </div>
+              <div class="rounded-xl border border-warning/30 bg-warning/10 p-4">
+                <div class="text-xs uppercase tracking-[0.14em] text-base-content/60">Match vendor ERP</div>
+                <div class="mt-2 text-2xl font-semibold">{{ legacySupplierReport.summary?.matched_existing_vendor ?? 0 }}</div>
+              </div>
+              <div class="rounded-xl border border-base-200 bg-base-200/30 p-4">
+                <div class="text-xs uppercase tracking-[0.14em] text-base-content/60">Belum diimport</div>
+                <div class="mt-2 text-2xl font-semibold">{{ legacySupplierReport.summary?.pending_import ?? 0 }}</div>
+              </div>
+            </div>
+
+            <div class="rounded-xl border border-base-200 bg-base-200/30 p-4">
+              <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div class="space-y-1 text-sm text-base-content/80">
+                  <div>
+                    Sumber:
+                    <strong>{{ legacySupplierReport.source?.database || '-' }}</strong>
+                    di <strong>{{ legacySupplierReport.source?.host || '-' }}</strong>
+                    schema <strong>{{ legacySupplierReport.source?.schema || '-' }}</strong>
+                    tabel <strong>{{ legacySupplierReport.source?.table || '-' }}</strong>
+                  </div>
+                  <div>Import ini bersifat upsert: vendor yang sudah match akan diupdate dan diberi penanda legacy supplier ID.</div>
+                </div>
+                <div class="text-sm text-base-content/75">
+                  Terpilih: <strong>{{ selectedLegacySuppliers.length }}</strong> / {{ selectableLegacySuppliers.length }}
+                </div>
+              </div>
+              <div class="mt-4 flex flex-wrap gap-2">
+                <button type="button" class="btn btn-outline btn-sm" @click="selectAllImportableLegacySuppliers">Pilih semua importable</button>
+                <button type="button" class="btn btn-ghost btn-sm" @click="clearLegacySupplierChecklist">Kosongkan checklist</button>
+                <button type="button" class="btn btn-primary btn-sm" :disabled="selectedLegacySuppliers.length === 0 || legacySupplierImportForm.processing" @click="importLegacySuppliers">
+                  {{ legacySupplierImportForm.processing ? 'Mengimpor...' : 'Import supplier terpilih' }}
+                </button>
+              </div>
+            </div>
+
+            <div class="rounded-xl border border-base-200 bg-base-200/30 p-4">
+              <div class="flex items-center justify-between gap-3">
+                <p class="font-medium text-base-content">Preview supplier legacy</p>
+                <p class="text-xs text-base-content/60">Generated at {{ legacySupplierReport.generated_at }}</p>
+              </div>
+              <div class="mt-3 overflow-x-auto">
+                <table class="table table-sm">
+                  <thead>
+                    <tr>
+                      <th>Checklist</th>
+                      <th>Supplier</th>
+                      <th>Kontak</th>
+                      <th>Alamat</th>
+                      <th>Status Import</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="supplier in legacySupplierReport.suppliers" :key="supplier.legacy_id">
+                      <td>
+                        <input
+                          type="checkbox"
+                          class="checkbox checkbox-sm"
+                          :checked="isLegacySupplierChecked(supplier.legacy_id)"
+                          :disabled="!supplier.is_importable"
+                          @change="toggleLegacySupplierChecklist(supplier.legacy_id, $event.target.checked)"
+                        >
+                      </td>
+                      <td>
+                        <div class="font-medium">{{ supplier.name || '-' }}</div>
+                        <div class="font-mono text-[11px] text-base-content/60">legacy {{ supplier.legacy_id }}</div>
+                      </td>
+                      <td>
+                        <div>{{ supplier.contact_person || '-' }}</div>
+                        <div class="text-[11px] text-base-content/60">{{ supplier.phone || '-' }} · {{ supplier.email || '-' }}</div>
+                      </td>
+                      <td class="max-w-md whitespace-normal text-sm">{{ supplier.address || '-' }}</td>
+                      <td>
+                        <span class="badge badge-sm" :class="supplier.import_status?.badge || 'badge-ghost'">
+                          {{ supplier.import_status?.label || '-' }}
+                        </span>
+                        <div class="mt-1 text-xs text-base-content/60">{{ supplier.import_status?.description || '-' }}</div>
+                        <div v-if="supplier.matched_vendor" class="mt-1 text-xs text-base-content/60">
+                          ERP: {{ supplier.matched_vendor.code }} · {{ supplier.matched_vendor.name }}
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </template>
+        </div>
+      </details>
 
       <div class="ocn-panel">
         <div class="ocn-panel__head">
@@ -508,7 +702,7 @@ if (typeof window !== 'undefined') {
                         {{ procurementStagingConvertingId === staging.id && procurementStagingConvertForm.processing ? 'Mengonversi…' : 'Convert ke PO + GR' }}
                       </button>
                       <span v-if="staging.status !== 'converted'" class="text-xs text-base-content/60">
-                        Convert akan membuat PO dan GR real dengan status approved. GR belum diposting ke stok.
+                        Convert akan membuat PO dan GR real lalu langsung posting ke stok gudang OCN dan hutang usaha.
                       </span>
                     </div>
 

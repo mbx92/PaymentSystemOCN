@@ -708,6 +708,7 @@ class ERPInventoryController extends Controller
                 'id' => $m->id,
                 'date' => $m->movement_date?->toDateString(),
                 'type' => $m->movement_type,
+                'type_label' => $this->stockMovementTypeLabel($m->movement_type),
                 'sku' => $m->product?->sku,
                 'product' => $m->product?->name,
                 'warehouse' => $m->warehouse?->name ?? '-',
@@ -717,8 +718,9 @@ class ERPInventoryController extends Controller
             'filters' => $this->filtersWithPerPage($request, ['warehouse_id', 'product_id', 'type', 'from', 'to', 'q']),
             'warehouses' => $warehouses,
             'products' => $products,
-            'types' => [
+            'types' => collect([
                 'purchase_receipt',
+                'project_issue_out',
                 'pos_sale_out',
                 'pos_refund_in',
                 'pos_reopen_out',
@@ -730,8 +732,31 @@ class ERPInventoryController extends Controller
                 'manual_out',
                 'transfer_in',
                 'transfer_out',
-            ],
+            ])->map(fn (string $type) => [
+                'value' => $type,
+                'label' => $this->stockMovementTypeLabel($type),
+            ])->values(),
         ]);
+    }
+
+    private function stockMovementTypeLabel(string $type): string
+    {
+        return match ($type) {
+            'purchase_receipt' => 'Penerimaan Pembelian',
+            'project_issue_out' => 'Pemakaian Project',
+            'pos_sale_out' => 'Penjualan POS',
+            'pos_refund_in' => 'Refund POS',
+            'pos_reopen_out' => 'Reopen POS',
+            'in' => 'Stok Masuk',
+            'out' => 'Stok Keluar',
+            'opname_in' => 'Penyesuaian Opname Masuk',
+            'opname_out' => 'Penyesuaian Opname Keluar',
+            'manual_in' => 'Input Manual Masuk',
+            'manual_out' => 'Input Manual Keluar',
+            'transfer_in' => 'Transfer Masuk',
+            'transfer_out' => 'Transfer Keluar',
+            default => str_replace('_', ' ', $type),
+        };
     }
 
     /**

@@ -61,7 +61,9 @@ const openPayment = (distribution) => {
   if (distribution.is_paid) return;
   selectedDistribution.value = distribution;
   paymentForm.reset();
-  paymentForm.payment_date = new Date().toISOString().slice(0, 10);
+  paymentForm.payment_date = distribution.is_legacy_import && distribution.legacy_payment_date
+    ? distribution.legacy_payment_date
+    : new Date().toISOString().slice(0, 10);
   paymentForm.amount = Number(distribution.total_pay || 0);
   paymentForm.cash_account_id = props.cashAccounts?.[0]?.id ?? '';
   paymentForm.note = '';
@@ -323,6 +325,10 @@ const totalPayable = computed(() => (
           <p v-if="selectedDistribution" class="mt-1 text-sm text-base-content/70">
             {{ selectedDistribution.user_name }} — {{ selectedDistribution.project_name }}.
             Total: {{ format(selectedDistribution.total_pay) }}
+          </p>
+
+          <p v-if="selectedDistribution?.is_legacy_import && selectedDistribution?.legacy_payment_date" class="mt-1 text-xs text-base-content/60">
+            Distribusi hasil import legacy akan memakai tanggal selesai project: {{ formatDate(selectedDistribution.legacy_payment_date) }}.
           </p>
 
           <div class="mt-4 grid gap-3">

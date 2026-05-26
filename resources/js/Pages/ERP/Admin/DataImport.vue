@@ -1305,7 +1305,7 @@ async function runAllSeeders() {
                         {{ procurementStagingConvertingId === staging.id && procurementStagingConvertForm.processing ? 'Mengonversi…' : 'Convert ke PO + GR' }}
                       </button>
                       <span v-if="staging.status !== 'converted'" class="text-xs text-base-content/60">
-                        Convert akan membuat PO dan GR real dengan status approved. GR belum diposting ke stok.
+                        Convert akan membuat PO dan GR real lalu langsung posting ke stok gudang OCN dan hutang usaha.
                       </span>
                     </div>
 

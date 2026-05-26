@@ -332,9 +332,9 @@ const confirmDestroyEntry = () => {
                 </td>
                 <td class="max-w-[8rem] truncate" :title="entry.project_name">{{ entry.project_name }}</td>
                 <td>
-                  <span class="badge badge-ghost badge-xs max-w-[7rem] truncate" :title="categoryLabelMap[entry.category] ?? entry.category">
+                  <div class="max-w-[11rem] truncate text-[11px] leading-tight text-base-content/80" :title="categoryLabelMap[entry.category] ?? entry.category">
                     {{ categoryLabelMap[entry.category] ?? entry.category }}
-                  </span>
+                  </div>
                 </td>
                 <td class="text-right tabular-nums whitespace-nowrap">
                   <span :class="['font-semibold', entry.type === 'in' ? 'text-success' : 'text-error']">

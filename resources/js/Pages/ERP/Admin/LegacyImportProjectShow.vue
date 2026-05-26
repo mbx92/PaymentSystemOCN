@@ -15,9 +15,14 @@ const props = defineProps({
 
 const importForm = useForm({
   import_keys: [props.project.import_key],
+  legacy_project_id: props.project.legacy_id,
 });
-const procurementStagingSaveForm = useForm({ procurement_date: '', notes: '', lines: [] });
-const procurementStagingConvertForm = useForm({});
+const prepareProcurementForm = useForm({
+  import_keys: [props.project.import_key],
+  legacy_project_id: props.project.legacy_id,
+});
+const procurementStagingSaveForm = useForm({ procurement_date: '', notes: '', lines: [], legacy_project_id: props.project.legacy_id });
+const procurementStagingConvertForm = useForm({ legacy_project_id: props.project.legacy_id });
 const reconcileStagingForm = useForm({
   legacy_project_id: props.project.legacy_id,
   source_import_key: props.project.import_key,
@@ -25,6 +30,9 @@ const reconcileStagingForm = useForm({
 const procurementStagingDrafts = reactive({});
 const procurementStagingSavingId = ref(null);
 const procurementStagingConvertingId = ref(null);
+const requiresProcurementFirst = props.project.requires_procurement_first === true;
+const procurementReadyForImport = props.project.procurement_ready_for_import === true;
+const canImportProject = props.project.is_importable && (!requiresProcurementFirst || procurementReadyForImport);
 
 function compareStatusClass(status) {
   if (status === 'already_in_erp_project' || status === 'already_paid_in_erp' || status === 'matched_existing_distribution') return 'badge-info';
@@ -38,7 +46,16 @@ function importStatusClass(importStatus) {
 
 function processImport() {
   importForm.import_keys = [props.project.import_key];
+  importForm.legacy_project_id = props.project.legacy_id;
   importForm.post(route('erp.admin.data-import.legacy-sales.import-selected'), {
+    preserveScroll: true,
+  });
+}
+
+function prepareProcurementStaging() {
+  prepareProcurementForm.import_keys = [props.project.import_key];
+  prepareProcurementForm.legacy_project_id = props.project.legacy_id;
+  prepareProcurementForm.post(route('erp.admin.data-import.legacy-sales.prepare-procurement'), {
     preserveScroll: true,
   });
 }
@@ -111,6 +128,7 @@ function saveProcurementStaging(staging) {
 
   procurementStagingSaveForm.procurement_date = draft.procurement_date;
   procurementStagingSaveForm.notes = draft.notes;
+  procurementStagingSaveForm.legacy_project_id = props.project.legacy_id;
   procurementStagingSaveForm.lines = draft.lines.map((line) => ({
     id: line.id,
     vendor_id: line.vendor_id ? Number(line.vendor_id) : null,
@@ -134,6 +152,7 @@ function convertProcurementStaging(staging) {
   }
 
   procurementStagingConvertingId.value = staging.id;
+  procurementStagingConvertForm.legacy_project_id = props.project.legacy_id;
   procurementStagingConvertForm.post(route('erp.admin.data-import.procurement-stagings.convert', staging.id), {
     preserveScroll: true,
     onFinish: () => {
@@ -161,22 +180,24 @@ watch(
             <div>
               <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Legacy Import OCN</p>
               <h1 class="ocn-panel__title mt-1">{{ project.project_number }} · {{ project.title }}</h1>
-              <p class="ocn-panel__desc mt-1">
-                Detail compare dan kesiapan import untuk satu project legacy.
-              </p>
+              <p class="ocn-panel__desc mt-1">Detail compare dan kesiapan import untuk satu project legacy.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
               <Link class="btn btn-ghost btn-sm gap-1.5" :href="route('erp.admin.legacy-import')">
                 <ArrowLeftIcon class="h-4 w-4" />
                 Kembali ke daftar
               </Link>
+              <button type="button" class="btn btn-primary btn-sm" :disabled="!canImportProject || importForm.processing" @click="processImport">
+                {{ importForm.processing ? 'Memproses import...' : 'Proses import project ini' }}
+              </button>
               <button
+                v-if="requiresProcurementFirst && !relatedProcurementStagings.length"
                 type="button"
-                class="btn btn-primary btn-sm"
-                :disabled="!project.is_importable || importForm.processing"
-                @click="processImport"
+                class="btn btn-outline btn-sm"
+                :disabled="prepareProcurementForm.processing"
+                @click="prepareProcurementStaging"
               >
-                {{ importForm.processing ? 'Memproses import…' : 'Proses import project ini' }}
+                {{ prepareProcurementForm.processing ? 'Menyiapkan staging...' : 'Siapkan procurement staging dulu' }}
               </button>
               <button
                 v-if="relatedProcurementStagings.length"
@@ -185,11 +206,9 @@ watch(
                 :disabled="reconcileStagingForm.processing"
                 @click="reconcileProjectProcurementStaging"
               >
-                {{ reconcileStagingForm.processing ? 'Mengecek staging…' : 'Cek staging project ini' }}
+                {{ reconcileStagingForm.processing ? 'Mengecek staging...' : 'Cek staging project ini' }}
               </button>
-              <a v-if="relatedProcurementStagings.length" href="#procurement-staging" class="btn btn-outline btn-sm">
-                Proses procurement staging
-              </a>
+              <a v-if="relatedProcurementStagings.length" href="#procurement-staging" class="btn btn-outline btn-sm">Proses procurement staging</a>
             </div>
           </div>
         </div>
@@ -236,6 +255,20 @@ watch(
             </div>
           </div>
 
+          <div
+            v-if="requiresProcurementFirst"
+            class="rounded-xl border p-4"
+            :class="procurementReadyForImport ? 'border-success/40 bg-success/10' : 'border-warning/40 bg-warning/10'"
+          >
+            <div class="font-medium text-base-content">Urutan import wajib</div>
+            <div class="mt-2 text-sm text-base-content/85">
+              Procurement harus selesai lebih dulu untuk project ini. Buat staging, pilih supplier, convert ke PO + GR, lalu baru import project agar material project tidak masuk dengan reservasi 0.
+            </div>
+            <div v-if="project.procurement_gate_message" class="mt-2 text-xs text-base-content/70">
+              Status: {{ project.procurement_gate_message }}
+            </div>
+          </div>
+
           <div v-if="project.issues?.length" class="rounded-xl border border-warning/40 bg-warning/10 p-4">
             <div class="font-medium text-base-content">Temuan QC</div>
             <div class="mt-3 space-y-2 text-sm">
@@ -277,6 +310,9 @@ watch(
                     <th>Legacy item</th>
                     <th>Qty</th>
                     <th>Harga</th>
+                    <th>Cost</th>
+                    <th>Total</th>
+                    <th>Total cost</th>
                     <th>Match ERP</th>
                     <th>Status</th>
                   </tr>
@@ -289,9 +325,15 @@ watch(
                     </td>
                     <td>{{ Number(item.quantity || 0).toLocaleString('id-ID') }}</td>
                     <td>{{ Number(item.price || 0).toLocaleString('id-ID') }}</td>
+                    <td>{{ Number(item.cost || 0).toLocaleString('id-ID') }}</td>
+                    <td>{{ Number(item.total_price || 0).toLocaleString('id-ID') }}</td>
+                    <td>{{ Number(item.total_cost || 0).toLocaleString('id-ID') }}</td>
                     <td>
                       <div v-if="item.matched_product">{{ item.matched_product.name }}</div>
                       <div v-if="item.matched_product" class="text-[11px] text-base-content/60">{{ item.matched_product.sku }}</div>
+                      <div v-if="item.existing_material" class="text-[11px] text-base-content/60">
+                        ERP cost {{ Number(item.existing_material.unit_cost || 0).toLocaleString('id-ID') }} · ERP price {{ Number(item.existing_material.unit_price || 0).toLocaleString('id-ID') }}
+                      </div>
                       <div v-else class="text-base-content/50">Belum ada</div>
                     </td>
                     <td><span class="badge badge-xs" :class="compareStatusClass(item.status)">{{ item.status }}</span></td>
@@ -367,13 +409,17 @@ watch(
           <div class="rounded-xl border border-base-200 bg-base-100 p-4">
             <div class="font-medium text-base-content">Aksi terkait</div>
             <div class="mt-3 flex flex-col gap-2">
+              <button type="button" class="btn btn-primary btn-sm justify-start" :disabled="!canImportProject || importForm.processing" @click="processImport">
+                {{ importForm.processing ? 'Memproses import...' : 'Proses import project ini' }}
+              </button>
               <button
+                v-if="requiresProcurementFirst && !relatedProcurementStagings.length"
                 type="button"
-                class="btn btn-primary btn-sm justify-start"
-                :disabled="!project.is_importable || importForm.processing"
-                @click="processImport"
+                class="btn btn-outline btn-sm justify-start"
+                :disabled="prepareProcurementForm.processing"
+                @click="prepareProcurementStaging"
               >
-                {{ importForm.processing ? 'Memproses import…' : 'Proses import project ini' }}
+                {{ prepareProcurementForm.processing ? 'Menyiapkan staging...' : 'Siapkan procurement staging dulu' }}
               </button>
               <a v-if="relatedProcurementStagings.length" href="#procurement-staging" class="btn btn-outline btn-sm justify-start">
                 Proses procurement staging
@@ -385,7 +431,7 @@ watch(
                 :disabled="reconcileStagingForm.processing"
                 @click="reconcileProjectProcurementStaging"
               >
-                {{ reconcileStagingForm.processing ? 'Mengecek staging…' : 'Cek staging project ini' }}
+                {{ reconcileStagingForm.processing ? 'Mengecek staging...' : 'Cek staging project ini' }}
               </button>
               <Link class="btn btn-outline btn-sm justify-start" :href="route('erp.admin.legacy-import')">
                 Kembali ke daftar legacy import
@@ -395,8 +441,11 @@ watch(
               </Link>
             </div>
             <div class="mt-3 text-xs text-base-content/65">
-              <span v-if="project.is_importable">
-                Project ini masih bisa diproses import langsung dari halaman detail.
+              <span v-if="canImportProject">
+                Project ini siap diimport dari halaman detail.
+              </span>
+              <span v-else-if="requiresProcurementFirst">
+                Import project dikunci sampai procurement staging selesai dikonversi menjadi PO dan GR.
               </span>
               <span v-else>
                 Import dinonaktifkan karena project ini sudah pernah diimport atau status QC-nya belum layak diproses.
@@ -419,7 +468,7 @@ watch(
                 :disabled="reconcileStagingForm.processing"
                 @click="reconcileProjectProcurementStaging"
               >
-                {{ reconcileStagingForm.processing ? 'Mengecek staging…' : 'Cek staging project ini' }}
+                {{ reconcileStagingForm.processing ? 'Mengecek staging...' : 'Cek staging project ini' }}
               </button>
             </div>
             <div v-if="!relatedProcurementStagings.length" class="mt-3 text-sm text-base-content/65">
@@ -524,13 +573,13 @@ watch(
 
                   <div class="flex flex-wrap gap-2">
                     <button type="button" class="btn btn-outline btn-sm" :disabled="staging.status === 'converted' || procurementStagingSaveForm.processing" @click="saveProcurementStaging(staging)">
-                      {{ procurementStagingSavingId === staging.id && procurementStagingSaveForm.processing ? 'Menyimpan…' : 'Simpan draft staging' }}
+                      {{ procurementStagingSavingId === staging.id && procurementStagingSaveForm.processing ? 'Menyimpan...' : 'Simpan draft staging' }}
                     </button>
                     <button type="button" class="btn btn-primary btn-sm" :disabled="!procurementStagingReadyToConvert(staging) || procurementStagingConvertForm.processing || staging.status === 'converted'" @click="convertProcurementStaging(staging)">
-                      {{ procurementStagingConvertingId === staging.id && procurementStagingConvertForm.processing ? 'Mengonversi…' : 'Convert ke PO + GR' }}
+                      {{ procurementStagingConvertingId === staging.id && procurementStagingConvertForm.processing ? 'Mengonversi...' : 'Convert ke PO + GR' }}
                     </button>
                     <span v-if="staging.status !== 'converted'" class="text-xs text-base-content/60">
-                      Convert akan membuat PO dan GR real dengan status approved. GR belum diposting ke stok.
+                      Convert akan membuat PO dan GR real lalu langsung posting ke stok gudang OCN dan hutang usaha.
                     </span>
                   </div>
 

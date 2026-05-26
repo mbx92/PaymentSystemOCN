@@ -33,6 +33,7 @@ class Project extends Model
         'description',
         'legal_vault_path',
         'import_key',
+        'team_distribution_rate',
     ];
 
     protected $casts = [
@@ -42,6 +43,7 @@ class Project extends Model
         'invoiced_at' => 'datetime',
         'started_at' => 'date',
         'finished_at' => 'date',
+        'team_distribution_rate' => 'decimal:2',
     ];
 
     public function payments()

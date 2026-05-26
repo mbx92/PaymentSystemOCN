@@ -18,6 +18,7 @@ class WarehouseStockRebuildService
     ];
 
     private const OUT_TYPES = [
+        'project_issue_out',
         'pos_sale_out',
         'pos_reopen_out',
         'out',
@@ -46,7 +47,7 @@ class WarehouseStockRebuildService
             ->selectRaw(
                 "SUM(CASE
                     WHEN movement_type IN ('purchase_receipt','pos_refund_in','in','opname_in','manual_in','transfer_in') THEN qty
-                    WHEN movement_type IN ('pos_sale_out','pos_reopen_out','out','opname_out','manual_out','transfer_out') THEN -qty
+                    WHEN movement_type IN ('project_issue_out','pos_sale_out','pos_reopen_out','out','opname_out','manual_out','transfer_out') THEN -qty
                     ELSE 0
                 END) as expected_qty"
             )

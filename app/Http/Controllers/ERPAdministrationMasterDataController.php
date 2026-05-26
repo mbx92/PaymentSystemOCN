@@ -31,7 +31,9 @@ use App\Services\LanTsplPrinter;
 use App\Services\DatabaseBackupService;
 use App\Services\LegacyProjectImportService;
 use App\Services\LegacyProjectSalesQcService;
+use App\Services\LegacySupplierImportService;
 use App\Services\ProcurementImportStagingService;
+use App\Services\ProductionErpSyncService;
 use App\Services\ServerMetricsService;
 use App\Services\ThermalPosReceiptData;
 use App\Services\ThermalPosReceiptRenderer;
@@ -1050,7 +1052,78 @@ class ERPAdministrationMasterDataController extends Controller
         return Inertia::render('ERP/Admin/LegacyImport', $this->legacyImportPageProps());
     }
 
-    public function legacyImportProject(string $legacyProjectId, LegacyProjectSalesQcService $legacyProjectSalesQcService): Response|RedirectResponse
+    public function productionDbSync(ProductionErpSyncService $syncService): Response
+    {
+        return Inertia::render('ERP/Admin/ProductionDbSync', $this->productionDbSyncPageProps($syncService));
+    }
+
+    public function runProductionDbSync(Request $request, ProductionErpSyncService $syncService): RedirectResponse
+    {
+        $modules = array_keys($syncService->modules());
+        $tables = $syncService->allTables();
+
+        $validated = $request->validate([
+            'mode' => ['required', Rule::in(['dry_run', 'execute'])],
+            'module_keys' => ['nullable', 'array'],
+            'module_keys.*' => ['string', Rule::in($modules)],
+            'table_names' => ['nullable', 'array'],
+            'table_names.*' => ['string', Rule::in($tables)],
+            'chunk_size' => ['required', 'integer', 'min:1', 'max:5000'],
+        ]);
+
+        try {
+            $result = $syncService->sync(
+                array_values($validated['module_keys'] ?? []),
+                array_values($validated['table_names'] ?? []),
+                ($validated['mode'] ?? 'dry_run') !== 'execute',
+                (int) $validated['chunk_size'],
+            );
+
+            $modeLabel = ($validated['mode'] ?? 'dry_run') === 'execute' ? 'execute import' : 'dry run';
+
+            return redirect()
+                ->route('erp.admin.production-db-sync')
+                ->with('production_sync_result', $result)
+                ->with('production_sync_filters', [
+                    'mode' => $validated['mode'],
+                    'module_keys' => array_values($validated['module_keys'] ?? []),
+                    'table_names' => array_values($validated['table_names'] ?? []),
+                    'chunk_size' => (int) $validated['chunk_size'],
+                ])
+                ->with('flash', [
+                    'type' => 'success',
+                    'message' => 'Production DB sync selesai dijalankan dalam mode '.$modeLabel.'.',
+                ]);
+        } catch (\Throwable $e) {
+            Log::error('Production DB sync failed.', [
+                'mode' => $validated['mode'] ?? null,
+                'module_keys' => $validated['module_keys'] ?? [],
+                'table_names' => $validated['table_names'] ?? [],
+                'chunk_size' => $validated['chunk_size'] ?? null,
+                'message' => $e->getMessage(),
+                'exception' => get_class($e),
+            ]);
+
+            return redirect()
+                ->route('erp.admin.production-db-sync')
+                ->with('production_sync_filters', [
+                    'mode' => $validated['mode'] ?? 'dry_run',
+                    'module_keys' => array_values($validated['module_keys'] ?? []),
+                    'table_names' => array_values($validated['table_names'] ?? []),
+                    'chunk_size' => (int) ($validated['chunk_size'] ?? 500),
+                ])
+                ->with('flash', [
+                    'type' => 'error',
+                    'message' => 'Production DB sync gagal: '.$e->getMessage(),
+                ]);
+        }
+    }
+
+    public function legacyImportProject(
+        string $legacyProjectId,
+        LegacyProjectSalesQcService $legacyProjectSalesQcService,
+        LegacyProjectImportService $legacyProjectImportService,
+    ): Response|RedirectResponse
     {
         try {
             $report = $legacyProjectSalesQcService->buildReport();
@@ -1066,6 +1139,12 @@ class ERPAdministrationMasterDataController extends Controller
                         'message' => 'Project legacy yang diminta tidak ditemukan di hasil QC terbaru.',
                     ]);
             }
+
+            $procurementGate = $legacyProjectImportService->procurementGateForProject($project);
+            $project['requires_procurement_first'] = (bool) ($procurementGate['requires_procurement'] ?? false);
+            $project['procurement_ready_for_import'] = (bool) ($procurementGate['ready'] ?? false);
+            $project['procurement_gate_message'] = $procurementGate['message'] ?? null;
+            $project['procurement_staging_status'] = $procurementGate['staging_status'] ?? null;
 
             return Inertia::render('ERP/Admin/LegacyImportProjectShow', [
                 'project' => $project,
@@ -1130,6 +1209,7 @@ class ERPAdministrationMasterDataController extends Controller
         $validated = $request->validate([
             'import_keys' => ['required', 'array', 'min:1'],
             'import_keys.*' => ['required', 'string', 'max:191'],
+            'legacy_project_id' => ['nullable', 'string', 'max:191'],
         ]);
 
         try {
@@ -1141,17 +1221,19 @@ class ERPAdministrationMasterDataController extends Controller
             $report = $legacyProjectSalesQcService->buildReport();
 
             $message = sprintf(
-                'Import legacy selesai. %d project dibuat, %d procurement staging dibuat.',
+                'Import legacy selesai. %d project dibuat.',
                 (int) ($result['created_project_count'] ?? 0),
-                (int) ($result['created_staging_count'] ?? 0),
             );
 
             if (! empty($result['skipped'])) {
                 $message .= ' '.count($result['skipped']).' project dilewati.';
             }
 
-            return redirect()
-                ->route('erp.admin.legacy-import')
+            $redirect = $request->filled('legacy_project_id')
+                ? redirect()->route('erp.admin.legacy-import.projects.show', $request->input('legacy_project_id'))
+                : redirect()->route('erp.admin.legacy-import');
+
+            return $redirect
                 ->with('legacy_project_sales_qc', $report)
                 ->with('flash', [
                     'type' => 'success',
@@ -1169,11 +1251,112 @@ class ERPAdministrationMasterDataController extends Controller
                 'exception' => get_class($e),
             ]);
 
+            $redirect = $request->filled('legacy_project_id')
+                ? redirect()->route('erp.admin.legacy-import.projects.show', $request->input('legacy_project_id'))
+                : redirect()->route('erp.admin.legacy-import');
+
+            return $redirect
+                ->with('flash', [
+                    'type' => 'error',
+                    'message' => 'Import selected projects gagal: '.$e->getMessage(),
+                ]);
+        }
+    }
+
+    public function prepareLegacyProjectProcurement(Request $request, LegacyProjectImportService $legacyProjectImportService): RedirectResponse
+    {
+        $validated = $request->validate([
+            'import_keys' => ['required', 'array', 'min:1'],
+            'import_keys.*' => ['required', 'string', 'max:191'],
+            'legacy_project_id' => ['nullable', 'string', 'max:191'],
+        ]);
+
+        try {
+            $result = $legacyProjectImportService->prepareProcurementStagings(
+                array_values($validated['import_keys']),
+                (int) $request->user()->id,
+            );
+
+            $redirect = $request->filled('legacy_project_id')
+                ? redirect()->route('erp.admin.legacy-import.projects.show', $request->input('legacy_project_id'))
+                : redirect()->route('erp.admin.legacy-import');
+
+            return $redirect->with('flash', [
+                'type' => 'success',
+                'message' => sprintf(
+                    'Procurement staging berhasil disiapkan untuk %d project. %d project dilewati.',
+                    (int) ($result['prepared_count'] ?? 0),
+                    count($result['skipped'] ?? []),
+                ),
+                'import_kind' => 'legacy-procurement-preparation',
+                'import_errors' => collect($result['skipped'] ?? [])->values()->map(fn (string $message, int $index) => [
+                    'row' => $index + 1,
+                    'message' => $message,
+                ])->all(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Legacy procurement staging preparation failed.', [
+                'message' => $e->getMessage(),
+                'exception' => get_class($e),
+            ]);
+
+            $redirect = $request->filled('legacy_project_id')
+                ? redirect()->route('erp.admin.legacy-import.projects.show', $request->input('legacy_project_id'))
+                : redirect()->route('erp.admin.legacy-import');
+
+            return $redirect->with('flash', [
+                'type' => 'error',
+                'message' => 'Persiapan procurement staging gagal: '.$e->getMessage(),
+            ]);
+        }
+    }
+
+    public function importLegacySuppliers(Request $request, LegacySupplierImportService $legacySupplierImportService): RedirectResponse
+    {
+        $validated = $request->validate([
+            'legacy_ids' => ['required', 'array', 'min:1'],
+            'legacy_ids.*' => ['required', 'string', 'max:191'],
+        ]);
+
+        try {
+            $result = $legacySupplierImportService->importSelected(
+                array_values($validated['legacy_ids']),
+                (int) $request->user()->id,
+            );
+
+            $message = sprintf(
+                'Import supplier legacy selesai. %d vendor dibuat, %d vendor diupdate.',
+                (int) ($result['created_count'] ?? 0),
+                (int) ($result['updated_count'] ?? 0),
+            );
+
+            if ((int) ($result['skipped_count'] ?? 0) > 0) {
+                $message .= ' '.(int) $result['skipped_count'].' supplier dilewati.';
+            }
+
+            return redirect()
+                ->route('erp.admin.legacy-import')
+                ->with('flash', [
+                    'type' => 'success',
+                    'message' => $message,
+                    'import_kind' => 'legacy-suppliers',
+                    'imported_count' => (int) (($result['created_count'] ?? 0) + ($result['updated_count'] ?? 0)),
+                    'import_errors' => collect($result['skipped'] ?? [])->values()->map(fn (string $message, int $index) => [
+                        'row' => $index + 1,
+                        'message' => $message,
+                    ])->all(),
+                ]);
+        } catch (\Throwable $e) {
+            Log::error('Legacy supplier import failed.', [
+                'message' => $e->getMessage(),
+                'exception' => get_class($e),
+            ]);
+
             return redirect()
                 ->route('erp.admin.legacy-import')
                 ->with('flash', [
                     'type' => 'error',
-                    'message' => 'Import selected projects gagal: '.$e->getMessage(),
+                    'message' => 'Import supplier legacy gagal: '.$e->getMessage(),
                 ]);
         }
     }
@@ -1188,14 +1371,18 @@ class ERPAdministrationMasterDataController extends Controller
             'lines.*.vendor_id' => ['nullable', 'integer', 'exists:vendors,id'],
             'lines.*.qty' => ['required', 'numeric', 'min:0.01'],
             'lines.*.unit_cost' => ['required', 'numeric', 'min:0'],
+            'legacy_project_id' => ['nullable', 'string', 'max:191'],
         ]);
 
         try {
             $procurementImportStagingService->updateDraft($procurementImportStaging, $validated);
             $report = app(LegacyProjectSalesQcService::class)->buildReport();
 
-            return redirect()
-                ->route('erp.admin.legacy-import')
+            $redirect = $request->filled('legacy_project_id')
+                ? redirect()->route('erp.admin.legacy-import.projects.show', $request->input('legacy_project_id'))
+                : redirect()->route('erp.admin.legacy-import');
+
+            return $redirect
                 ->with('legacy_project_sales_qc', $report)
                 ->with('flash', [
                     'type' => 'success',
@@ -1208,8 +1395,11 @@ class ERPAdministrationMasterDataController extends Controller
                 'exception' => get_class($e),
             ]);
 
-            return redirect()
-                ->route('erp.admin.legacy-import')
+            $redirect = $request->filled('legacy_project_id')
+                ? redirect()->route('erp.admin.legacy-import.projects.show', $request->input('legacy_project_id'))
+                : redirect()->route('erp.admin.legacy-import');
+
+            return $redirect
                 ->with('flash', [
                     'type' => 'error',
                     'message' => 'Update procurement staging gagal: '.$e->getMessage(),
@@ -1226,13 +1416,16 @@ class ERPAdministrationMasterDataController extends Controller
             );
             $report = app(LegacyProjectSalesQcService::class)->buildReport();
 
-            return redirect()
-                ->route('erp.admin.legacy-import')
+            $redirect = $request->filled('legacy_project_id')
+                ? redirect()->route('erp.admin.legacy-import.projects.show', $request->input('legacy_project_id'))
+                : redirect()->route('erp.admin.legacy-import');
+
+            return $redirect
                 ->with('legacy_project_sales_qc', $report)
                 ->with('flash', [
                     'type' => 'success',
                     'message' => sprintf(
-                        'Procurement staging berhasil dikonversi menjadi %d PO dan %d GR. Dokumen GR masih approved dan belum diposting ke stok.',
+                        'Procurement staging berhasil dikonversi menjadi %d PO dan %d GR. Seluruh GR legacy langsung diposting ke stok gudang dan hutang usaha.',
                         count($result['purchase_orders'] ?? []),
                         count($result['goods_receipts'] ?? []),
                     ),
@@ -1244,8 +1437,11 @@ class ERPAdministrationMasterDataController extends Controller
                 'exception' => get_class($e),
             ]);
 
-            return redirect()
-                ->route('erp.admin.legacy-import')
+            $redirect = $request->filled('legacy_project_id')
+                ? redirect()->route('erp.admin.legacy-import.projects.show', $request->input('legacy_project_id'))
+                : redirect()->route('erp.admin.legacy-import');
+
+            return $redirect
                 ->with('flash', [
                     'type' => 'error',
                     'message' => 'Konversi procurement staging gagal: '.$e->getMessage(),
@@ -1927,8 +2123,31 @@ class ERPAdministrationMasterDataController extends Controller
 
     private function legacyImportPageProps(): array
     {
+        $legacyQcReport = session('legacy_project_sales_qc');
+        $legacySupplierReport = null;
+        $legacySupplierReportError = null;
+
+        if ($legacyQcReport === null) {
+            try {
+                $legacyQcReport = app(LegacyProjectSalesQcService::class)->buildReport();
+            } catch (\Throwable $e) {
+                Log::warning('Legacy project QC report auto-refresh failed.', [
+                    'message' => $e->getMessage(),
+                    'exception' => get_class($e),
+                ]);
+            }
+        }
+
+        try {
+            $legacySupplierReport = app(LegacySupplierImportService::class)->buildReport();
+        } catch (\Throwable $e) {
+            $legacySupplierReportError = $e->getMessage();
+        }
+
         return [
-            'legacyQcReport' => session('legacy_project_sales_qc'),
+            'legacyQcReport' => $legacyQcReport,
+            'legacySupplierReport' => $legacySupplierReport,
+            'legacySupplierReportError' => $legacySupplierReportError,
             'procurementVendors' => Vendor::query()
                 ->where('is_active', true)
                 ->orderBy('name')
@@ -1979,6 +2198,47 @@ class ERPAdministrationMasterDataController extends Controller
                     ])->values(),
                 ]),
         ];
+    }
+
+    private function productionDbSyncPageProps(ProductionErpSyncService $syncService): array
+    {
+        $modules = $syncService->modules();
+        $sourceConnection = $syncService->sourceConnection();
+        $targetConnection = $syncService->targetConnection();
+
+        return [
+            'syncConfig' => [
+                'source_connection' => $sourceConnection,
+                'target_connection' => $targetConnection,
+                'source_configured' => $this->databaseConnectionConfigured($sourceConnection),
+                'target_configured' => $this->databaseConnectionConfigured($targetConnection),
+                'modules' => collect($modules)
+                    ->map(fn (array $tables, string $key) => [
+                        'key' => $key,
+                        'label' => Str::of($key)->replace('_', ' ')->title()->toString(),
+                        'tables' => array_values($tables),
+                        'table_count' => count($tables),
+                    ])
+                    ->values()
+                    ->all(),
+                'all_tables' => $syncService->allTables(),
+            ],
+            'lastResult' => session('production_sync_result'),
+            'lastFilters' => session('production_sync_filters', [
+                'mode' => 'dry_run',
+                'module_keys' => [],
+                'table_names' => [],
+                'chunk_size' => 500,
+            ]),
+        ];
+    }
+
+    private function databaseConnectionConfigured(string $connection): bool
+    {
+        $config = (array) config('database.connections.'.$connection, []);
+
+        return trim((string) ($config['url'] ?? '')) !== ''
+            || trim((string) ($config['database'] ?? '')) !== '';
     }
 
     private function projectMaterialStatus(ProjectMaterial $material): string

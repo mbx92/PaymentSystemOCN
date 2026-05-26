@@ -403,6 +403,7 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/admin/printer-and-label', [ERPAdministrationMasterDataController::class, 'printerAndLabelSettings'])->name('erp.admin.printer-and-label');
         Route::get('erp/admin/data-import', [ERPAdministrationMasterDataController::class, 'dataImport'])->name('erp.admin.data-import');
         Route::get('erp/admin/legacy-import', [ERPAdministrationMasterDataController::class, 'legacyImport'])->name('erp.admin.legacy-import');
+        Route::get('erp/admin/production-db-sync', [ERPAdministrationMasterDataController::class, 'productionDbSync'])->name('erp.admin.production-db-sync');
         Route::get('erp/admin/legacy-import/projects/{legacyProjectId}', [ERPAdministrationMasterDataController::class, 'legacyImportProject'])->name('erp.admin.legacy-import.projects.show');
         Route::get('erp/admin/data-import/backup', [ERPAdministrationMasterDataController::class, 'downloadDatabaseBackup'])->name('erp.admin.data-import.backup');
         Route::get('erp/admin/data-import/products/template', [ERPAdministrationMasterDataController::class, 'downloadMasterProductImportTemplate'])->name('erp.admin.data-import.products.template');
@@ -413,6 +414,9 @@ Route::middleware('auth')->group(function () {
         Route::post('erp/admin/data-import/projects', [ERPAdministrationMasterDataController::class, 'importProjects'])->name('erp.admin.data-import.projects.store');
         Route::post('erp/admin/data-import/legacy-sales/qc', [ERPAdministrationMasterDataController::class, 'runLegacyProjectSalesQc'])->name('erp.admin.data-import.legacy-sales.qc');
         Route::post('erp/admin/data-import/legacy-sales/import-selected', [ERPAdministrationMasterDataController::class, 'importSelectedLegacyProjects'])->name('erp.admin.data-import.legacy-sales.import-selected');
+        Route::post('erp/admin/data-import/legacy-sales/prepare-procurement', [ERPAdministrationMasterDataController::class, 'prepareLegacyProjectProcurement'])->name('erp.admin.data-import.legacy-sales.prepare-procurement');
+        Route::post('erp/admin/data-import/legacy-suppliers/import', [ERPAdministrationMasterDataController::class, 'importLegacySuppliers'])->name('erp.admin.data-import.legacy-suppliers.import');
+        Route::post('erp/admin/production-db-sync/run', [ERPAdministrationMasterDataController::class, 'runProductionDbSync'])->name('erp.admin.production-db-sync.run');
         Route::post('erp/admin/data-import/procurement-stagings/{procurementImportStaging}/update', [ERPAdministrationMasterDataController::class, 'updateProcurementImportStaging'])->name('erp.admin.data-import.procurement-stagings.update');
         Route::post('erp/admin/data-import/procurement-stagings/{procurementImportStaging}/convert', [ERPAdministrationMasterDataController::class, 'convertProcurementImportStaging'])->name('erp.admin.data-import.procurement-stagings.convert');
         Route::post('erp/admin/data-import/procurement-stagings/reconcile', [ERPAdministrationMasterDataController::class, 'reconcileProcurementImportStagings'])->name('erp.admin.data-import.procurement-stagings.reconcile');

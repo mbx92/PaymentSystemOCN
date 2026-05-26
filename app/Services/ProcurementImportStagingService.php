@@ -2,13 +2,19 @@
 
 namespace App\Services;
 
+use App\ERP\Accounting\Models\Account;
+use App\ERP\Accounting\Models\Payable;
+use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Purchasing\Models\GoodsReceipt;
 use App\ERP\Purchasing\Models\PurchaseOrder;
 use App\ERP\Shared\Enums\DocumentStatus;
 use App\ERP\Shared\Services\DocumentNumberService;
 use App\Models\MasterProduct;
+use App\Models\MasterProductWarehouseStock;
 use App\Models\ProcurementImportStaging;
 use App\Models\ProcurementImportStagingLine;
+use App\Models\ProductStockMovement;
+use App\Models\ProjectMaterial;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -17,6 +23,7 @@ class ProcurementImportStagingService
 {
     public function __construct(
         private readonly DocumentNumberService $documentNumberService,
+        private readonly GlPostingService $glPostingService,
     ) {}
 
     /**
@@ -155,6 +162,12 @@ class ProcurementImportStagingService
                         ]);
                     }
 
+                    $this->postGoodsReceiptFromLegacyConversion(
+                        $grn->fresh(['purchaseOrder.lines', 'purchaseOrder.vendor', 'warehouse', 'lines.product']),
+                        $performedByUserId,
+                        (int) $staging->company_id,
+                    );
+
                     $vendorLines->each(function (ProcurementImportStagingLine $line): void {
                         $line->update(['status' => 'converted']);
                     });
@@ -176,7 +189,7 @@ class ProcurementImportStagingService
                 'conversion_summary' => [
                     'purchase_orders' => $purchaseOrders,
                     'goods_receipts' => $goodsReceipts,
-                    'mode' => 'approved_pending_post',
+                    'mode' => 'legacy_auto_posted',
                 ],
             ]);
 
@@ -333,5 +346,154 @@ class ProcurementImportStagingService
             'Import key: '.$staging->source_import_key,
             $staging->notes ?: null,
         ])));
+    }
+
+    private function postGoodsReceiptFromLegacyConversion(GoodsReceipt $receipt, int $performedByUserId, int $companyId): void
+    {
+        if ($receipt->status === DocumentStatus::Posted) {
+            return;
+        }
+
+        $receipt->update([
+            'status' => DocumentStatus::Posted,
+            'posted_at' => now(),
+            'posted_by' => $performedByUserId,
+        ]);
+
+        foreach ($receipt->lines as $line) {
+            $product = $line->product;
+            if (! $product) {
+                continue;
+            }
+
+            $poLine = $receipt->purchaseOrder
+                ->lines()
+                ->where('master_product_id', $product->id)
+                ->lockForUpdate()
+                ->first();
+            $remaining = $poLine ? max((float) $poLine->qty - (float) $poLine->received_qty, 0) : 0;
+            if ($remaining < (float) $line->qty_received) {
+                throw new RuntimeException('Qty GRN melebihi sisa PO untuk produk '.$product->name.'.');
+            }
+
+            $warehouseId = $receipt->warehouse_id;
+            if ($warehouseId) {
+                $row = MasterProductWarehouseStock::query()->firstOrCreate(
+                    ['master_product_id' => $product->id, 'warehouse_id' => $warehouseId],
+                    ['qty' => 0, 'reserved_qty' => 0]
+                );
+                $row->increment('qty', (float) $line->qty_received);
+
+                $this->allocateProjectMaterialReservations(
+                    $product->id,
+                    (int) $warehouseId,
+                    (float) $line->qty_received,
+                );
+                app(ProjectMaterialReservationService::class)
+                    ->syncWarehouseReservation($product->id, (int) $warehouseId);
+            }
+
+            $product->increment('stock', (float) $line->qty_received);
+            $poLine?->increment('received_qty', (float) $line->qty_received);
+
+            ProductStockMovement::query()->create([
+                'master_product_id' => $product->id,
+                'warehouse_id' => $warehouseId,
+                'movement_date' => $receipt->received_date->toDateString(),
+                'movement_type' => 'purchase_receipt',
+                'qty' => $line->qty_received,
+                'note' => 'Legacy receipt '.$receipt->number,
+            ]);
+        }
+
+        $inventoryAccount = Account::query()->where('code', '1201')->firstOrFail();
+        $payableAccount = Account::query()->where('code', '2001')->firstOrFail();
+        $amount = (float) $receipt->purchaseOrder->total_amount;
+
+        $entry = $this->glPostingService->post(
+            $companyId,
+            sourceModule: 'purchasing',
+            sourceReference: $receipt->number,
+            description: 'Posting penerimaan barang legacy '.$receipt->number,
+            entryDate: $receipt->received_date->toDateString(),
+            lines: [
+                ['account_id' => $inventoryAccount->id, 'debit' => $amount, 'credit' => 0],
+                ['account_id' => $payableAccount->id, 'debit' => 0, 'credit' => $amount],
+            ]
+        );
+
+        Payable::query()->create([
+            'vendor_id' => $receipt->purchaseOrder->vendor_id,
+            'purchase_order_id' => $receipt->purchase_order_id,
+            'goods_receipt_id' => $receipt->id,
+            'bill_no' => $this->documentNumberService->next('accounting', 'payable_bill', [
+                'prefix' => 'BILL',
+                'padding_length' => 6,
+            ]),
+            'bill_date' => $receipt->received_date->toDateString(),
+            'due_date' => $receipt->received_date->copy()->addDays(14)->toDateString(),
+            'amount' => $amount,
+            'paid_amount' => 0,
+            'status' => DocumentStatus::Posted,
+            'journal_entry_id' => $entry->id,
+        ]);
+    }
+
+    private function allocateProjectMaterialReservations(int $productId, int $warehouseId, float $receivedQty): float
+    {
+        $remaining = $receivedQty;
+        $allocated = 0.0;
+
+        ProjectMaterial::query()
+            ->with('project')
+            ->where('master_product_id', $productId)
+            ->where('warehouse_id', $warehouseId)
+            ->whereHas('project', fn ($q) => $q->whereIn('status', ['negosiasi', 'berjalan']))
+            ->whereRaw('planned_qty > reserved_qty')
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get()
+            ->each(function (ProjectMaterial $material) use (&$remaining, &$allocated): void {
+                if ($remaining <= 0) {
+                    return;
+                }
+
+                $shortage = max((float) $material->planned_qty - (float) $material->reserved_qty, 0);
+                $toReserve = min($shortage, $remaining);
+                if ($toReserve <= 0) {
+                    return;
+                }
+
+                $material->reserved_qty = (float) $material->reserved_qty + $toReserve;
+                $material->status = $this->projectMaterialStatus($material);
+                $material->save();
+
+                $remaining -= $toReserve;
+                $allocated += $toReserve;
+            });
+
+        return $allocated;
+    }
+
+    private function projectMaterialStatus(ProjectMaterial $material): string
+    {
+        $plannedQty = (float) $material->planned_qty;
+        $reservedQty = (float) $material->reserved_qty;
+        $issuedQty = (float) $material->issued_qty;
+
+        if ($plannedQty > 0 && $issuedQty >= $plannedQty) {
+            return 'issued';
+        }
+
+        if ($plannedQty > 0 && $reservedQty >= $plannedQty) {
+            return 'ready';
+        }
+
+        if ($reservedQty > 0) {
+            return 'partial';
+        }
+
+        return 'planned';
     }
 }

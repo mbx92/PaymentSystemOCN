@@ -55,24 +55,8 @@ class CashflowController extends Controller
             'filters' => $request->only(['type', 'source', 'project_id', 'category', 'company_id', 'date_from', 'date_to', 'q']),
             'sourceOptions' => $this->sourceOptions(),
             'categoryOptions' => [
-                'in' => CashCategory::query()
-                    ->where('domain', 'cash_in')
-                    ->whereNotIn('key', CashCategory::retiredKeysFor('cash_in'))
-                    ->where('is_active', true)
-                    ->orderBy('sort_order')
-                    ->orderBy('label')
-                    ->get(['key', 'label'])
-                    ->map(fn ($c) => ['value' => $c->key, 'label' => $c->label])
-                    ->values(),
-                'out' => CashCategory::query()
-                    ->where('domain', 'cash_out')
-                    ->whereNotIn('key', CashCategory::retiredKeysFor('cash_out'))
-                    ->where('is_active', true)
-                    ->orderBy('sort_order')
-                    ->orderBy('label')
-                    ->get(['key', 'label'])
-                    ->map(fn ($c) => ['value' => $c->key, 'label' => $c->label])
-                    ->values(),
+                'in' => $this->cashflowCategoryOptionsFor('cash_in'),
+                'out' => $this->cashflowCategoryOptionsFor('cash_out'),
             ],
             'canMutate' => $this->canMutateCashflow($request),
         ]);
@@ -491,6 +475,37 @@ class CashflowController extends Controller
 
         return (bool) ($user?->hasAnyRole(['admin', 'manajer'])
             || $user?->can('erp.accounting.post-journal'));
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, array{value: string, label: string}>
+     */
+    private function cashflowCategoryOptionsFor(string $domain): Collection
+    {
+        $baseOptions = CashCategory::query()
+            ->where('domain', $domain)
+            ->whereNotIn('key', CashCategory::retiredKeysFor($domain))
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('label')
+            ->get(['key', 'label'])
+            ->map(fn ($category) => [
+                'value' => (string) $category->key,
+                'label' => (string) $category->label,
+            ]);
+
+        $syntheticOptions = collect(match ($domain) {
+            'cash_out' => [
+                ['value' => 'pembayaran_hutang_supplier', 'label' => 'Pembayaran Hutang Supplier'],
+                ['value' => 'pembelian_inventaris', 'label' => 'Pembelian Inventaris'],
+            ],
+            default => [],
+        });
+
+        return $baseOptions
+            ->concat($syntheticOptions)
+            ->unique('value')
+            ->values();
     }
 
     /**

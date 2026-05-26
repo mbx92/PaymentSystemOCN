@@ -15,6 +15,11 @@ const props = defineProps({
 });
 
 const { formatDate } = useDateFormat();
+const typeBadgeClass = (type) => {
+  if (String(type).includes('in')) return 'badge-success';
+  if (String(type).includes('out')) return 'badge-warning';
+  return 'badge-ghost';
+};
 
 const filters = reactive({
   warehouse_id: props.filters?.warehouse_id ?? '',
@@ -85,7 +90,7 @@ watch(
               <label class="label"><span class="label-text text-xs uppercase tracking-wide">Tipe</span></label>
               <select v-model="filters.type" class="select select-sm select-bordered w-full">
                 <option value="">Semua</option>
-                <option v-for="t in types" :key="t" :value="t">{{ t }}</option>
+                <option v-for="t in types" :key="t.value" :value="t.value">{{ t.label }}</option>
               </select>
             </div>
             <div class="min-w-[150px]">
@@ -109,27 +114,27 @@ watch(
           <h2 class="ocn-panel__title">Riwayat stock movement</h2>
         </div>
         <div class="overflow-x-auto">
-          <table class="table table-zebra">
+          <table class="table table-zebra table-sm">
             <thead>
               <tr>
-                <th>Tanggal</th>
-                <th>Tipe</th>
-                <th>SKU</th>
-                <th>Produk</th>
-                <th>Warehouse</th>
-                <th class="text-right">Qty</th>
-                <th>Note</th>
+                <th class="text-[11px] font-semibold uppercase tracking-[0.12em] text-base-content/60">Tanggal</th>
+                <th class="text-[11px] font-semibold uppercase tracking-[0.12em] text-base-content/60">Tipe</th>
+                <th class="text-[11px] font-semibold uppercase tracking-[0.12em] text-base-content/60">SKU</th>
+                <th class="text-[11px] font-semibold uppercase tracking-[0.12em] text-base-content/60">Produk</th>
+                <th class="text-[11px] font-semibold uppercase tracking-[0.12em] text-base-content/60">Warehouse</th>
+                <th class="text-right text-[11px] font-semibold uppercase tracking-[0.12em] text-base-content/60">Qty</th>
+                <th class="text-[11px] font-semibold uppercase tracking-[0.12em] text-base-content/60">Note</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="m in movements.data" :key="m.id">
-                <td class="whitespace-nowrap text-xs">{{ formatDate(m.date) }}</td>
-                <td><span class="badge badge-sm badge-ghost">{{ m.type }}</span></td>
-                <td class="font-mono text-xs">{{ m.sku }}</td>
-                <td class="font-semibold">{{ m.product }}</td>
-                <td>{{ m.warehouse }}</td>
-                <td class="text-right font-mono text-xs">{{ m.qty }}</td>
-                <td class="text-sm text-base-content/70">{{ m.note }}</td>
+                <td class="whitespace-nowrap text-[11px]">{{ formatDate(m.date) }}</td>
+                <td><span class="badge badge-xs" :class="typeBadgeClass(m.type)">{{ m.type_label || m.type }}</span></td>
+                <td class="font-mono text-[11px]">{{ m.sku }}</td>
+                <td class="text-[12px] font-semibold">{{ m.product }}</td>
+                <td class="text-[12px]">{{ m.warehouse }}</td>
+                <td class="text-right font-mono text-[11px]">{{ m.qty }}</td>
+                <td class="text-[11px] text-base-content/70">{{ m.note }}</td>
               </tr>
               <tr v-if="!movements.data?.length">
                 <td colspan="7" class="text-center text-sm text-base-content/60 py-8">Tidak ada data.</td>
@@ -142,4 +147,3 @@ watch(
     </div>
   </AppLayout>
 </template>
-
