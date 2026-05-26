@@ -315,6 +315,7 @@ const sidebarModules = computed(() => {
                 permissionAny: ['menu.administration.users', 'menu.administration.roles'],
             },
             { name: 'Pengaturan ERP', href: route('erp.administration'), icon: BuildingOffice2Icon, permission: 'menu.administration.erp_settings' },
+            { name: 'Legacy Import', href: route('erp.admin.legacy-import'), icon: ClipboardDocumentListIcon, permission: 'menu.administration.erp_settings' },
         ].filter(canSeeNavItem);
         if (adminItems.length) {
             modules.push({ title: 'Administration', items: adminItems });

@@ -402,6 +402,8 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/admin/system-logs', [ErpSystemLogController::class, 'index'])->name('erp.admin.system-logs.index');
         Route::get('erp/admin/printer-and-label', [ERPAdministrationMasterDataController::class, 'printerAndLabelSettings'])->name('erp.admin.printer-and-label');
         Route::get('erp/admin/data-import', [ERPAdministrationMasterDataController::class, 'dataImport'])->name('erp.admin.data-import');
+        Route::get('erp/admin/legacy-import', [ERPAdministrationMasterDataController::class, 'legacyImport'])->name('erp.admin.legacy-import');
+        Route::get('erp/admin/legacy-import/projects/{legacyProjectId}', [ERPAdministrationMasterDataController::class, 'legacyImportProject'])->name('erp.admin.legacy-import.projects.show');
         Route::get('erp/admin/data-import/backup', [ERPAdministrationMasterDataController::class, 'downloadDatabaseBackup'])->name('erp.admin.data-import.backup');
         Route::get('erp/admin/data-import/products/template', [ERPAdministrationMasterDataController::class, 'downloadMasterProductImportTemplate'])->name('erp.admin.data-import.products.template');
         Route::post('erp/admin/data-import/products', [ERPAdministrationMasterDataController::class, 'importMasterProducts'])->name('erp.admin.data-import.products.store');
@@ -409,6 +411,11 @@ Route::middleware('auth')->group(function () {
         Route::post('erp/admin/data-import/customers', [ERPAdministrationMasterDataController::class, 'importCrmCustomers'])->name('erp.admin.data-import.customers.store');
         Route::get('erp/admin/data-import/projects/template', [ERPAdministrationMasterDataController::class, 'downloadProjectImportTemplate'])->name('erp.admin.data-import.projects.template');
         Route::post('erp/admin/data-import/projects', [ERPAdministrationMasterDataController::class, 'importProjects'])->name('erp.admin.data-import.projects.store');
+        Route::post('erp/admin/data-import/legacy-sales/qc', [ERPAdministrationMasterDataController::class, 'runLegacyProjectSalesQc'])->name('erp.admin.data-import.legacy-sales.qc');
+        Route::post('erp/admin/data-import/legacy-sales/import-selected', [ERPAdministrationMasterDataController::class, 'importSelectedLegacyProjects'])->name('erp.admin.data-import.legacy-sales.import-selected');
+        Route::post('erp/admin/data-import/procurement-stagings/{procurementImportStaging}/update', [ERPAdministrationMasterDataController::class, 'updateProcurementImportStaging'])->name('erp.admin.data-import.procurement-stagings.update');
+        Route::post('erp/admin/data-import/procurement-stagings/{procurementImportStaging}/convert', [ERPAdministrationMasterDataController::class, 'convertProcurementImportStaging'])->name('erp.admin.data-import.procurement-stagings.convert');
+        Route::post('erp/admin/data-import/procurement-stagings/reconcile', [ERPAdministrationMasterDataController::class, 'reconcileProcurementImportStagings'])->name('erp.admin.data-import.procurement-stagings.reconcile');
         Route::post('erp/admin/data-import/run-seeder', [ERPAdministrationMasterDataController::class, 'runSeeder'])->name('erp.admin.data-import.run-seeder');
         Route::post('erp/admin/data-import/warehouse-clear-products', [ERPAdministrationMasterDataController::class, 'clearWarehouseProductAssignments'])->name('erp.admin.data-import.warehouse-clear-products');
         Route::post('erp/admin/data-import/master-products/sync-origin-warehouses', [ERPAdministrationMasterDataController::class, 'syncMasterProductOriginWarehouses'])->name('erp.admin.data-import.master-products.sync-origin-warehouses');

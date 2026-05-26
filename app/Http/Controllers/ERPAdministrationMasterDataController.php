@@ -6,6 +6,7 @@ use App\ERP\Core\Models\DocumentSequence;
 use App\ERP\Inventory\Models\Warehouse;
 use App\ERP\Purchasing\Models\GoodsReceiptLine;
 use App\ERP\Purchasing\Models\PurchaseOrderLine;
+use App\ERP\Purchasing\Models\Vendor;
 use App\Exports\CrmCustomerImportTemplateExport;
 use App\Exports\MasterProductImportTemplateExport;
 use App\Exports\ProjectImportTemplateExport;
@@ -22,11 +23,15 @@ use App\Models\MasterProductWarehouseStock;
 use App\Models\PaymentMethod;
 use App\Models\PosSaleItem;
 use App\Models\ProductStockMovement;
+use App\Models\ProcurementImportStaging;
 use App\Models\ProjectMaterial;
 use App\Services\ProjectMaterialReservationService;
 use App\Services\LanEscPosPrinter;
 use App\Services\LanTsplPrinter;
 use App\Services\DatabaseBackupService;
+use App\Services\LegacyProjectImportService;
+use App\Services\LegacyProjectSalesQcService;
+use App\Services\ProcurementImportStagingService;
 use App\Services\ServerMetricsService;
 use App\Services\ThermalPosReceiptData;
 use App\Services\ThermalPosReceiptRenderer;
@@ -959,9 +964,13 @@ class ERPAdministrationMasterDataController extends Controller
         return redirect()->route('erp.admin.printer-and-label', ['tab' => 'label-lan']);
     }
 
-    public function dataImport(Request $request): Response
+    public function dataImport(Request $request): Response|RedirectResponse
     {
         $tab = $request->string('tab')->toString();
+        if ($tab === 'legacy-qc') {
+            return redirect()->route('erp.admin.legacy-import');
+        }
+
         if (! in_array($tab, ['products', 'projects', 'customers', 'seeders', 'backup'], true)) {
             $tab = 'products';
         }
@@ -983,7 +992,319 @@ class ERPAdministrationMasterDataController extends Controller
                     'warehouse_id' => $product->warehouse_id,
                 ]),
             'backupMeta' => $this->databaseBackupService->backupMeta(),
+            'legacyQcReport' => session('legacy_project_sales_qc'),
+            'procurementVendors' => Vendor::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'code', 'name'])
+                ->map(fn (Vendor $vendor) => [
+                    'id' => $vendor->id,
+                    'code' => $vendor->code,
+                    'name' => $vendor->name,
+                ]),
+            'procurementImportStagings' => ProcurementImportStaging::query()
+                ->with(['project:id,name,import_key', 'company:id,name', 'warehouse:id,name,code', 'lines.product:id,name,sku', 'lines.vendor:id,name,code', 'converter:id,name'])
+                ->latest('procurement_date')
+                ->latest('created_at')
+                ->limit(20)
+                ->get()
+                ->map(fn (ProcurementImportStaging $staging) => [
+                    'id' => $staging->id,
+                    'source_import_key' => $staging->source_import_key,
+                    'legacy_project_number' => $staging->legacy_project_number,
+                    'legacy_project_name' => $staging->legacy_project_name,
+                    'procurement_date' => optional($staging->procurement_date)->toDateString(),
+                    'status' => $staging->status,
+                    'notes' => $staging->notes,
+                    'converted_at' => optional($staging->converted_at)->toDateTimeString(),
+                    'converted_by_name' => $staging->converter?->name,
+                    'conversion_summary' => $staging->conversion_summary,
+                    'company_name' => $staging->company?->name,
+                    'warehouse_name' => $staging->warehouse?->name,
+                    'warehouse_code' => $staging->warehouse?->code,
+                    'project' => $staging->project ? [
+                        'id' => $staging->project->id,
+                        'name' => $staging->project->name,
+                        'import_key' => $staging->project->import_key,
+                    ] : null,
+                    'lines' => $staging->lines->map(fn ($line) => [
+                        'id' => $line->id,
+                        'master_product_id' => $line->master_product_id,
+                        'product_name' => $line->product_name,
+                        'sku' => $line->product?->sku,
+                        'qty' => (float) $line->qty,
+                        'unit' => $line->unit,
+                        'unit_cost' => (float) $line->unit_cost,
+                        'line_total' => (float) $line->line_total,
+                        'status' => $line->status,
+                        'vendor_id' => $line->vendor_id,
+                        'vendor_code' => $line->vendor?->code,
+                        'vendor_name' => $line->vendor?->name,
+                    ])->values(),
+                ]),
         ]);
+    }
+
+    public function legacyImport(): Response
+    {
+        return Inertia::render('ERP/Admin/LegacyImport', $this->legacyImportPageProps());
+    }
+
+    public function legacyImportProject(string $legacyProjectId, LegacyProjectSalesQcService $legacyProjectSalesQcService): Response|RedirectResponse
+    {
+        try {
+            $report = $legacyProjectSalesQcService->buildReport();
+            $project = collect($report['projects'] ?? [])
+                ->first(fn (array $row) => (string) ($row['legacy_id'] ?? '') === $legacyProjectId);
+
+            if (! $project) {
+                return redirect()
+                    ->route('erp.admin.legacy-import')
+                    ->with('legacy_project_sales_qc', $report)
+                    ->with('flash', [
+                        'type' => 'warning',
+                        'message' => 'Project legacy yang diminta tidak ditemukan di hasil QC terbaru.',
+                    ]);
+            }
+
+            return Inertia::render('ERP/Admin/LegacyImportProjectShow', [
+                'project' => $project,
+                'generatedAt' => $report['generated_at'] ?? null,
+                'source' => $report['source'] ?? null,
+                'procurementVendors' => collect($this->legacyImportPageProps()['procurementVendors'] ?? [])->values()->all(),
+                'relatedProcurementStagings' => collect($this->legacyImportPageProps()['procurementImportStagings'] ?? [])
+                    ->filter(fn (array $staging) => (string) ($staging['source_import_key'] ?? '') === (string) ($project['import_key'] ?? ''))
+                    ->values()
+                    ->all(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Legacy import project detail failed.', [
+                'legacy_project_id' => $legacyProjectId,
+                'message' => $e->getMessage(),
+                'exception' => get_class($e),
+            ]);
+
+            return redirect()
+                ->route('erp.admin.legacy-import')
+                ->with('flash', [
+                    'type' => 'error',
+                    'message' => 'Detail project legacy gagal dibuka: '.$e->getMessage(),
+                ]);
+        }
+    }
+
+    public function runLegacyProjectSalesQc(LegacyProjectSalesQcService $legacyProjectSalesQcService): RedirectResponse
+    {
+        try {
+            $report = $legacyProjectSalesQcService->buildReport();
+
+            return redirect()
+                ->route('erp.admin.legacy-import')
+                ->with('legacy_project_sales_qc', $report)
+                ->with('flash', [
+                    'type' => 'success',
+                    'message' => sprintf(
+                        'QC legacy selesai. %d ready, %d warning, %d blocked.',
+                        (int) ($report['summary']['ready_projects'] ?? 0),
+                        (int) ($report['summary']['warning_projects'] ?? 0),
+                        (int) ($report['summary']['blocked_projects'] ?? 0)
+                    ),
+                ]);
+        } catch (\Throwable $e) {
+            Log::error('Legacy project sales QC failed.', [
+                'message' => $e->getMessage(),
+                'exception' => get_class($e),
+            ]);
+
+            return redirect()
+                ->route('erp.admin.legacy-import')
+                ->with('flash', [
+                    'type' => 'error',
+                    'message' => 'QC legacy gagal dijalankan: '.$e->getMessage(),
+                ]);
+        }
+    }
+
+    public function importSelectedLegacyProjects(Request $request, LegacyProjectImportService $legacyProjectImportService, LegacyProjectSalesQcService $legacyProjectSalesQcService): RedirectResponse
+    {
+        $validated = $request->validate([
+            'import_keys' => ['required', 'array', 'min:1'],
+            'import_keys.*' => ['required', 'string', 'max:191'],
+        ]);
+
+        try {
+            $result = $legacyProjectImportService->importSelected(
+                array_values($validated['import_keys']),
+                (int) $request->user()->id,
+            );
+
+            $report = $legacyProjectSalesQcService->buildReport();
+
+            $message = sprintf(
+                'Import legacy selesai. %d project dibuat, %d procurement staging dibuat.',
+                (int) ($result['created_project_count'] ?? 0),
+                (int) ($result['created_staging_count'] ?? 0),
+            );
+
+            if (! empty($result['skipped'])) {
+                $message .= ' '.count($result['skipped']).' project dilewati.';
+            }
+
+            return redirect()
+                ->route('erp.admin.legacy-import')
+                ->with('legacy_project_sales_qc', $report)
+                ->with('flash', [
+                    'type' => 'success',
+                    'message' => $message,
+                    'import_kind' => 'legacy-selected-projects',
+                    'imported_count' => (int) ($result['created_project_count'] ?? 0),
+                    'import_errors' => collect($result['skipped'] ?? [])->values()->map(fn (string $message, int $index) => [
+                        'row' => $index + 1,
+                        'message' => $message,
+                    ])->all(),
+                ]);
+        } catch (\Throwable $e) {
+            Log::error('Legacy selected project import failed.', [
+                'message' => $e->getMessage(),
+                'exception' => get_class($e),
+            ]);
+
+            return redirect()
+                ->route('erp.admin.legacy-import')
+                ->with('flash', [
+                    'type' => 'error',
+                    'message' => 'Import selected projects gagal: '.$e->getMessage(),
+                ]);
+        }
+    }
+
+    public function updateProcurementImportStaging(Request $request, ProcurementImportStaging $procurementImportStaging, ProcurementImportStagingService $procurementImportStagingService): RedirectResponse
+    {
+        $validated = $request->validate([
+            'procurement_date' => ['required', 'date'],
+            'notes' => ['nullable', 'string'],
+            'lines' => ['required', 'array', 'min:1'],
+            'lines.*.id' => ['required', 'integer'],
+            'lines.*.vendor_id' => ['nullable', 'integer', 'exists:vendors,id'],
+            'lines.*.qty' => ['required', 'numeric', 'min:0.01'],
+            'lines.*.unit_cost' => ['required', 'numeric', 'min:0'],
+        ]);
+
+        try {
+            $procurementImportStagingService->updateDraft($procurementImportStaging, $validated);
+            $report = app(LegacyProjectSalesQcService::class)->buildReport();
+
+            return redirect()
+                ->route('erp.admin.legacy-import')
+                ->with('legacy_project_sales_qc', $report)
+                ->with('flash', [
+                    'type' => 'success',
+                    'message' => 'Draft procurement staging berhasil diperbarui.',
+                ]);
+        } catch (\Throwable $e) {
+            Log::error('Procurement import staging update failed.', [
+                'staging_id' => $procurementImportStaging->id,
+                'message' => $e->getMessage(),
+                'exception' => get_class($e),
+            ]);
+
+            return redirect()
+                ->route('erp.admin.legacy-import')
+                ->with('flash', [
+                    'type' => 'error',
+                    'message' => 'Update procurement staging gagal: '.$e->getMessage(),
+                ]);
+        }
+    }
+
+    public function convertProcurementImportStaging(Request $request, ProcurementImportStaging $procurementImportStaging, ProcurementImportStagingService $procurementImportStagingService): RedirectResponse
+    {
+        try {
+            $result = $procurementImportStagingService->convertToPurchasingDocuments(
+                $procurementImportStaging,
+                (int) $request->user()->id,
+            );
+            $report = app(LegacyProjectSalesQcService::class)->buildReport();
+
+            return redirect()
+                ->route('erp.admin.legacy-import')
+                ->with('legacy_project_sales_qc', $report)
+                ->with('flash', [
+                    'type' => 'success',
+                    'message' => sprintf(
+                        'Procurement staging berhasil dikonversi menjadi %d PO dan %d GR. Dokumen GR masih approved dan belum diposting ke stok.',
+                        count($result['purchase_orders'] ?? []),
+                        count($result['goods_receipts'] ?? []),
+                    ),
+                ]);
+        } catch (\Throwable $e) {
+            Log::error('Procurement import staging convert failed.', [
+                'staging_id' => $procurementImportStaging->id,
+                'message' => $e->getMessage(),
+                'exception' => get_class($e),
+            ]);
+
+            return redirect()
+                ->route('erp.admin.legacy-import')
+                ->with('flash', [
+                    'type' => 'error',
+                    'message' => 'Konversi procurement staging gagal: '.$e->getMessage(),
+                ]);
+        }
+    }
+
+    public function reconcileProcurementImportStagings(Request $request, ProcurementImportStagingService $procurementImportStagingService, LegacyProjectSalesQcService $legacyProjectSalesQcService): RedirectResponse
+    {
+        try {
+            $legacyProjectId = trim((string) $request->input('legacy_project_id', ''));
+            $sourceImportKey = trim((string) $request->input('source_import_key', ''));
+            $isScopedToProject = $legacyProjectId !== '' && $sourceImportKey !== '';
+
+            $summary = $isScopedToProject
+                ? $procurementImportStagingService->reconcileStagingsForImportKey($sourceImportKey)
+                : $procurementImportStagingService->reconcileOpenStagings();
+
+            $redirect = redirect()->route(
+                $isScopedToProject ? 'erp.admin.legacy-import.projects.show' : 'erp.admin.legacy-import',
+                $isScopedToProject ? $legacyProjectId : []
+            );
+
+            if (! $isScopedToProject) {
+                $report = $legacyProjectSalesQcService->buildReport();
+                $redirect->with('legacy_project_sales_qc', $report);
+            }
+
+            return $redirect
+                ->with('flash', [
+                    'type' => 'success',
+                    'message' => sprintf(
+                        $isScopedToProject
+                            ? 'Cek staging project selesai. %d staging dicek, %d line jasa dihapus, %d line master direfresh, %d staging dihapus.'
+                            : 'Cek tabel staging selesai. %d staging dicek, %d line jasa dihapus, %d line master direfresh, %d staging dihapus.',
+                        (int) ($summary['checked_stagings'] ?? 0),
+                        (int) ($summary['removed_service_lines'] ?? 0),
+                        (int) ($summary['refreshed_product_lines'] ?? 0),
+                        (int) ($summary['deleted_stagings'] ?? 0),
+                    ),
+                ]);
+        } catch (\Throwable $e) {
+            Log::error('Procurement import staging reconcile failed.', [
+                'legacy_project_id' => $request->input('legacy_project_id'),
+                'source_import_key' => $request->input('source_import_key'),
+                'message' => $e->getMessage(),
+                'exception' => get_class($e),
+            ]);
+
+            return redirect()
+                ->route(
+                    $request->filled('legacy_project_id') ? 'erp.admin.legacy-import.projects.show' : 'erp.admin.legacy-import',
+                    $request->filled('legacy_project_id') ? (string) $request->input('legacy_project_id') : []
+                )
+                ->with('flash', [
+                    'type' => 'error',
+                    'message' => 'Cek tabel staging gagal: '.$e->getMessage(),
+                ]);
+        }
     }
 
     public function downloadDatabaseBackup(): BinaryFileResponse|RedirectResponse
@@ -1601,6 +1922,62 @@ class ERPAdministrationMasterDataController extends Controller
             ['key' => 'parser_rules', 'label' => 'Parser Rules Chatbot', 'description' => '35 rule parser keyword untuk chatbot ERP.', 'class' => 'ErpChatParserRuleSeeder'],
             ['key' => 'pos_receipt', 'label' => 'Template Struk POS', 'description' => 'Template struk thermal POS default.', 'class' => 'FillThermalPosReceiptTemplatesSeeder'],
             ['key' => 'project_flow', 'label' => 'Alur Project Demo', 'description' => '5 data project lengkap: budget, termin, cashflow, tim, task, referral, dan material.', 'class' => 'ProjectFlowSeeder'],
+        ];
+    }
+
+    private function legacyImportPageProps(): array
+    {
+        return [
+            'legacyQcReport' => session('legacy_project_sales_qc'),
+            'procurementVendors' => Vendor::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'code', 'name'])
+                ->map(fn (Vendor $vendor) => [
+                    'id' => $vendor->id,
+                    'code' => $vendor->code,
+                    'name' => $vendor->name,
+                ]),
+            'procurementImportStagings' => ProcurementImportStaging::query()
+                ->with(['project:id,name,import_key', 'company:id,name', 'warehouse:id,name,code', 'lines.product:id,name,sku', 'lines.vendor:id,name,code', 'converter:id,name'])
+                ->latest('procurement_date')
+                ->latest('created_at')
+                ->limit(20)
+                ->get()
+                ->map(fn (ProcurementImportStaging $staging) => [
+                    'id' => $staging->id,
+                    'source_import_key' => $staging->source_import_key,
+                    'legacy_project_number' => $staging->legacy_project_number,
+                    'legacy_project_name' => $staging->legacy_project_name,
+                    'procurement_date' => optional($staging->procurement_date)->toDateString(),
+                    'status' => $staging->status,
+                    'notes' => $staging->notes,
+                    'converted_at' => optional($staging->converted_at)->toDateTimeString(),
+                    'converted_by_name' => $staging->converter?->name,
+                    'conversion_summary' => $staging->conversion_summary,
+                    'company_name' => $staging->company?->name,
+                    'warehouse_name' => $staging->warehouse?->name,
+                    'warehouse_code' => $staging->warehouse?->code,
+                    'project' => $staging->project ? [
+                        'id' => $staging->project->id,
+                        'name' => $staging->project->name,
+                        'import_key' => $staging->project->import_key,
+                    ] : null,
+                    'lines' => $staging->lines->map(fn ($line) => [
+                        'id' => $line->id,
+                        'master_product_id' => $line->master_product_id,
+                        'product_name' => $line->product_name,
+                        'sku' => $line->product?->sku,
+                        'qty' => (float) $line->qty,
+                        'unit' => $line->unit,
+                        'unit_cost' => (float) $line->unit_cost,
+                        'line_total' => (float) $line->line_total,
+                        'status' => $line->status,
+                        'vendor_id' => $line->vendor_id,
+                        'vendor_code' => $line->vendor?->code,
+                        'vendor_name' => $line->vendor?->name,
+                    ])->values(),
+                ]),
         ];
     }
 
