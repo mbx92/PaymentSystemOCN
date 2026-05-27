@@ -99,6 +99,7 @@ class ERPPurchasingController extends Controller
     {
         return Inertia::render('ERP/Purchasing/SupplierShow', [
             'detail' => [
+                'id' => $supplier->getKey(),
                 'code' => $supplier->code,
                 'name' => $supplier->name,
                 'phone' => $supplier->phone,
@@ -107,10 +108,30 @@ class ERPPurchasingController extends Controller
                 'tax_id' => $supplier->tax_id,
                 'lead_time_days' => (int) ($supplier->lead_time_days ?? 7),
                 'status' => $supplier->is_active ? 'active' : 'void',
+                'is_active' => (bool) $supplier->is_active,
                 'payment_terms' => $supplier->payment_terms ?? 'Net 14',
                 'notes' => $supplier->notes,
             ],
         ]);
+    }
+
+    public function updateSupplier(Request $request, Vendor $supplier): RedirectResponse
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:120',
+            'email' => 'nullable|email|max:120',
+            'phone' => 'nullable|string|max:40',
+            'address' => 'nullable|string',
+            'tax_id' => 'nullable|string|max:64',
+            'payment_terms' => 'nullable|string|max:40',
+            'lead_time_days' => 'required|integer|min:1|max:365',
+            'notes' => 'nullable|string|max:4000',
+            'is_active' => 'required|boolean',
+        ]);
+
+        $supplier->update($validated);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Supplier berhasil diperbarui.']);
     }
 
     public function purchaseOrders(Request $request): Response

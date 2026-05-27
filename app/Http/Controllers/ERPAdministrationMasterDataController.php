@@ -41,6 +41,7 @@ use App\Services\WindowsSmbRawPrinter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -1187,16 +1188,21 @@ class ERPAdministrationMasterDataController extends Controller
             $project['procurement_ready_for_import'] = (bool) ($procurementGate['ready'] ?? false);
             $project['procurement_gate_message'] = $procurementGate['message'] ?? null;
             $project['procurement_staging_status'] = $procurementGate['staging_status'] ?? null;
+            $relatedProcurementStagings = $this->procurementImportStagingPayload(
+                ProcurementImportStaging::query()
+                    ->with(['project:id,name,import_key', 'company:id,name', 'warehouse:id,name,code', 'lines.product:id,name,sku', 'lines.vendor:id,name,code', 'converter:id,name'])
+                    ->where('source_import_key', (string) ($project['import_key'] ?? ''))
+                    ->latest('updated_at')
+                    ->latest('created_at')
+                    ->get()
+            );
 
             return Inertia::render('ERP/Admin/LegacyImportProjectShow', [
                 'project' => $project,
                 'generatedAt' => $report['generated_at'] ?? null,
                 'source' => $report['source'] ?? null,
                 'procurementVendors' => collect($this->legacyImportPageProps()['procurementVendors'] ?? [])->values()->all(),
-                'relatedProcurementStagings' => collect($this->legacyImportPageProps()['procurementImportStagings'] ?? [])
-                    ->filter(fn (array $staging) => (string) ($staging['source_import_key'] ?? '') === (string) ($project['import_key'] ?? ''))
-                    ->values()
-                    ->all(),
+                'relatedProcurementStagings' => $relatedProcurementStagings,
             ]);
         } catch (\Throwable $e) {
             Log::error('Legacy import project detail failed.', [
@@ -2165,6 +2171,7 @@ class ERPAdministrationMasterDataController extends Controller
 
     private function legacyImportPageProps(): array
     {
+        $request = request();
         $legacyQcReport = session('legacy_project_sales_qc');
         $legacySupplierReport = null;
         $legacySupplierReportError = null;
@@ -2186,10 +2193,88 @@ class ERPAdministrationMasterDataController extends Controller
             $legacySupplierReportError = $e->getMessage();
         }
 
+        $legacyProjectSearch = trim((string) $request->string('legacy_project_q'));
+        $legacyProjectReadiness = trim((string) $request->string('legacy_project_readiness'));
+        $legacyProjectVisibility = trim((string) $request->string('legacy_project_visibility', 'hide_imported'));
+        $legacyProjectPerPage = $this->resolvedPerPage($request);
+        $legacySupplierSearch = trim((string) $request->string('legacy_supplier_q'));
+        $legacySupplierPerPage = $this->resolvedLegacyImportAuxPerPage($request, 'legacy_supplier_per_page');
+
+        $legacyProjectPaginator = null;
+        if (is_array($legacyQcReport)) {
+            $projectRows = collect($legacyQcReport['projects'] ?? [])
+                ->filter(function (array $project) use ($legacyProjectSearch, $legacyProjectReadiness, $legacyProjectVisibility): bool {
+                    if ($legacyProjectSearch !== '') {
+                        $haystack = strtolower(implode(' ', [
+                            (string) ($project['project_number'] ?? ''),
+                            (string) ($project['title'] ?? ''),
+                            (string) ($project['customer_name'] ?? ''),
+                            (string) ($project['import_key'] ?? ''),
+                        ]));
+
+                        if (! str_contains($haystack, strtolower($legacyProjectSearch))) {
+                            return false;
+                        }
+                    }
+
+                    if ($legacyProjectReadiness !== '' && (string) ($project['readiness'] ?? '') !== $legacyProjectReadiness) {
+                        return false;
+                    }
+
+                    if ($legacyProjectVisibility === 'show_imported_only' && (bool) ($project['is_importable'] ?? false)) {
+                        return false;
+                    }
+
+                    if ($legacyProjectVisibility === 'hide_imported' && ! (bool) ($project['is_importable'] ?? false)) {
+                        return false;
+                    }
+
+                    return true;
+                })
+                ->values();
+
+            $legacyProjectPaginator = $this->paginateCollectionForRequest($projectRows, $legacyProjectPerPage, $request, 'legacy_project_page');
+            $legacyQcReport['projects'] = $legacyProjectPaginator->items();
+        }
+
+        $legacySupplierPaginator = null;
+        if (is_array($legacySupplierReport)) {
+            $supplierRows = collect($legacySupplierReport['suppliers'] ?? [])
+                ->filter(function (array $supplier) use ($legacySupplierSearch): bool {
+                    if ($legacySupplierSearch === '') {
+                        return true;
+                    }
+
+                    $haystack = strtolower(implode(' ', [
+                        (string) ($supplier['name'] ?? ''),
+                        (string) ($supplier['contact_person'] ?? ''),
+                        (string) ($supplier['phone'] ?? ''),
+                        (string) ($supplier['email'] ?? ''),
+                        (string) ($supplier['legacy_id'] ?? ''),
+                    ]));
+
+                    return str_contains($haystack, strtolower($legacySupplierSearch));
+                })
+                ->values();
+
+            $legacySupplierPaginator = $this->paginateCollectionForRequest($supplierRows, $legacySupplierPerPage, $request, 'legacy_supplier_page');
+            $legacySupplierReport['suppliers'] = $legacySupplierPaginator->items();
+        }
+
         return [
             'legacyQcReport' => $legacyQcReport,
+            'legacyProjectPaginator' => $legacyProjectPaginator,
             'legacySupplierReport' => $legacySupplierReport,
+            'legacySupplierPaginator' => $legacySupplierPaginator,
             'legacySupplierReportError' => $legacySupplierReportError,
+            'filters' => [
+                'legacy_project_q' => $legacyProjectSearch,
+                'legacy_project_readiness' => $legacyProjectReadiness,
+                'legacy_project_visibility' => $legacyProjectVisibility,
+                'per_page' => $legacyProjectPerPage,
+                'legacy_supplier_q' => $legacySupplierSearch,
+                'legacy_supplier_per_page' => $legacySupplierPerPage,
+            ],
             'procurementVendors' => Vendor::query()
                 ->where('is_active', true)
                 ->orderBy('name')
@@ -2199,47 +2284,82 @@ class ERPAdministrationMasterDataController extends Controller
                     'code' => $vendor->code,
                     'name' => $vendor->name,
                 ]),
-            'procurementImportStagings' => ProcurementImportStaging::query()
-                ->with(['project:id,name,import_key', 'company:id,name', 'warehouse:id,name,code', 'lines.product:id,name,sku', 'lines.vendor:id,name,code', 'converter:id,name'])
-                ->latest('procurement_date')
-                ->latest('created_at')
-                ->limit(20)
-                ->get()
-                ->map(fn (ProcurementImportStaging $staging) => [
-                    'id' => $staging->id,
-                    'source_import_key' => $staging->source_import_key,
-                    'legacy_project_number' => $staging->legacy_project_number,
-                    'legacy_project_name' => $staging->legacy_project_name,
-                    'procurement_date' => optional($staging->procurement_date)->toDateString(),
-                    'status' => $staging->status,
-                    'notes' => $staging->notes,
-                    'converted_at' => optional($staging->converted_at)->toDateTimeString(),
-                    'converted_by_name' => $staging->converter?->name,
-                    'conversion_summary' => $staging->conversion_summary,
-                    'company_name' => $staging->company?->name,
-                    'warehouse_name' => $staging->warehouse?->name,
-                    'warehouse_code' => $staging->warehouse?->code,
-                    'project' => $staging->project ? [
-                        'id' => $staging->project->id,
-                        'name' => $staging->project->name,
-                        'import_key' => $staging->project->import_key,
-                    ] : null,
-                    'lines' => $staging->lines->map(fn ($line) => [
-                        'id' => $line->id,
-                        'master_product_id' => $line->master_product_id,
-                        'product_name' => $line->product_name,
-                        'sku' => $line->product?->sku,
-                        'qty' => (float) $line->qty,
-                        'unit' => $line->unit,
-                        'unit_cost' => (float) $line->unit_cost,
-                        'line_total' => (float) $line->line_total,
-                        'status' => $line->status,
-                        'vendor_id' => $line->vendor_id,
-                        'vendor_code' => $line->vendor?->code,
-                        'vendor_name' => $line->vendor?->name,
-                    ])->values(),
-                ]),
+            'procurementImportStagings' => $this->procurementImportStagingPayload(
+                ProcurementImportStaging::query()
+                    ->with(['project:id,name,import_key', 'company:id,name', 'warehouse:id,name,code', 'lines.product:id,name,sku', 'lines.vendor:id,name,code', 'converter:id,name'])
+                    ->latest('updated_at')
+                    ->latest('procurement_date')
+                    ->latest('created_at')
+                    ->limit(20)
+                    ->get()
+            ),
         ];
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, ProcurementImportStaging>  $stagings
+     * @return array<int, array<string, mixed>>
+     */
+    private function procurementImportStagingPayload(\Illuminate\Support\Collection $stagings): array
+    {
+        return $stagings
+            ->map(fn (ProcurementImportStaging $staging) => [
+                'id' => $staging->id,
+                'source_import_key' => $staging->source_import_key,
+                'legacy_project_number' => $staging->legacy_project_number,
+                'legacy_project_name' => $staging->legacy_project_name,
+                'procurement_date' => optional($staging->procurement_date)->toDateString(),
+                'status' => $staging->status,
+                'notes' => $staging->notes,
+                'converted_at' => optional($staging->converted_at)->toDateTimeString(),
+                'converted_by_name' => $staging->converter?->name,
+                'conversion_summary' => $staging->conversion_summary,
+                'company_name' => $staging->company?->name,
+                'warehouse_name' => $staging->warehouse?->name,
+                'warehouse_code' => $staging->warehouse?->code,
+                'project' => $staging->project ? [
+                    'id' => $staging->project->id,
+                    'name' => $staging->project->name,
+                    'import_key' => $staging->project->import_key,
+                ] : null,
+                'lines' => $staging->lines->map(fn ($line) => [
+                    'id' => $line->id,
+                    'master_product_id' => $line->master_product_id,
+                    'product_name' => $line->product_name,
+                    'sku' => $line->product?->sku,
+                    'qty' => (float) $line->qty,
+                    'unit' => $line->unit,
+                    'unit_cost' => (float) $line->unit_cost,
+                    'line_total' => (float) $line->line_total,
+                    'status' => $line->status,
+                    'vendor_id' => $line->vendor_id,
+                    'vendor_code' => $line->vendor?->code,
+                    'vendor_name' => $line->vendor?->name,
+                ])->values(),
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function resolvedLegacyImportAuxPerPage(Request $request, string $key): int
+    {
+        $perPage = (int) $request->query($key, 25);
+        $allowed = [25, 50, 75, 100, 125, 150, 175, 200, 225, 250];
+
+        return in_array($perPage, $allowed, true) ? $perPage : 25;
+    }
+
+    private function paginateCollectionForRequest(\Illuminate\Support\Collection $rows, int $perPage, Request $request, string $pageName = 'page'): LengthAwarePaginator
+    {
+        $currentPage = LengthAwarePaginator::resolveCurrentPage($pageName);
+
+        return new LengthAwarePaginator(
+            $rows->forPage($currentPage, $perPage)->values()->all(),
+            $rows->count(),
+            $perPage,
+            $currentPage,
+            ['path' => $request->url(), 'query' => $request->query(), 'pageName' => $pageName]
+        );
     }
 
     private function productionDbSyncPageProps(ProductionErpSyncService $syncService): array

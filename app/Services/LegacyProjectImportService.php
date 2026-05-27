@@ -553,8 +553,8 @@ class LegacyProjectImportService
             $product = $this->resolveOrCreateMasterProduct($item, $warehouseId);
             $isService = $product->product_type === MasterProduct::PRODUCT_TYPE_SERVICE;
             $plannedQty = (float) ($item['quantity'] ?? 0);
-            $lineTotal = (float) ($item['total_price'] ?? ($plannedQty * (float) ($item['price'] ?? 0)));
-            $costTotal = (float) ($item['total_cost'] ?? ($plannedQty * (float) ($item['cost'] ?? 0)));
+            $lineTotal = $this->resolvedLegacyLinePriceTotal($item, $plannedQty);
+            $costTotal = $this->resolvedLegacyLineCostTotal($item, $plannedQty);
             $materialKey = $product->id.'|'.$warehouseId;
 
             if (! isset($aggregatedMaterials[$materialKey])) {
@@ -573,8 +573,8 @@ class LegacyProjectImportService
             $aggregatedMaterials[$materialKey]['planned_qty'] += $plannedQty;
             $aggregatedMaterials[$materialKey]['line_total'] += $lineTotal;
             $aggregatedMaterials[$materialKey]['cost_total'] += $costTotal;
-            $aggregatedMaterials[$materialKey]['unit_price'] = (float) ($item['price'] ?? 0);
-            $aggregatedMaterials[$materialKey]['unit_cost'] = (float) ($item['cost'] ?? 0);
+            $aggregatedMaterials[$materialKey]['unit_price'] = $this->resolvedLegacyUnitPrice($item);
+            $aggregatedMaterials[$materialKey]['unit_cost'] = $this->resolvedLegacyUnitCost($item);
             $aggregatedMaterials[$materialKey]['notes'][] = 'Imported from legacy item '.($item['legacy_item_id'] ?? '');
         }
 
@@ -644,11 +644,11 @@ class LegacyProjectImportService
             }
 
             $plannedQty = (float) ($item['quantity'] ?? 0);
-            $lineTotal = (float) ($item['total_price'] ?? ($plannedQty * (float) ($item['price'] ?? 0)));
-            $costTotal = (float) ($item['total_cost'] ?? ($plannedQty * (float) ($item['cost'] ?? 0)));
+            $lineTotal = $this->resolvedLegacyLinePriceTotal($item, $plannedQty);
+            $costTotal = $this->resolvedLegacyLineCostTotal($item, $plannedQty);
             $unitCost = $plannedQty > 0
                 ? $costTotal / $plannedQty
-                : (float) ($item['cost'] ?? 0);
+                : $this->resolvedLegacyUnitCost($item);
 
             $stagingLines[] = [
                 'master_product_id' => $product->id,
@@ -694,6 +694,53 @@ class LegacyProjectImportService
         }
 
         return true;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    private function resolvedLegacyUnitPrice(array $item): float
+    {
+        return max((float) ($item['price'] ?? 0), 0);
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    private function resolvedLegacyUnitCost(array $item): float
+    {
+        $cost = (float) ($item['cost'] ?? 0);
+        if ($cost > 0) {
+            return $cost;
+        }
+
+        return $this->resolvedLegacyUnitPrice($item);
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    private function resolvedLegacyLinePriceTotal(array $item, float $plannedQty): float
+    {
+        $lineTotal = (float) ($item['total_price'] ?? 0);
+        if ($lineTotal > 0) {
+            return $lineTotal;
+        }
+
+        return $plannedQty * $this->resolvedLegacyUnitPrice($item);
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    private function resolvedLegacyLineCostTotal(array $item, float $plannedQty): float
+    {
+        $costTotal = (float) ($item['total_cost'] ?? 0);
+        if ($costTotal > 0) {
+            return $costTotal;
+        }
+
+        return $plannedQty * $this->resolvedLegacyUnitCost($item);
     }
 
     /**

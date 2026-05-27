@@ -969,11 +969,21 @@ class ERPSalesController extends Controller
 
     public function projectInvoices(Request $request): Response
     {
-        $invoices = Project::query()
+        $query = Project::query()
             ->with(['convertedBudget.items', 'materials'])
             ->withSum('cashIns as paid_amount', 'amount')
             ->where('status', 'selesai')
-            ->latest('finished_at')
+            ->when($request->filled('q'), function ($builder) use ($request): void {
+                $term = '%'.$request->string('q')->toString().'%';
+                $builder->where(function ($inner) use ($term): void {
+                    $inner->where('invoice_number', 'like', $term)
+                        ->orWhere('name', 'like', $term)
+                        ->orWhere('client_name', 'like', $term);
+                });
+            })
+            ->latest('finished_at');
+
+        $invoices = $query
             ->paginate($this->resolvedPerPage($request))
             ->withQueryString()
             ->through(function (Project $project) {
@@ -984,7 +994,7 @@ class ERPSalesController extends Controller
 
         return Inertia::render('ERP/Sales/ProjectInvoices', [
             'invoices' => $invoices,
-            'filters' => $this->filtersWithPerPage($request, []),
+            'filters' => $this->filtersWithPerPage($request, ['q']),
         ]);
     }
 

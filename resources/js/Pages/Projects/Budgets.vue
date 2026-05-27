@@ -1,50 +1,49 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, useForm, router } from '@inertiajs/vue3';
-import { computed, ref, watch } from 'vue';
+import { computed, reactive, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 import {ArrowLeftIcon,
   MagnifyingGlassIcon} from '@heroicons/vue/24/outline';
 
 const props = defineProps({
-    budgets: Array,
+    budgets: Object,
     project_types: { type: Array, default: () => [] },
+    filters: { type: Object, default: () => ({}) },
 });
 const { format } = useCurrency();
-const search = ref('');
-const statusFilter = ref('');
-const projectTypeFilter = ref('');
+const filters = reactive({
+    q: props.filters?.q ?? '',
+    status: props.filters?.status ?? '',
+    project_type: props.filters?.project_type ?? '',
+    per_page: Number(props.filters?.per_page ?? props.budgets?.per_page ?? 25),
+});
 const defaultProjectTypeKey = computed(() => props.project_types.find((type) => type.is_default)?.key ?? props.project_types[0]?.key ?? '');
 const projectTypeByKey = computed(() => Object.fromEntries((props.project_types ?? []).map((type) => [type.key, type])));
 const projectTypeLabel = (value) => projectTypeByKey.value[value]?.label ?? value;
 const projectTypeSupportsBudgetItems = (value) => !!projectTypeByKey.value[value]?.supports_budget_items;
-const selectedFilterType = computed(() => projectTypeByKey.value[projectTypeFilter.value] ?? null);
+const selectedFilterType = computed(() => projectTypeByKey.value[filters.project_type] ?? null);
+const budgetRows = computed(() => props.budgets?.data ?? []);
 
-const filteredBudgets = computed(() => {
-    const keyword = search.value.trim().toLowerCase();
-
-    return props.budgets.filter((budget) => {
-        const matchKeyword = !keyword
-            || budget.name?.toLowerCase().includes(keyword)
-            || budget.client_name?.toLowerCase().includes(keyword);
-
-        const matchStatus = !statusFilter.value || budget.status === statusFilter.value;
-        const matchType = !projectTypeFilter.value || budget.project_type === projectTypeFilter.value;
-
-        return matchKeyword && matchStatus && matchType;
-    });
-});
+let timer;
+watch(filters, (val) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+        router.get(route('erp.projects.budgets.index'), val, { preserveState: true, replace: true });
+    }, 250);
+}, { deep: true });
 
 const summary = computed(() => ({
-    total: filteredBudgets.value.length,
-    draft: filteredBudgets.value.filter((b) => b.status === 'draft').length,
-    deal: filteredBudgets.value.filter((b) => b.status === 'deal').length,
-    converted: filteredBudgets.value.filter((b) => b.status === 'converted').length,
-    itemCount: filteredBudgets.value.reduce((sum, b) => sum + (b.supports_budget_items ? (b.cctv_items?.length ?? 0) : 0), 0),
-    totalCost: filteredBudgets.value.reduce((sum, b) => sum + (Number(b.total_cost) || 0), 0),
-    totalMargin: filteredBudgets.value.reduce((sum, b) => sum + (Number(b.total_margin) || 0), 0),
-    totalValue: filteredBudgets.value.reduce((sum, b) => sum + (Number(b.estimated_value) || 0), 0),
+    total: props.budgets?.total ?? budgetRows.value.length,
+    draft: budgetRows.value.filter((b) => b.status === 'draft').length,
+    deal: budgetRows.value.filter((b) => b.status === 'deal').length,
+    converted: budgetRows.value.filter((b) => b.status === 'converted').length,
+    itemCount: budgetRows.value.reduce((sum, b) => sum + (b.supports_budget_items ? (b.cctv_items?.length ?? 0) : 0), 0),
+    totalCost: budgetRows.value.reduce((sum, b) => sum + (Number(b.total_cost) || 0), 0),
+    totalMargin: budgetRows.value.reduce((sum, b) => sum + (Number(b.total_margin) || 0), 0),
+    totalValue: budgetRows.value.reduce((sum, b) => sum + (Number(b.estimated_value) || 0), 0),
 }));
 
 const isItemizedSummary = computed(() => !!selectedFilterType.value?.supports_budget_items);
@@ -162,15 +161,15 @@ const submit = () => {
                     <div class="flex flex-wrap gap-3 items-center">
                         <label class="input input-bordered input-sm flex items-center gap-2 max-w-xs">
                             <MagnifyingGlassIcon class="w-4 h-4 opacity-50" />
-                            <input v-model="search" type="text" placeholder="Cari nama project / klien..." class="grow" />
+                            <input v-model="filters.q" type="text" placeholder="Cari nama project / klien..." class="grow" />
                         </label>
-                        <select v-model="statusFilter" class="select select-bordered select-sm">
+                        <select v-model="filters.status" class="select select-bordered select-sm">
                             <option value="">Semua Status</option>
                             <option value="draft">Draft</option>
                             <option value="deal">Deal</option>
                             <option value="converted">Converted</option>
                         </select>
-                        <select v-model="projectTypeFilter" class="select select-bordered select-sm">
+                        <select v-model="filters.project_type" class="select select-bordered select-sm">
                             <option value="">Semua Tipe</option>
                             <option v-for="type in project_types" :key="type.key" :value="type.key">{{ type.label }}</option>
                         </select>
@@ -190,7 +189,7 @@ const submit = () => {
                         <thead><tr><th>Project</th><th>Klien</th><th>Tipe</th><th>Item</th><th>Estimasi</th><th>Status</th></tr></thead>
                         <tbody>
                             <tr
-                                v-for="budget in filteredBudgets"
+                                v-for="budget in budgetRows"
                                 :key="budget.id"
                                 class="cursor-pointer hover"
                                 tabindex="0"
@@ -204,10 +203,11 @@ const submit = () => {
                                 <td>{{ format(budget.estimated_value) }}</td>
                                 <td><span class="badge badge-sm capitalize" :class="statusBadgeClass(budget.status)">{{ budget.status }}</span></td>
                             </tr>
-                            <tr v-if="!filteredBudgets.length"><td colspan="6" class="text-center py-6 text-base-content/50">Tidak ada budget yang cocok dengan filter.</td></tr>
+                            <tr v-if="!budgetRows.length"><td colspan="6" class="text-center py-6 text-base-content/50">Tidak ada budget yang cocok dengan filter.</td></tr>
                         </tbody>
                     </table>
                 </div>
+                <DataTablePagination :paginator="budgets" @update:per-page="(n) => { filters.per_page = n; }" />
             </div>
         </div>
 

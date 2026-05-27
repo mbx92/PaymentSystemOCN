@@ -1,13 +1,16 @@
 ﻿<script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { router } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
-import { computed, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 
 const props = defineProps({
-  settings: Array,
+  settings: Object,
   accounts: Array,
   categoryMappings: Object,
+  filters: { type: Object, default: () => ({}) },
 });
 
 const saving = useForm({
@@ -93,6 +96,23 @@ const applyDefaults = () => {
 };
 
 const domainTitle = (domain) => (domain === 'cash_in' ? 'Kas Masuk' : 'Kas Keluar');
+const filters = reactive({
+  q: props.filters?.q ?? '',
+  per_page: Number(props.filters?.per_page ?? props.settings?.per_page ?? 25),
+  cash_in_page: Number(props.filters?.cash_in_page ?? props.categoryMappings?.cash_in?.current_page ?? 1),
+  cash_out_page: Number(props.filters?.cash_out_page ?? props.categoryMappings?.cash_out?.current_page ?? 1),
+});
+const settingRows = computed(() => props.settings?.data ?? []);
+const cashInRows = computed(() => props.categoryMappings?.cash_in?.data ?? []);
+const cashOutRows = computed(() => props.categoryMappings?.cash_out?.data ?? []);
+
+let timer;
+watch(filters, (val) => {
+  clearTimeout(timer);
+  timer = setTimeout(() => {
+    router.get(route('erp.accounting.coa-settings'), val, { preserveState: true, preserveScroll: true, replace: true });
+  }, 250);
+}, { deep: true });
 </script>
 
 <template>
@@ -124,6 +144,12 @@ const domainTitle = (domain) => (domain === 'cash_in' ? 'Kas Masuk' : 'Kas Kelua
 
       <div class="ocn-panel">
         <div class="ocn-panel__head">
+          <input v-model="filters.q" type="search" class="input input-bordered input-sm w-full max-w-md" placeholder="Cari setting, kategori, akun, atau modul..." />
+        </div>
+      </div>
+
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
           <h2 class="ocn-panel__title">Posting otomatis sistem</h2>
           <p class="ocn-panel__desc">Dipakai oleh transaksi yang dibuat otomatis oleh sistem, seperti POS dan invoice project.</p>
         </div>
@@ -139,7 +165,7 @@ const domainTitle = (domain) => (domain === 'cash_in' ? 'Kas Masuk' : 'Kas Kelua
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in settings" :key="row.key">
+              <tr v-for="row in settingRows" :key="row.key">
                 <td>
                   <p class="font-medium">{{ row.label }}</p>
                   <p class="mt-1 text-xs text-base-content/60">{{ row.description }}</p>
@@ -166,6 +192,7 @@ const domainTitle = (domain) => (domain === 'cash_in' ? 'Kas Masuk' : 'Kas Kelua
             </tbody>
           </table>
         </div>
+        <DataTablePagination :paginator="settings" @update:per-page="(n) => { filters.per_page = n; }" />
       </div>
 
       <div class="grid gap-5 xl:grid-cols-2">
@@ -188,7 +215,7 @@ const domainTitle = (domain) => (domain === 'cash_in' ? 'Kas Masuk' : 'Kas Kelua
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in categoryMappings?.[domain] ?? []" :key="`${domain}-${row.category}`">
+                <tr v-for="row in (domain === 'cash_in' ? cashInRows : cashOutRows)" :key="`${domain}-${row.category}`">
                   <td>
                     <p class="font-medium">{{ row.label }}</p>
                     <p class="mt-1 text-xs text-base-content/60">{{ row.used_by }}</p>
@@ -216,12 +243,16 @@ const domainTitle = (domain) => (domain === 'cash_in' ? 'Kas Masuk' : 'Kas Kelua
                     >Menyimpan...</span>
                   </td>
                 </tr>
-                <tr v-if="!(categoryMappings?.[domain]?.length)">
+                <tr v-if="!((domain === 'cash_in' ? cashInRows : cashOutRows).length)">
                   <td colspan="4" class="py-10 text-center text-base-content/50">Belum ada kategori.</td>
                 </tr>
               </tbody>
             </table>
           </div>
+          <DataTablePagination
+            :paginator="categoryMappings?.[domain]"
+            @update:per-page="(n) => { filters.per_page = n; }"
+          />
         </div>
       </div>
     </div>

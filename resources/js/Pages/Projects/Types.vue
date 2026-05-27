@@ -1,11 +1,13 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
-import { computed, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 
 const props = defineProps({
-    types: { type: Array, default: () => [] },
+    types: { type: Object, default: () => ({ data: [] }) },
+    filters: { type: Object, default: () => ({}) },
 });
 
 const badgeColorOptions = [
@@ -95,6 +97,21 @@ const submitEdit = () => {
 const badgeClass = (color) => `badge-${color || 'ghost'}`;
 const selectedAddBadgeClass = computed(() => badgeClass(addForm.badge_color));
 const selectedEditBadgeClass = computed(() => badgeClass(editForm.badge_color));
+const filters = reactive({
+    q: props.filters?.q ?? '',
+    status: props.filters?.status ?? '',
+    supports_budget_items: props.filters?.supports_budget_items ?? '',
+    per_page: Number(props.filters?.per_page ?? props.types?.per_page ?? 25),
+});
+const typeRows = computed(() => props.types?.data ?? []);
+
+let timer;
+watch(filters, (val) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+        router.get(route('erp.projects.project-types.index'), val, { preserveState: true, replace: true });
+    }, 250);
+}, { deep: true });
 </script>
 
 <template>
@@ -122,6 +139,24 @@ const selectedEditBadgeClass = computed(() => badgeClass(editForm.badge_color));
 
             <div class="ocn-panel">
                 <div class="ocn-panel__head">
+                    <div class="grid grid-cols-1 gap-3 md:grid-cols-4">
+                        <input v-model="filters.q" type="search" class="input input-bordered input-sm w-full md:col-span-2" placeholder="Cari label, key, atau deskripsi..." />
+                        <select v-model="filters.status" class="select select-bordered select-sm w-full">
+                            <option value="">Semua Status</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                        <select v-model="filters.supports_budget_items" class="select select-bordered select-sm w-full">
+                            <option value="">Semua Capability</option>
+                            <option value="yes">Pakai budget item</option>
+                            <option value="no">Tanpa budget item</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ocn-panel">
+                <div class="ocn-panel__head">
                     <h2 class="ocn-panel__title">Daftar tipe</h2>
                 </div>
                 <div class="overflow-x-auto">
@@ -137,7 +172,7 @@ const selectedEditBadgeClass = computed(() => badgeClass(editForm.badge_color));
                         </thead>
                         <tbody>
                             <tr
-                                v-for="row in types"
+                                v-for="row in typeRows"
                                 :key="row.id"
                                 class="cursor-pointer hover"
                                 tabindex="0"
@@ -168,12 +203,13 @@ const selectedEditBadgeClass = computed(() => badgeClass(editForm.badge_color));
                                     <div class="text-base-content/60">{{ row.budget_count }} budget</div>
                                 </td>
                             </tr>
-                            <tr v-if="!types.length">
+                            <tr v-if="!typeRows.length">
                                 <td colspan="5" class="py-8 text-center text-base-content/50">Belum ada tipe project.</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
+                <DataTablePagination :paginator="types" @update:per-page="(n) => { filters.per_page = n; }" />
             </div>
         </div>
 

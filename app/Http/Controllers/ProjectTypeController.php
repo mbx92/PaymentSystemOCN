@@ -6,33 +6,67 @@ use App\Models\Project;
 use App\Models\ProjectBudget;
 use App\Models\ProjectType;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class ProjectTypeController extends Controller
 {
-    public function index(): Response
+    public function index(Request $request): Response
     {
+        $query = ProjectType::query()
+            ->when($request->filled('q'), function ($builder) use ($request): void {
+                $term = '%'.$request->string('q')->toString().'%';
+                $builder->where(function ($inner) use ($term): void {
+                    $inner->where('key', 'like', $term)
+                        ->orWhere('label', 'like', $term)
+                        ->orWhere('description', 'like', $term);
+                });
+            })
+            ->when($request->filled('status'), function ($builder) use ($request): void {
+                $status = $request->string('status')->toString();
+                if ($status === 'active') {
+                    $builder->where('is_active', true);
+                } elseif ($status === 'inactive') {
+                    $builder->where('is_active', false);
+                }
+            })
+            ->when($request->filled('supports_budget_items'), function ($builder) use ($request): void {
+                $flag = $request->string('supports_budget_items')->toString();
+                if ($flag === 'yes') {
+                    $builder->where('supports_budget_items', true);
+                } elseif ($flag === 'no') {
+                    $builder->where('supports_budget_items', false);
+                }
+            })
+            ->ordered();
+
+        $paginator = $query->paginate($this->resolvedPerPage($request))->withQueryString();
+        $types = new LengthAwarePaginator(
+            $paginator->getCollection()->map(fn (ProjectType $type): array => [
+                'id' => $type->id,
+                'key' => $type->key,
+                'label' => $type->label,
+                'badge_color' => $type->badge_color,
+                'description' => $type->description,
+                'supports_budget_items' => $type->supports_budget_items,
+                'supports_project_board' => $type->supports_project_board,
+                'is_active' => $type->is_active,
+                'is_default' => $type->is_default,
+                'sort_order' => $type->sort_order,
+                'project_count' => Project::query()->where('project_type', $type->key)->count(),
+                'budget_count' => ProjectBudget::query()->where('project_type', $type->key)->count(),
+            ]),
+            $paginator->total(),
+            $paginator->perPage(),
+            $paginator->currentPage(),
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
+
         return Inertia::render('Projects/Types', [
-            'types' => ProjectType::query()
-                ->ordered()
-                ->get()
-                ->map(fn (ProjectType $type): array => [
-                    'id' => $type->id,
-                    'key' => $type->key,
-                    'label' => $type->label,
-                    'badge_color' => $type->badge_color,
-                    'description' => $type->description,
-                    'supports_budget_items' => $type->supports_budget_items,
-                    'supports_project_board' => $type->supports_project_board,
-                    'is_active' => $type->is_active,
-                    'is_default' => $type->is_default,
-                    'sort_order' => $type->sort_order,
-                    'project_count' => Project::query()->where('project_type', $type->key)->count(),
-                    'budget_count' => ProjectBudget::query()->where('project_type', $type->key)->count(),
-                ])
-                ->values(),
+            'types' => $types,
+            'filters' => $this->filtersWithPerPage($request, ['q', 'status', 'supports_budget_items']),
         ]);
     }
 

@@ -1,7 +1,8 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({
   detail: Object,
@@ -12,6 +13,43 @@ const poListUrl = () =>
 
 const goBack = () => {
   router.visit(route('erp.purchasing.suppliers'));
+};
+
+const editForm = useForm({
+  name: props.detail.name ?? '',
+  phone: props.detail.phone ?? '',
+  email: props.detail.email ?? '',
+  address: props.detail.address ?? '',
+  tax_id: props.detail.tax_id ?? '',
+  payment_terms: props.detail.payment_terms ?? 'Net 14',
+  lead_time_days: props.detail.lead_time_days ?? 7,
+  notes: props.detail.notes ?? '',
+  is_active: props.detail.is_active ?? true,
+});
+
+const openEditModal = () => {
+  editForm.defaults({
+    name: props.detail.name ?? '',
+    phone: props.detail.phone ?? '',
+    email: props.detail.email ?? '',
+    address: props.detail.address ?? '',
+    tax_id: props.detail.tax_id ?? '',
+    payment_terms: props.detail.payment_terms ?? 'Net 14',
+    lead_time_days: props.detail.lead_time_days ?? 7,
+    notes: props.detail.notes ?? '',
+    is_active: props.detail.is_active ?? true,
+  });
+  editForm.reset();
+  document.getElementById('modal-edit-supplier')?.showModal();
+};
+
+const submitEdit = () => {
+  editForm.patch(route('erp.purchasing.suppliers.update', props.detail.code), {
+    preserveScroll: true,
+    onSuccess: () => {
+      document.getElementById('modal-edit-supplier')?.close();
+    },
+  });
 };
 </script>
 
@@ -28,6 +66,7 @@ const goBack = () => {
               <p class="mt-1 font-mono text-sm text-base-content/70">{{ detail.code }}</p>
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
+              <button type="button" class="btn btn-outline btn-sm" @click="openEditModal">Edit Supplier</button>
               <button type="button" class="btn btn-ghost btn-sm shrink-0 gap-1.5" @click="goBack"><ArrowLeftIcon class="h-4 w-4" />
             Back</button>
             </div>
@@ -92,6 +131,66 @@ const goBack = () => {
           </div>
         </div>
       </div>
+
+      <dialog id="modal-edit-supplier" class="modal">
+        <div class="modal-box max-w-2xl">
+          <h3 class="font-bold text-lg">Edit Supplier</h3>
+          <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div class="md:col-span-2">
+              <label class="label"><span class="label-text">Nama Supplier</span></label>
+              <input v-model="editForm.name" class="input input-bordered w-full" />
+              <p v-if="editForm.errors.name" class="mt-1 text-xs text-error">{{ editForm.errors.name }}</p>
+            </div>
+            <div>
+              <label class="label"><span class="label-text">Telepon</span></label>
+              <input v-model="editForm.phone" class="input input-bordered w-full" />
+              <p v-if="editForm.errors.phone" class="mt-1 text-xs text-error">{{ editForm.errors.phone }}</p>
+            </div>
+            <div>
+              <label class="label"><span class="label-text">Email</span></label>
+              <input v-model="editForm.email" class="input input-bordered w-full" />
+              <p v-if="editForm.errors.email" class="mt-1 text-xs text-error">{{ editForm.errors.email }}</p>
+            </div>
+            <div class="md:col-span-2">
+              <label class="label"><span class="label-text">Alamat</span></label>
+              <textarea v-model="editForm.address" class="textarea textarea-bordered w-full" rows="3" />
+              <p v-if="editForm.errors.address" class="mt-1 text-xs text-error">{{ editForm.errors.address }}</p>
+            </div>
+            <div>
+              <label class="label"><span class="label-text">NPWP</span></label>
+              <input v-model="editForm.tax_id" class="input input-bordered w-full" />
+              <p v-if="editForm.errors.tax_id" class="mt-1 text-xs text-error">{{ editForm.errors.tax_id }}</p>
+            </div>
+            <div>
+              <label class="label"><span class="label-text">Termin Bayar</span></label>
+              <input v-model="editForm.payment_terms" class="input input-bordered w-full" />
+              <p v-if="editForm.errors.payment_terms" class="mt-1 text-xs text-error">{{ editForm.errors.payment_terms }}</p>
+            </div>
+            <div>
+              <label class="label"><span class="label-text">Lead Time (hari)</span></label>
+              <input v-model="editForm.lead_time_days" type="number" min="1" class="input input-bordered w-full" />
+              <p v-if="editForm.errors.lead_time_days" class="mt-1 text-xs text-error">{{ editForm.errors.lead_time_days }}</p>
+            </div>
+            <div>
+              <label class="label"><span class="label-text">Status</span></label>
+              <select v-model="editForm.is_active" class="select select-bordered w-full">
+                <option :value="true">Active</option>
+                <option :value="false">Non Active</option>
+              </select>
+              <p v-if="editForm.errors.is_active" class="mt-1 text-xs text-error">{{ editForm.errors.is_active }}</p>
+            </div>
+            <div class="md:col-span-2">
+              <label class="label"><span class="label-text">Catatan</span></label>
+              <textarea v-model="editForm.notes" class="textarea textarea-bordered w-full" rows="4" />
+              <p v-if="editForm.errors.notes" class="mt-1 text-xs text-error">{{ editForm.errors.notes }}</p>
+            </div>
+          </div>
+          <div class="modal-action">
+            <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
+            <button class="btn btn-primary" :disabled="editForm.processing" @click="submitEdit">Simpan Perubahan</button>
+          </div>
+        </div>
+      </dialog>
     </div>
   </AppLayout>
 </template>

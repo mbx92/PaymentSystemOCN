@@ -14,6 +14,7 @@ use App\Services\PdfThemeResolver;
 use App\Services\ProjectMaterialReservationService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -151,17 +152,37 @@ class ProjectBudgetController extends Controller
         return $validated + ['cctv_items' => $cctvItems];
     }
 
-    public function index(): Response
+    public function index(Request $request): Response
     {
-        $budgets = ProjectBudget::query()
+        $query = ProjectBudget::query()
             ->with(['items', 'projectTypeDefinition'])
-            ->latest()
-            ->get()
-            ->map(fn (ProjectBudget $budget) => $this->mapBudget($budget));
+            ->when($request->filled('q'), function ($builder) use ($request): void {
+                $term = '%'.$request->string('q')->toString().'%';
+                $builder->where(function ($inner) use ($term): void {
+                    $inner->where('name', 'like', $term)
+                        ->orWhere('client_name', 'like', $term);
+                });
+            })
+            ->when($request->filled('status'), fn ($builder) => $builder->where('status', $request->string('status')->toString()))
+            ->when($request->filled('project_type'), fn ($builder) => $builder->where('project_type', $request->string('project_type')->toString()))
+            ->latest();
+
+        $paginator = $query
+            ->paginate($this->resolvedPerPage($request))
+            ->withQueryString();
+
+        $budgets = new LengthAwarePaginator(
+            $paginator->getCollection()->map(fn (ProjectBudget $budget) => $this->mapBudget($budget)),
+            $paginator->total(),
+            $paginator->perPage(),
+            $paginator->currentPage(),
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
 
         return Inertia::render('Projects/Budgets', [
             'budgets' => $budgets,
             'project_types' => ProjectType::activeOptions(),
+            'filters' => $this->filtersWithPerPage($request, ['q', 'status', 'project_type']),
         ]);
     }
 

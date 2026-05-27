@@ -2,6 +2,7 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
 import ConfirmModal from '@/Components/ConfirmModal.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
 import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
@@ -11,7 +12,7 @@ import { showGlobalAlert } from '@/utils/globalAlert';
 import { useDateFormat } from '@/composables/useDateFormat';
 
 const props = defineProps({
-  entries: Array,
+  entries: Object,
   totals: Object,
   projects: Array,
   paymentMethods: Array,
@@ -42,13 +43,17 @@ const filters = ref({
   date_from: props.filters?.date_from ?? '',
   date_to: props.filters?.date_to ?? '',
   q: props.filters?.q ?? '',
+  per_page: Number(props.filters?.per_page ?? props.entries?.per_page ?? 25),
 });
+
+const entryRows = computed(() => props.entries?.data ?? []);
 
 let timer;
 watch(filters, (val) => {
   clearTimeout(timer);
   timer = setTimeout(() => {
-    router.get(route('erp.accounting.cashflow'), val, {
+    const payload = { ...val, page: 1 };
+    router.get(route('erp.accounting.cashflow'), payload, {
       preserveState: true,
       replace: true,
       onError: (errors) => showGlobalAlert(firstBackendError(errors, 'Gagal memuat data cashflow.'), 'error'),
@@ -287,7 +292,7 @@ const confirmDestroyEntry = () => {
       <div class="ocn-panel">
         <div class="ocn-panel__head flex items-center justify-between gap-2">
           <h2 class="ocn-panel__title">Daftar cashflow accounting</h2>
-          <span class="text-xs text-base-content/60">{{ entries.length }} transaksi</span>
+          <span class="text-xs text-base-content/60">{{ entries.total ?? 0 }} transaksi</span>
         </div>
         <div class="overflow-x-auto">
           <table class="table table-xs table-zebra cashflow-table">
@@ -307,13 +312,13 @@ const confirmDestroyEntry = () => {
             </thead>
             <tbody>
               <tr
-                v-for="(entry, index) in entries"
+                v-for="(entry, index) in entryRows"
                 :key="`${entry.type}-${entry.id}`"
                 :class="['cursor-pointer transition-colors hover:bg-primary/5',
                   entry.type === 'in' ? 'border-l-2 border-l-success' : 'border-l-2 border-l-error']"
                 @click="openDetailModal(entry)"
               >
-                <td class="text-center font-mono text-base-content/45">{{ index + 1 }}</td>
+                <td class="text-center font-mono text-base-content/45">{{ (entries.from ?? 1) + index }}</td>
                 <td class="whitespace-nowrap tabular-nums">{{ formatDate(entry.date) }}</td>
                 <td>
                   <span class="badge badge-xs" :class="typeBadgeClass(entry.type)">{{ typeLabel(entry.type) }}</span>
@@ -347,7 +352,7 @@ const confirmDestroyEntry = () => {
                   <div class="truncate text-[10px] leading-tight text-base-content/45">{{ entry.creator_name }}</div>
                 </td>
               </tr>
-              <tr v-if="!entries.length">
+              <tr v-if="!entryRows.length">
                 <td colspan="10" class="py-10 text-center">
                   <svg class="mx-auto h-8 w-8 text-base-content/20" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z" />
@@ -359,6 +364,7 @@ const confirmDestroyEntry = () => {
             </tbody>
           </table>
         </div>
+        <DataTablePagination :paginator="entries" @update:per-page="(n) => { filters.per_page = n; }" />
       </div>
     </div>
 

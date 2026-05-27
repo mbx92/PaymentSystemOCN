@@ -1,8 +1,10 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
+import { router } from '@inertiajs/vue3';
 import { ArrowLeftIcon, PlusIcon, TrashIcon } from '@heroicons/vue/24/outline';
-import { computed } from 'vue';
+import { computed, reactive, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 import { useDateFormat } from '@/composables/useDateFormat';
 
@@ -17,9 +19,10 @@ const blankLine = () => ({
 
 const props = defineProps({
   accounts: Array,
-  openingEntries: Array,
+  openingEntries: Object,
   companies: Array,
   selected_company_id: [Number, null],
+  filters: { type: Object, default: () => ({}) },
 });
 
 const { formatDate } = useDateFormat();
@@ -27,6 +30,22 @@ const { formatDate } = useDateFormat();
 const page = usePage();
 
 const isAdmin = computed(() => page.props.auth?.user?.role === 'admin');
+const historyRows = computed(() => props.openingEntries?.data ?? []);
+const filters = reactive({
+  company_id: props.filters?.company_id ?? props.selected_company_id ?? '',
+  date_from: props.filters?.date_from ?? '',
+  date_to: props.filters?.date_to ?? '',
+  q: props.filters?.q ?? '',
+  per_page: Number(props.filters?.per_page ?? props.openingEntries?.per_page ?? 25),
+});
+
+let historyTimer;
+watch(filters, (val) => {
+  clearTimeout(historyTimer);
+  historyTimer = setTimeout(() => {
+    router.get(route('erp.accounting.opening-balance'), val, { preserveState: true, preserveScroll: true, replace: true });
+  }, 250);
+}, { deep: true });
 
 const selectedCompany = computed(() => {
   const id = form.company_id;
@@ -254,6 +273,16 @@ const submit = () => {
 
       <div class="ocn-panel">
         <div class="ocn-panel__head">
+          <div class="grid gap-3 md:grid-cols-4">
+            <input v-model="filters.q" type="search" class="input input-bordered input-sm w-full md:col-span-2" placeholder="Cari no jurnal, referensi, atau keterangan..." />
+            <input v-model="filters.date_from" type="date" class="input input-bordered input-sm w-full" />
+            <input v-model="filters.date_to" type="date" class="input input-bordered input-sm w-full" />
+          </div>
+        </div>
+      </div>
+
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
           <h2 class="ocn-panel__title">Riwayat saldo awal</h2>
         </div>
         <div class="overflow-x-auto">
@@ -269,7 +298,7 @@ const submit = () => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="entry in openingEntries" :key="entry.id">
+              <tr v-for="entry in historyRows" :key="entry.id">
                 <td class="text-sm">{{ entry.company_name ?? '-' }}</td>
                 <td class="whitespace-nowrap">{{ formatDate(entry.entry_date) }}</td>
                 <td class="font-mono text-xs">{{ entry.entry_no }}</td>
@@ -280,12 +309,13 @@ const submit = () => {
                 <td class="text-right">{{ format(entry.total_debit) }}</td>
                 <td class="text-right">{{ format(entry.total_credit) }}</td>
               </tr>
-              <tr v-if="!openingEntries?.length">
+              <tr v-if="!historyRows.length">
                 <td colspan="6" class="py-6 text-center text-sm text-base-content/60">Belum ada saldo awal yang diposting.</td>
               </tr>
             </tbody>
           </table>
         </div>
+        <DataTablePagination :paginator="openingEntries" @update:per-page="(n) => { filters.per_page = n; }" />
       </div>
     </div>
   </AppLayout>

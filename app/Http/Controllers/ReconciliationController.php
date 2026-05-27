@@ -7,6 +7,7 @@ use App\ERP\Core\Services\ErpCompanyResolver;
 use App\Models\CashIn;
 use App\Models\CashOut;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -52,13 +53,33 @@ class ReconciliationController extends Controller
                 'cash_out' => $r['cash_out'],
                 'net' => $r['cash_in'] - $r['cash_out'],
             ])
+            ->filter(function (array $row) use ($request): bool {
+                $term = trim((string) $request->string('q'));
+                if ($term === '') {
+                    return true;
+                }
+
+                $haystack = strtolower($row['bucket'].' '.$row['cash_account_name']);
+
+                return str_contains($haystack, strtolower($term));
+            })
             ->sortByDesc(fn ($r) => $r['bucket'])
             ->values();
 
+        $perPage = $this->resolvedPerPage($request);
+        $currentPage = LengthAwarePaginator::resolveCurrentPage();
+        $paginatedRows = new LengthAwarePaginator(
+            $rows->forPage($currentPage, $perPage)->values(),
+            $rows->count(),
+            $perPage,
+            $currentPage,
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
+
         return Inertia::render('ERP/Accounting/Reconciliation', [
             'period' => $period,
-            'rows' => $rows,
-            'filters' => $request->only(['company_id']),
+            'rows' => $paginatedRows,
+            'filters' => $this->filtersWithPerPage($request, ['company_id', 'q']),
         ]);
     }
 }

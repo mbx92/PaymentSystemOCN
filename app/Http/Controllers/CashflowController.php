@@ -22,6 +22,8 @@ use App\Models\Project;
 use App\Models\TeamDistribution;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
@@ -36,11 +38,12 @@ class CashflowController extends Controller
     public function index(Request $request): Response
     {
         $entries = $this->buildEntries($request);
+        $paginatedEntries = $this->paginateEntries($entries, $request);
         $cashInTotal = (float) $entries->where('type', 'in')->sum('amount');
         $cashOutTotal = (float) $entries->where('type', 'out')->sum('amount');
 
         return Inertia::render('ERP/Accounting/Cashflow', [
-            'entries' => $entries->values(),
+            'entries' => $paginatedEntries,
             'totals' => [
                 'cash_in' => $cashInTotal,
                 'cash_out' => $cashOutTotal,
@@ -52,7 +55,7 @@ class CashflowController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'name']),
             'cashAccounts' => Account::cashBankOptions(),
-            'filters' => $request->only(['type', 'source', 'project_id', 'category', 'company_id', 'date_from', 'date_to', 'q']),
+            'filters' => $this->filtersWithPerPage($request, ['type', 'source', 'project_id', 'category', 'company_id', 'date_from', 'date_to', 'q']),
             'sourceOptions' => $this->sourceOptions(),
             'categoryOptions' => [
                 'in' => $this->cashflowCategoryOptionsFor('cash_in'),
@@ -340,10 +343,6 @@ class CashflowController extends Controller
             ->merge($posSales)
             ->sortByDesc(fn (array $row) => sprintf('%s-%d', $row['date'] ?? '0000-00-00', $row['created_at']));
 
-        if (! $request->filled('type') && ! $request->filled('q')) {
-            return $merged->take(500)->values();
-        }
-
         $filtered = $merged;
         if ($request->filled('type')) {
             $filtered = $filtered->where('type', $request->string('type')->toString());
@@ -375,7 +374,25 @@ class CashflowController extends Controller
             });
         }
 
-        return $filtered->take(500)->values();
+        return $filtered->values();
+    }
+
+    private function paginateEntries(Collection $entries, Request $request, string $pageName = 'page'): LengthAwarePaginator
+    {
+        $perPage = $this->resolvedPerPage($request);
+        $currentPage = Paginator::resolveCurrentPage($pageName);
+
+        return new LengthAwarePaginator(
+            $entries->forPage($currentPage, $perPage)->values()->all(),
+            $entries->count(),
+            $perPage,
+            $currentPage,
+            [
+                'path' => Paginator::resolveCurrentPath(),
+                'pageName' => $pageName,
+                'query' => $request->query(),
+            ],
+        );
     }
 
     private function buildPosEntries(Request $request, Account $posCashAccount): Collection

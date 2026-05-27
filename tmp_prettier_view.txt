@@ -1307,13 +1307,9 @@ watch(
                                             <div
                                                 class="text-xs text-base-content/60"
                                             >
-                                                {{
-                                                    staging.company_name
-                                                }}
+                                                {{ staging.company_name }}
                                                 &middot;
-                                                {{
-                                                    staging.warehouse_code
-                                                }}
+                                                {{ staging.warehouse_code }}
                                                 &middot;
                                                 {{
                                                     staging.procurement_date ||
@@ -1415,9 +1411,7 @@ watch(
                                                             String(vendor.id)
                                                         "
                                                     >
-                                                        {{
-                                                            vendor.code
-                                                        }}
+                                                        {{ vendor.code }}
                                                         &middot;
                                                         {{ vendor.name }}
                                                     </option>
@@ -1831,9 +1825,7 @@ watch(
                             >
                                 <div class="min-w-0">
                                     <div class="font-medium">
-                                        {{
-                                            staging.legacy_project_number
-                                        }}
+                                        {{ staging.legacy_project_number }}
                                         &middot;
                                         {{ staging.legacy_project_name }}
                                     </div>
@@ -2014,9 +2006,7 @@ watch(
                                                 <div
                                                     class="text-[11px] text-base-content/60"
                                                 >
-                                                    {{
-                                                        line.sku || "-"
-                                                    }}
+                                                    {{ line.sku || "-" }}
                                                     &middot;
                                                     {{ line.unit || "-" }}
                                                 </div>
@@ -2089,9 +2079,7 @@ watch(
                                                             String(vendor.id)
                                                         "
                                                     >
-                                                        {{
-                                                            vendor.code
-                                                        }}
+                                                        {{ vendor.code }}
                                                         &middot;
                                                         {{ vendor.name }}
                                                     </option>

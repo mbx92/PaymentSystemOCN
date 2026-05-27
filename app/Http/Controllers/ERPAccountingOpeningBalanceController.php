@@ -21,6 +21,7 @@ class ERPAccountingOpeningBalanceController extends Controller
     public function index(Request $request): Response
     {
         $companyId = ErpCompanyResolver::resolveForReporting($request);
+        $search = trim((string) $request->string('q'));
 
         $accounts = Account::query()
             ->where('is_active', true)
@@ -35,12 +36,28 @@ class ERPAccountingOpeningBalanceController extends Controller
             $openingQuery->where('company_id', $companyId);
         }
 
+        if ($request->filled('date_from')) {
+            $openingQuery->whereDate('entry_date', '>=', $request->date('date_from'));
+        }
+
+        if ($request->filled('date_to')) {
+            $openingQuery->whereDate('entry_date', '<=', $request->date('date_to'));
+        }
+
+        if ($search !== '') {
+            $openingQuery->where(function ($builder) use ($search): void {
+                $builder->where('entry_no', 'like', '%'.$search.'%')
+                    ->orWhere('description', 'like', '%'.$search.'%')
+                    ->orWhere('source_reference', 'like', '%'.$search.'%');
+            });
+        }
+
         $openingEntries = $openingQuery
             ->latest('entry_date')
             ->latest('id')
-            ->limit(20)
-            ->get()
-            ->map(fn (JournalEntry $entry) => [
+            ->paginate($this->resolvedPerPage($request))
+            ->withQueryString()
+            ->through(fn (JournalEntry $entry) => [
                 'id' => $entry->id,
                 'entry_no' => $entry->entry_no,
                 'entry_date' => $entry->entry_date?->toDateString(),
@@ -67,6 +84,7 @@ class ERPAccountingOpeningBalanceController extends Controller
             'openingEntries' => $openingEntries,
             'companies' => $companies,
             'selected_company_id' => $companyId,
+            'filters' => $this->filtersWithPerPage($request, ['company_id', 'date_from', 'date_to', 'q']),
         ]);
     }
 

@@ -45,11 +45,13 @@ class ERPReportingController extends Controller
             }
         }
 
-        $accounts = $query->get();
-        $usageById = $this->accountUsageByAccountIds($accounts->pluck('id')->all());
+        $accounts = $query
+            ->paginate($this->resolvedPerPage($request))
+            ->withQueryString();
+        $usageById = $this->accountUsageByAccountIds(collect($accounts->items())->pluck('id')->all());
 
         return Inertia::render('ERP/Accounting/ChartOfAccounts', [
-            'accounts' => $accounts->map(function (Account $account) use ($usageById): array {
+            'accounts' => $accounts->through(function (Account $account) use ($usageById): array {
                 $usage = $usageById[$account->id] ?? $this->emptyAccountUsage();
 
                 return [
@@ -63,7 +65,7 @@ class ERPReportingController extends Controller
                     ...$usage,
                 ];
             }),
-            'filters' => $request->only(['q', 'type', 'status']),
+            'filters' => $this->filtersWithPerPage($request, ['q', 'type', 'status']),
             'types' => ['asset', 'liability', 'equity', 'revenue', 'expense'],
         ]);
     }

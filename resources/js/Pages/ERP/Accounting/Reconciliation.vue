@@ -1,5 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { ref, watch } from 'vue';
@@ -7,7 +8,7 @@ import { useCurrency } from '@/composables/useCurrency';
 
 const props = defineProps({
   period: String,
-  rows: Array,
+  rows: Object,
   filters: Object,
 });
 
@@ -16,12 +17,21 @@ const page = usePage();
 const erpCompanyContext = () => page.props.erpCompanyContext ?? null;
 const period = ref(props.period || 'daily');
 const companyId = ref(props.filters?.company_id ?? erpCompanyContext()?.current_company_id ?? '');
+const q = ref(props.filters?.q ?? '');
+const perPage = ref(Number(props.filters?.per_page ?? props.rows?.per_page ?? 25));
+const rowItems = () => props.rows?.data ?? [];
 
-watch([period, companyId], ([periodValue, companyValue]) => {
+let timer;
+watch([period, companyId, q, perPage], ([periodValue, companyValue, queryValue, perPageValue]) => {
+  clearTimeout(timer);
+  timer = setTimeout(() => {
   router.get(route('erp.accounting.reconciliation'), {
     period: periodValue,
     company_id: companyValue || undefined,
+    q: queryValue || undefined,
+    per_page: perPageValue,
   }, { preserveState: true, replace: true });
+  }, 250);
 });
 </script>
 
@@ -61,6 +71,7 @@ watch([period, companyId], ([periodValue, companyValue]) => {
               <button class="btn btn-sm join-item" :class="period === 'daily' ? 'btn-primary' : 'btn-outline'" @click="period = 'daily'">Harian</button>
               <button class="btn btn-sm join-item" :class="period === 'weekly' ? 'btn-primary' : 'btn-outline'" @click="period = 'weekly'">Mingguan</button>
             </div>
+            <input v-model="q" type="search" class="input input-bordered input-sm w-full max-w-sm" placeholder="Cari periode / akun kas..." />
           </div>
         </div>
       </div>
@@ -81,19 +92,20 @@ watch([period, companyId], ([periodValue, companyValue]) => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in rows" :key="`${row.bucket}-${row.cash_account_id}`">
+              <tr v-for="row in rowItems()" :key="`${row.bucket}-${row.cash_account_id}`">
                 <td>{{ row.bucket }}</td>
                 <td class="font-medium">{{ row.cash_account_name }}</td>
                 <td class="font-semibold text-success">{{ format(row.cash_in) }}</td>
                 <td class="font-semibold text-error">{{ format(row.cash_out) }}</td>
                 <td :class="['font-semibold', row.net >= 0 ? 'text-primary' : 'text-error']">{{ format(row.net) }}</td>
               </tr>
-              <tr v-if="!rows.length">
+              <tr v-if="!rowItems().length">
                 <td colspan="5" class="py-10 text-center text-base-content/50">Belum ada data rekonsiliasi.</td>
               </tr>
             </tbody>
           </table>
         </div>
+        <DataTablePagination :paginator="rows" @update:per-page="(n) => { perPage = n; }" />
       </div>
     </div>
   </AppLayout>

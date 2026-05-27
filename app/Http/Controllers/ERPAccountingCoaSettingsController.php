@@ -9,6 +9,7 @@ use App\Models\CategoryCoaMapping;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -79,8 +80,10 @@ class ERPAccountingCoaSettingsController extends Controller
         ];
     }
 
-    public function index(): Response
+    public function index(Request $request): Response
     {
+        $search = trim((string) $request->string('q'));
+        $perPage = $this->resolvedPerPage($request);
         $defs = $this->definitions();
         $keys = array_map(fn ($d) => $d['key'], $defs);
 
@@ -94,22 +97,48 @@ class ERPAccountingCoaSettingsController extends Controller
             ->get()
             ->groupBy(fn (CategoryCoaMapping $mapping) => $mapping->domain.'|'.$mapping->category);
 
-        return Inertia::render('ERP/Accounting/CoaSettings', [
-            'settings' => array_map(function (array $definition) use ($saved): array {
+        $settings = collect(array_map(function (array $definition) use ($saved): array {
                 $row = $saved->get($definition['key']);
 
                 return [
                     ...$definition,
                     'account_id' => $row?->account_id,
                 ];
-            }, $defs),
+            }, $defs))
+            ->filter(function (array $row) use ($search): bool {
+                if ($search === '') {
+                    return true;
+                }
+
+                $haystack = strtolower(implode(' ', [
+                    $row['key'],
+                    $row['label'],
+                    $row['description'],
+                    $row['source_module'],
+                    $row['amount_source'],
+                ]));
+
+                return str_contains($haystack, strtolower($search));
+            })
+            ->values();
+
+        $settingsPaginator = $this->paginateCollection($settings, $perPage, $request);
+
+        return Inertia::render('ERP/Accounting/CoaSettings', [
+            'settings' => $settingsPaginator,
             'accounts' => Account::query()
                 ->where('is_active', true)
                 ->orderBy('code')
                 ->get(['id', 'code', 'name', 'type']),
             'categoryMappings' => [
-                'cash_in' => $this->categoryRows('cash_in', $mappings),
-                'cash_out' => $this->categoryRows('cash_out', $mappings),
+                'cash_in' => $this->paginateCollection($this->categoryRows('cash_in', $mappings, $search), $perPage, $request, 'cash_in_page'),
+                'cash_out' => $this->paginateCollection($this->categoryRows('cash_out', $mappings, $search), $perPage, $request, 'cash_out_page'),
+            ],
+            'filters' => [
+                'q' => $search,
+                'per_page' => $perPage,
+                'cash_in_page' => (int) $request->query('cash_in_page', 1),
+                'cash_out_page' => (int) $request->query('cash_out_page', 1),
             ],
         ]);
     }
@@ -261,7 +290,7 @@ class ERPAccountingCoaSettingsController extends Controller
         return back()->with('flash', ['type' => 'success', 'message' => 'Kategori cashflow berhasil disimpan.']);
     }
 
-    private function categoryRows(string $domain, Collection $mappings): Collection
+    private function categoryRows(string $domain, Collection $mappings, string $search = ''): Collection
     {
         $usageMap = [
             'cash_in' => [
@@ -308,6 +337,35 @@ class ERPAccountingCoaSettingsController extends Controller
                         : null,
                 ];
             })
+            ->filter(function (array $row) use ($search): bool {
+                if ($search === '') {
+                    return true;
+                }
+
+                $haystack = strtolower(implode(' ', [
+                    $row['category'],
+                    $row['label'],
+                    $row['used_by'],
+                    $row['amount_source'],
+                    $row['account']['code'] ?? '',
+                    $row['account']['name'] ?? '',
+                ]));
+
+                return str_contains($haystack, strtolower($search));
+            })
             ->values();
+    }
+
+    private function paginateCollection(Collection $items, int $perPage, Request $request, string $pageName = 'page'): LengthAwarePaginator
+    {
+        $currentPage = LengthAwarePaginator::resolveCurrentPage($pageName);
+
+        return new LengthAwarePaginator(
+            $items->forPage($currentPage, $perPage)->values(),
+            $items->count(),
+            $perPage,
+            $currentPage,
+            ['path' => $request->url(), 'query' => $request->query(), 'pageName' => $pageName]
+        );
     }
 }

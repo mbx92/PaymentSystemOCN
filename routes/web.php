@@ -245,6 +245,7 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/purchasing/suppliers', [ERPPurchasingController::class, 'suppliers'])->name('erp.purchasing.suppliers');
         Route::post('erp/purchasing/suppliers', [ERPPurchasingController::class, 'storeSupplier'])->name('erp.purchasing.suppliers.store');
         Route::get('erp/purchasing/suppliers/{supplier}', [ERPPurchasingController::class, 'supplierShow'])->name('erp.purchasing.suppliers.show');
+        Route::patch('erp/purchasing/suppliers/{supplier}', [ERPPurchasingController::class, 'updateSupplier'])->name('erp.purchasing.suppliers.update');
         Route::get('erp/purchasing/purchase-orders', [ERPPurchasingController::class, 'purchaseOrders'])->name('erp.purchasing.purchase-orders');
         Route::post('erp/purchasing/purchase-orders', [ERPPurchasingController::class, 'storePurchaseOrder'])->name('erp.purchasing.purchase-orders.store');
         Route::get('erp/purchasing/purchase-orders/{purchaseOrder}', [ERPPurchasingController::class, 'purchaseOrderShow'])->name('erp.purchasing.purchase-orders.show');

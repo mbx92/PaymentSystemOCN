@@ -403,12 +403,19 @@ class LegacyProjectSalesQcService
         }
 
         usort($projectRows, function (array $left, array $right): int {
-            $rank = ['blocked' => 0, 'warning' => 1, 'ready' => 2];
-            $leftRank = $rank[$left['readiness']] ?? 99;
-            $rightRank = $rank[$right['readiness']] ?? 99;
+            $leftDate = (string) ($left['sale_date'] ?? '');
+            $rightDate = (string) ($right['sale_date'] ?? '');
 
-            if ($leftRank !== $rightRank) {
-                return $leftRank <=> $rightRank;
+            if ($leftDate === '' && $rightDate !== '') {
+                return 1;
+            }
+
+            if ($leftDate !== '' && $rightDate === '') {
+                return -1;
+            }
+
+            if ($leftDate !== $rightDate) {
+                return strcmp($leftDate, $rightDate);
             }
 
             return strcmp((string) ($left['project_number'] ?? ''), (string) ($right['project_number'] ?? ''));
@@ -486,6 +493,10 @@ class LegacyProjectSalesQcService
         $budget = $this->toFloat($project->budget);
         if ($budget > 0) {
             return [$budget, 'budget'];
+        }
+
+        if ($paidTotal > 0) {
+            return [$paidTotal, 'paymentTotalFallback'];
         }
 
         return [0.0, 'missing'];

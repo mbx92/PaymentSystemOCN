@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
 import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
@@ -9,7 +10,7 @@ import { useCurrency } from '@/composables/useCurrency';
 import { useDateFormat } from '@/composables/useDateFormat';
 
 const props = defineProps({
-  rows: Array,
+  rows: Object,
   total: Number,
   projects: Array,
   cashAccounts: Array,
@@ -21,9 +22,11 @@ const { formatDate } = useDateFormat();
 const { format } = useCurrency();
 const page = usePage();
 const erpCompanyContext = () => page.props.erpCompanyContext ?? null;
+const rowItems = () => props.rows?.data ?? [];
 const filters = ref({
   ...props.filters,
   company_id: props.filters?.company_id ?? erpCompanyContext()?.current_company_id ?? '',
+  per_page: Number(props.filters?.per_page ?? props.rows?.per_page ?? 25),
 });
 
 let timer;
@@ -157,7 +160,7 @@ const destroyRow = (row) => {
       <div class="ocn-panel">
         <div class="ocn-panel__head flex items-center justify-between gap-2">
           <h2 class="ocn-panel__title">Daftar operasional</h2>
-          <span class="text-xs text-base-content/60">{{ rows.length }} transaksi</span>
+          <span class="text-xs text-base-content/60">{{ rows?.total ?? rowItems().length }} transaksi</span>
         </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra">
@@ -175,7 +178,7 @@ const destroyRow = (row) => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in rows" :key="row.id">
+              <tr v-for="row in rowItems()" :key="row.id">
                 <td class="whitespace-nowrap">{{ formatDate(row.date) }}</td>
                 <td class="font-medium">{{ row.project_name }}</td>
                 <td>{{ row.recipient_name || '-' }}</td>
@@ -191,12 +194,13 @@ const destroyRow = (row) => {
                   </div>
                 </td>
               </tr>
-              <tr v-if="!rows.length">
+              <tr v-if="!rowItems().length">
                 <td colspan="9" class="py-10 text-center text-base-content/50">Tidak ada data.</td>
               </tr>
             </tbody>
           </table>
         </div>
+        <DataTablePagination :paginator="rows" @update:per-page="(n) => { filters.per_page = n; }" />
       </div>
     </div>
 

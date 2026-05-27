@@ -8,6 +8,7 @@ use App\Models\TeamRole;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -19,31 +20,49 @@ class TeamDistributionController extends Controller
     public function calculator(Request $request): Response|RedirectResponse
     {
         $projectId = $request->query('project_id');
+        $search = trim((string) $request->string('q'));
+        $statusFilter = trim((string) $request->string('status'));
 
         if (filled($projectId) && ! Str::isUuid($projectId)) {
             return redirect()->route('team-distribution.calculator');
         }
 
-        $projects = Project::query()
+        $projectQuery = Project::query()
             ->with(['cashIns', 'referrals', 'cashOuts', 'materials.product', 'convertedBudget.items', 'teamDistributions'])
+            ->when($search !== '', function ($builder) use ($search): void {
+                $builder->where(function ($inner) use ($search): void {
+                    $inner->where('name', 'like', '%'.$search.'%')
+                        ->orWhere('client_name', 'like', '%'.$search.'%');
+                });
+            })
+            ->when($statusFilter !== '', fn ($builder) => $builder->where('status', $statusFilter))
             ->latest('started_at')
-            ->latest('created_at')
-            ->get();
+            ->latest('created_at');
+
+        $projectPaginator = $projectQuery
+            ->paginate($this->resolvedPerPage($request))
+            ->withQueryString();
 
         $members = User::role('anggota')->orWhereHas('roles', fn ($q) => $q->where('name', 'manajer'))
             ->orderBy('name')
             ->get(['id', 'name']);
         $teamRoles = $this->activeTeamRoles();
 
-        $projectRows = $projects
-            ->map(fn (Project $project) => $this->projectDistributionSnapshot($project))
-            ->values();
+        $projectRows = new LengthAwarePaginator(
+            $projectPaginator->getCollection()->map(fn (Project $project) => $this->projectDistributionSnapshot($project)),
+            $projectPaginator->total(),
+            $projectPaginator->perPage(),
+            $projectPaginator->currentPage(),
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
 
         $selectedProject = null;
         $existingDistributions = [];
 
         if (filled($projectId)) {
-            $project = $projects->firstWhere('id', $projectId);
+            $project = Project::query()
+                ->with(['cashIns', 'referrals', 'cashOuts', 'materials.product', 'convertedBudget.items', 'teamDistributions'])
+                ->find($projectId);
 
             if (! $project instanceof Project) {
                 abort(404);
@@ -74,6 +93,7 @@ class TeamDistributionController extends Controller
             'selectedProject'       => $selectedProject,
             'existingDistributions' => $existingDistributions,
             'selectedProjectId'     => filled($projectId) ? $projectId : null,
+            'filters'               => $this->filtersWithPerPage($request, ['q', 'status']),
         ]);
     }
 

@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import ConfirmModal from '@/Components/ConfirmModal.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
@@ -8,7 +9,7 @@ import { computed, reactive, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 
 const props = defineProps({
-  accounts: Array,
+  accounts: Object,
   filters: Object,
   types: Array,
 });
@@ -19,6 +20,7 @@ const filters = reactive({
   q: props.filters?.q ?? '',
   type: props.filters?.type ?? '',
   status: props.filters?.status ?? '',
+  per_page: Number(props.filters?.per_page ?? props.accounts?.per_page ?? 25),
 });
 
 const TYPE_LABELS = {
@@ -33,7 +35,7 @@ const groupedAccounts = computed(() => {
   const groups = props.types.map((type) => ({
     type,
     label: TYPE_LABELS[type] ?? type,
-    rows: props.accounts.filter((account) => account.type === type),
+    rows: (props.accounts?.data ?? []).filter((account) => account.type === type),
   }));
 
   return groups.filter((group) => group.rows.length > 0);
@@ -173,6 +175,7 @@ const executeDeleteCoa = () => {
             </div>
           </div>
         </div>
+        <DataTablePagination :paginator="accounts" @update:per-page="(n) => { filters.per_page = n; }" />
       </div>
 
       <div class="ocn-panel">

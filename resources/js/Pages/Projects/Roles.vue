@@ -1,15 +1,32 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
+import { reactive, watch } from 'vue';
 
 const props = defineProps({
-    roles: Array,
+    roles: Object,
+    filters: { type: Object, default: () => ({}) },
 });
 
 const form = useForm({
     name: '',
 });
+const filters = reactive({
+    q: props.filters?.q ?? '',
+    status: props.filters?.status ?? '',
+    per_page: Number(props.filters?.per_page ?? props.roles?.per_page ?? 25),
+});
+const roleRows = () => props.roles?.data ?? [];
+
+let timer;
+watch(filters, (val) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+        router.get(route('erp.projects.team-roles.index'), val, { preserveState: true, replace: true });
+    }, 250);
+}, { deep: true });
 
 const submit = () => {
     form.post(route('erp.projects.team-roles.store'), {
@@ -61,6 +78,19 @@ const removeRole = (id) => {
 
             <div class="ocn-panel">
                 <div class="ocn-panel__head">
+                    <div class="flex flex-wrap items-center gap-3">
+                        <input v-model="filters.q" type="search" class="input input-bordered input-sm w-full max-w-sm" placeholder="Cari nama role..." />
+                        <select v-model="filters.status" class="select select-bordered select-sm">
+                            <option value="">Semua Status</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ocn-panel">
+                <div class="ocn-panel__head">
                     <h2 class="ocn-panel__title">Daftar role</h2>
                 </div>
                 <div class="overflow-x-auto">
@@ -72,18 +102,19 @@ const removeRole = (id) => {
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="role in roles" :key="role.id">
+                            <tr v-for="role in roleRows()" :key="role.id">
                                 <td class="font-medium">{{ role.name }}</td>
                                 <td class="text-right">
                                     <button class="btn btn-ghost btn-xs text-error" @click="removeRole(role.id)">Hapus</button>
                                 </td>
                             </tr>
-                            <tr v-if="!roles.length">
+                            <tr v-if="!roleRows().length">
                                 <td colspan="2" class="text-center py-6 text-base-content/50">Belum ada role.</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
+                <DataTablePagination :paginator="roles" @update:per-page="(n) => { filters.per_page = n; }" />
             </div>
         </div>
     </AppLayout>

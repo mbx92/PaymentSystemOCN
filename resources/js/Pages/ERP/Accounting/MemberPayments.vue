@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import {
@@ -18,6 +19,7 @@ import { useDateFormat } from '@/composables/useDateFormat';
 const props = defineProps({
   members: Array,
   distributions: Array,
+  paidDistributions: Object,
   summary: Object,
   filters: Object,
   years: Array,
@@ -31,13 +33,42 @@ const { format } = useCurrency();
 const userId = ref(props.filters?.user_id ?? '');
 const year = ref(props.filters?.year ?? '');
 const status = ref(props.filters?.status ?? '');
+const historyQ = ref(props.filters?.history_q ?? '');
+const historyPerPage = ref(Number(props.filters?.history_per_page ?? props.paidDistributions?.per_page ?? 25));
+
+let historySearchTimer;
 
 watch([userId, year, status], ([u, y, s]) => {
   router.get(route('erp.accounting.payments.member'), {
     user_id: u || undefined,
     year: y || undefined,
     status: s || undefined,
-  }, { preserveState: false, preserveScroll: true });
+    history_q: historyQ.value || undefined,
+    history_per_page: historyPerPage.value,
+  }, { preserveState: false, preserveScroll: true, replace: true });
+});
+
+watch(historyQ, (value) => {
+  clearTimeout(historySearchTimer);
+  historySearchTimer = setTimeout(() => {
+    router.get(route('erp.accounting.payments.member'), {
+      user_id: userId.value || undefined,
+      year: year.value || undefined,
+      status: status.value || undefined,
+      history_q: value || undefined,
+      history_per_page: historyPerPage.value,
+    }, { preserveState: true, preserveScroll: true, replace: true });
+  }, 300);
+});
+
+watch(historyPerPage, (value) => {
+  router.get(route('erp.accounting.payments.member'), {
+    user_id: userId.value || undefined,
+    year: year.value || undefined,
+    status: status.value || undefined,
+    history_q: historyQ.value || undefined,
+    history_per_page: value,
+  }, { preserveState: true, preserveScroll: true, replace: true });
 });
 
 const exportExcel = () => {
@@ -83,10 +114,11 @@ const submitPayment = () => {
 };
 
 const unpaidDistributions = computed(() => (props.distributions ?? []).filter((row) => !row.is_paid));
-const paidDistributions = computed(() => (props.distributions ?? []).filter((row) => row.is_paid));
+const paidDistributionPaginator = computed(() => props.paidDistributions ?? { data: [], links: [], total: 0, per_page: historyPerPage.value });
+const paidDistributionRows = computed(() => props.paidDistributions?.data ?? []);
 
 const totalDistributions = computed(() => (props.distributions ?? []).length);
-const paidCount = computed(() => paidDistributions.value.length);
+const paidCount = computed(() => (props.distributions ?? []).filter((row) => row.is_paid).length);
 const unpaidCount = computed(() => unpaidDistributions.value.length);
 const paymentProgress = computed(() => {
   if (totalDistributions.value === 0) return 0;
@@ -276,13 +308,28 @@ const totalPayable = computed(() => (
         </div>
       </div>
 
-      <div v-if="paidDistributions.length" class="ocn-panel">
+      <div class="ocn-panel">
         <div class="ocn-panel__head flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 class="ocn-panel__title">Riwayat pembayaran anggota</h2>
             <p class="ocn-panel__desc">Sudah diposting ke cashflow accounting.</p>
           </div>
           <span class="badge badge-success badge-outline">{{ paidCount }} lunas</span>
+        </div>
+        <div class="card-body border-b border-base-200 pb-4">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <label class="input input-bordered input-sm flex w-full items-center gap-2 sm:max-w-md">
+              <input
+                v-model="historyQ"
+                type="search"
+                class="grow"
+                placeholder="Cari anggota, project, atau peran..."
+              />
+            </label>
+            <p class="text-xs text-base-content/60">
+              Pencarian riwayat diproses di server.
+            </p>
+          </div>
         </div>
         <div class="overflow-x-auto">
           <table class="table table-sm">
@@ -298,7 +345,7 @@ const totalPayable = computed(() => (
               </tr>
             </thead>
             <tbody>
-              <tr v-for="d in paidDistributions" :key="d.id">
+              <tr v-for="d in paidDistributionRows" :key="d.id">
                 <td class="font-medium">{{ d.user_name }}</td>
                 <td>{{ d.project_name }}</td>
                 <td class="capitalize">{{ d.role_in_project }}</td>
@@ -314,9 +361,16 @@ const totalPayable = computed(() => (
                   </Link>
                 </td>
               </tr>
+              <tr v-if="paidDistributionRows.length === 0">
+                <td colspan="7" class="py-8 text-center text-base-content/50">Tidak ada riwayat pembayaran yang cocok dengan filter saat ini.</td>
+              </tr>
             </tbody>
           </table>
         </div>
+        <DataTablePagination
+          :paginator="paidDistributionPaginator"
+          @update:per-page="(n) => { historyPerPage = n; }"
+        />
       </div>
 
       <dialog id="modal-pay-member" class="modal">

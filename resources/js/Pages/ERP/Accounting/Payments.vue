@@ -1,16 +1,19 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 import { useDateFormat } from '@/composables/useDateFormat';
 
 const props = defineProps({
   payables: Array,
+  paidPayables: Object,
   summary: Object,
+  filters: Object,
   cashAccounts: Array,
 });
 
@@ -20,6 +23,10 @@ const { format } = useCurrency();
 const selectedPayable = ref(null);
 /** Nilai nominal modal (terpisah dari useForm agar format ribuan sinkron saat buka). */
 const modalAmount = ref(0);
+const paidHistoryQ = ref(props.filters?.paid_history_q ?? '');
+const paidHistoryPerPage = ref(Number(props.filters?.paid_history_per_page ?? props.paidPayables?.per_page ?? 25));
+
+let paidHistorySearchTimer;
 
 const paymentForm = useForm({
   payment_date: new Date().toISOString().slice(0, 10),
@@ -32,7 +39,9 @@ const openPayablePayment = (payable) => {
   const amount = Number(payable.outstanding_amount || 0);
   modalAmount.value = amount;
   paymentForm.reset();
-  paymentForm.payment_date = new Date().toISOString().slice(0, 10);
+  paymentForm.payment_date = payable.is_legacy_procurement && payable.legacy_payment_date
+    ? payable.legacy_payment_date
+    : new Date().toISOString().slice(0, 10);
   paymentForm.amount = amount;
   paymentForm.cash_account_id = props.cashAccounts?.[0]?.id ?? '';
   paymentForm.note = '';
@@ -55,7 +64,25 @@ const submitSupplierPayment = () => {
 };
 
 const openPayables = computed(() => (props.payables ?? []).filter((row) => Number(row.outstanding_amount || 0) > 0));
-const paidPayables = computed(() => (props.payables ?? []).filter((row) => Number(row.outstanding_amount || 0) <= 0));
+const paidPayablePaginator = computed(() => props.paidPayables ?? { data: [], links: [], total: 0, per_page: paidHistoryPerPage.value });
+const paidPayableRows = computed(() => props.paidPayables?.data ?? []);
+
+watch(paidHistoryQ, (value) => {
+  clearTimeout(paidHistorySearchTimer);
+  paidHistorySearchTimer = setTimeout(() => {
+    router.get(route('erp.accounting.payments'), {
+      paid_history_q: value || undefined,
+      paid_history_per_page: paidHistoryPerPage.value,
+    }, { preserveState: true, preserveScroll: true, replace: true });
+  }, 300);
+});
+
+watch(paidHistoryPerPage, (value) => {
+  router.get(route('erp.accounting.payments'), {
+    paid_history_q: paidHistoryQ.value || undefined,
+    paid_history_per_page: value,
+  }, { preserveState: true, preserveScroll: true, replace: true });
+});
 </script>
 
 <template>
@@ -190,9 +217,24 @@ const paidPayables = computed(() => (props.payables ?? []).filter((row) => Numbe
         </div>
       </div>
 
-      <div v-if="paidPayables.length" class="ocn-panel">
+      <div class="ocn-panel">
         <div class="ocn-panel__head">
           <h2 class="ocn-panel__title">Riwayat bill lunas</h2>
+        </div>
+        <div class="card-body border-b border-base-200 pb-4">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <label class="input input-bordered input-sm flex w-full items-center gap-2 sm:max-w-md">
+              <input
+                v-model="paidHistoryQ"
+                type="search"
+                class="grow"
+                placeholder="Cari bill, supplier, PO, atau GR..."
+              />
+            </label>
+            <p class="text-xs text-base-content/60">
+              Pencarian riwayat bill lunas diproses di server.
+            </p>
+          </div>
         </div>
         <div class="overflow-x-auto">
           <table class="table table-sm">
@@ -200,22 +242,37 @@ const paidPayables = computed(() => (props.payables ?? []).filter((row) => Numbe
               <tr>
                 <th>Bill</th>
                 <th>Supplier</th>
-                <th>PO</th>
+                <th>PO / GRN</th>
+                <th>Tgl Bill</th>
                 <th class="text-right">Total</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="payable in paidPayables" :key="payable.id">
+              <tr v-for="payable in paidPayableRows" :key="payable.id">
                 <td class="font-mono text-xs">{{ payable.bill_no }}</td>
-                <td>{{ payable.vendor_name ?? '-' }}</td>
-                <td class="font-mono text-xs">{{ payable.po_number ?? '-' }}</td>
+                <td>
+                  <p class="font-medium">{{ payable.vendor_name ?? '-' }}</p>
+                  <p class="text-xs text-base-content/50">{{ payable.vendor_code ?? '-' }}</p>
+                </td>
+                <td>
+                  <p class="font-mono text-xs">{{ payable.po_number ?? '-' }}</p>
+                  <p class="font-mono text-xs text-base-content/60">{{ payable.grn_number ?? '-' }}</p>
+                </td>
+                <td class="whitespace-nowrap">{{ formatDate(payable.bill_date) }}</td>
                 <td class="text-right">{{ format(payable.amount) }}</td>
                 <td><StatusBadge :status="payable.status" /></td>
+              </tr>
+              <tr v-if="paidPayableRows.length === 0">
+                <td colspan="6" class="py-8 text-center text-base-content/50">Tidak ada bill lunas yang cocok dengan pencarian saat ini.</td>
               </tr>
             </tbody>
           </table>
         </div>
+        <DataTablePagination
+          :paginator="paidPayablePaginator"
+          @update:per-page="(n) => { paidHistoryPerPage = n; }"
+        />
       </div>
 
       <dialog id="modal-pay-supplier" class="modal">
@@ -229,6 +286,9 @@ const paidPayables = computed(() => (props.payables ?? []).filter((row) => Numbe
             <div>
               <label class="label"><span class="label-text">Tanggal Bayar</span></label>
               <input v-model="paymentForm.payment_date" type="date" class="input input-bordered w-full" />
+              <p v-if="selectedPayable?.is_legacy_procurement && selectedPayable?.legacy_payment_date" class="mt-1 text-xs text-base-content/60">
+                Bill hasil import legacy akan memakai tanggal procurement: {{ formatDate(selectedPayable.legacy_payment_date) }}
+              </p>
               <p v-if="paymentForm.errors.payment_date" class="mt-1 text-xs text-error">{{ paymentForm.errors.payment_date }}</p>
             </div>
             <div>

@@ -1,8 +1,9 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { computed, ref, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 import {
   ArrowLeftIcon,
@@ -12,17 +13,24 @@ import {
 } from '@heroicons/vue/24/outline';
 
 const props = defineProps({
-  projects: { type: Array, default: () => [] },
+  projects: { type: Object, default: () => ({ data: [] }) },
   members: { type: Array, default: () => [] },
   teamRoles: { type: Array, default: () => [] },
   selectedProject: { type: Object, default: null },
   existingDistributions: { type: Array, default: () => [] },
   selectedProjectId: { type: String, default: null },
+  filters: { type: Object, default: () => ({}) },
 });
 
 const { format } = useCurrency();
 const saveForm = useForm({});
 const selectedProjectId = computed(() => String(props.selectedProjectId || ''));
+const projectRows = computed(() => props.projects?.data ?? []);
+const filters = reactive({
+  q: props.filters?.q ?? '',
+  status: props.filters?.status ?? '',
+  per_page: Number(props.filters?.per_page ?? props.projects?.per_page ?? 25),
+});
 const statusToneMap = {
   negosiasi: 'badge-ghost',
   berjalan: 'badge-warning',
@@ -68,10 +76,23 @@ watch(
 const selectProject = (projectId) => {
   router.get(
     route('team-distribution.calculator'),
-    { project_id: projectId },
+    { project_id: projectId, q: filters.q || undefined, status: filters.status || undefined, per_page: filters.per_page },
     { preserveScroll: true, preserveState: false },
   );
 };
+
+let filterTimer;
+watch(filters, (val) => {
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(() => {
+    router.get(route('team-distribution.calculator'), {
+      project_id: selectedProjectId.value || undefined,
+      q: val.q || undefined,
+      status: val.status || undefined,
+      per_page: val.per_page,
+    }, { preserveState: true, preserveScroll: true, replace: true });
+  }, 250);
+}, { deep: true });
 
 const addRow = () => rows.value.push(makeRow());
 const removeRow = (index) => {
@@ -171,9 +192,20 @@ const save = () => {
             <h2 class="ocn-panel__title">Daftar Project</h2>
             <p class="ocn-panel__desc">Semua project ditampilkan di sini. Klik salah satu project untuk membuka detail pembagiannya.</p>
           </div>
-          <div class="card-body max-h-[calc(100vh-14rem)] space-y-3 overflow-y-auto">
+          <div class="card-body space-y-3">
+            <div class="grid gap-3">
+              <input v-model="filters.q" type="search" class="input input-bordered input-sm w-full" placeholder="Cari project / klien..." />
+              <select v-model="filters.status" class="select select-bordered select-sm w-full">
+                <option value="">Semua status</option>
+                <option value="negosiasi">Negosiasi</option>
+                <option value="berjalan">Berjalan</option>
+                <option value="selesai">Selesai</option>
+                <option value="dibatalkan">Dibatalkan</option>
+              </select>
+            </div>
+            <div class="max-h-[calc(100vh-19rem)] space-y-3 overflow-y-auto">
             <button
-              v-for="project in projects"
+              v-for="project in projectRows"
               :key="project.id"
               type="button"
               class="w-full rounded-2xl border p-4 text-left transition"
@@ -210,7 +242,12 @@ const save = () => {
                 </div>
               </div>
             </button>
+            <div v-if="!projectRows.length" class="rounded-2xl border border-dashed border-base-300 p-4 text-sm text-base-content/60">
+              Tidak ada project yang cocok dengan filter.
+            </div>
+            </div>
           </div>
+          <DataTablePagination :paginator="projects" @update:per-page="(n) => { filters.per_page = n; }" />
         </section>
 
         <section v-if="selectedProject" class="min-w-0 space-y-4">

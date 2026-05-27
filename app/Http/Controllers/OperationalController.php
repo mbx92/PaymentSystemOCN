@@ -47,9 +47,9 @@ class OperationalController extends Controller
 
         $rows = $query
             ->latest('date')
-            ->limit(500)
-            ->get()
-            ->map(fn (CashOut $c) => [
+            ->paginate($this->resolvedPerPage($request))
+            ->withQueryString()
+            ->through(fn (CashOut $c) => [
                 'id' => $c->id,
                 'date' => $c->date?->format('Y-m-d'),
                 'project_id' => $c->project_id,
@@ -68,7 +68,7 @@ class OperationalController extends Controller
             'total' => $total,
             'projects' => Project::query()->orderBy('name')->get(['id', 'name']),
             'cashAccounts' => Account::cashBankOptions(),
-            'filters' => $request->only(['project_id', 'company_id', 'date_from', 'date_to', 'q']),
+            'filters' => $this->filtersWithPerPage($request, ['project_id', 'company_id', 'date_from', 'date_to', 'q']),
         ]);
     }
 

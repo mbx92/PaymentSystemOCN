@@ -10,6 +10,7 @@ use App\ERP\Core\Services\ErpCompanyResolver;
 use App\ERP\Shared\Enums\DocumentStatus;
 use App\Models\CashCategory;
 use App\Models\CashOut;
+use App\Models\ProcurementImportStaging;
 use App\Models\CategoryCoaMapping;
 use App\Models\TeamDistribution;
 use App\Models\User;
@@ -25,16 +26,21 @@ class ERPAccountingPaymentController extends Controller
 {
     public function __construct(private readonly GlPostingService $glPostingService) {}
 
-    public function index(): Response
+    public function index(Request $request): Response
     {
+        $searchOperator = DB::getDriverName() === 'pgsql' ? 'ilike' : 'like';
+        $paidHistorySearch = trim((string) $request->string('paid_history_q'));
+        $paidHistoryPerPage = $this->resolvedPaidSupplierBillHistoryPerPage($request);
+
         $payables = Payable::query()
-            ->with(['vendor:id,code,name', 'purchaseOrder:id,number', 'goodsReceipt:id,number', 'payments.cashAccount:id,code,name'])
+            ->with(['vendor:id,code,name', 'purchaseOrder:id,number,notes', 'goodsReceipt:id,number', 'payments.cashAccount:id,code,name'])
             ->orderByRaw('(amount - paid_amount) desc')
             ->orderBy('due_date')
             ->get()
             ->map(function (Payable $payable): array {
                 $amount = (float) $payable->amount;
                 $paid = (float) $payable->paid_amount;
+                $legacyProcurementDate = $this->resolvedLegacySupplierPaymentDate($payable);
 
                 return [
                     'id' => $payable->id,
@@ -49,6 +55,8 @@ class ERPAccountingPaymentController extends Controller
                     'paid_amount' => $paid,
                     'outstanding_amount' => max($amount - $paid, 0),
                     'status' => $payable->status->value,
+                    'is_legacy_procurement' => $legacyProcurementDate !== null,
+                    'legacy_payment_date' => $legacyProcurementDate,
                     'payments' => $payable->payments
                         ->sortByDesc('payment_date')
                         ->map(fn (PayablePayment $payment) => [
@@ -65,16 +73,68 @@ class ERPAccountingPaymentController extends Controller
                 ];
             });
 
+        $paidPayables = Payable::query()
+            ->with(['vendor:id,code,name', 'purchaseOrder:id,number,notes', 'goodsReceipt:id,number'])
+            ->whereRaw('paid_amount >= amount')
+            ->when($paidHistorySearch !== '', function ($query) use ($paidHistorySearch, $searchOperator): void {
+                $query->where(function ($inner) use ($paidHistorySearch, $searchOperator): void {
+                    $inner->where('bill_no', $searchOperator, '%'.$paidHistorySearch.'%')
+                        ->orWhereHas('vendor', function ($vendorQuery) use ($paidHistorySearch, $searchOperator): void {
+                            $vendorQuery->where('name', $searchOperator, '%'.$paidHistorySearch.'%')
+                                ->orWhere('code', $searchOperator, '%'.$paidHistorySearch.'%');
+                        })
+                        ->orWhereHas('purchaseOrder', fn ($poQuery) => $poQuery->where('number', $searchOperator, '%'.$paidHistorySearch.'%'))
+                        ->orWhereHas('goodsReceipt', fn ($grQuery) => $grQuery->where('number', $searchOperator, '%'.$paidHistorySearch.'%'));
+                });
+            })
+            ->orderByDesc('bill_date')
+            ->orderByDesc('id')
+            ->paginate($paidHistoryPerPage)
+            ->withQueryString()
+            ->through(function (Payable $payable): array {
+                $legacyProcurementDate = $this->resolvedLegacySupplierPaymentDate($payable);
+
+                return [
+                    'id' => $payable->id,
+                    'bill_no' => $payable->bill_no,
+                    'vendor_name' => $payable->vendor?->name,
+                    'vendor_code' => $payable->vendor?->code,
+                    'po_number' => $payable->purchaseOrder?->number,
+                    'grn_number' => $payable->goodsReceipt?->number,
+                    'bill_date' => $payable->bill_date?->toDateString(),
+                    'due_date' => $payable->due_date?->toDateString(),
+                    'amount' => (float) $payable->amount,
+                    'paid_amount' => (float) $payable->paid_amount,
+                    'outstanding_amount' => max((float) $payable->amount - (float) $payable->paid_amount, 0),
+                    'status' => $payable->status->value,
+                    'is_legacy_procurement' => $legacyProcurementDate !== null,
+                    'legacy_payment_date' => $legacyProcurementDate,
+                ];
+            });
+
         return Inertia::render('ERP/Accounting/Payments', [
             'payables' => $payables,
+            'paidPayables' => $paidPayables,
             'summary' => [
                 'payables_total' => (float) $payables->sum('amount'),
                 'paid_total' => (float) $payables->sum('paid_amount'),
                 'outstanding_total' => (float) $payables->sum('outstanding_amount'),
                 'open_count' => $payables->filter(fn (array $row) => $row['outstanding_amount'] > 0)->count(),
             ],
+            'filters' => [
+                'paid_history_q' => $paidHistorySearch,
+                'paid_history_per_page' => $paidHistoryPerPage,
+            ],
             'cashAccounts' => Account::cashBankOptions(),
         ]);
+    }
+
+    private function resolvedPaidSupplierBillHistoryPerPage(Request $request): int
+    {
+        $perPage = (int) $request->query('paid_history_per_page', 25);
+        $allowed = [25, 50, 75, 100, 125, 150, 175, 200, 225, 250];
+
+        return in_array($perPage, $allowed, true) ? $perPage : 25;
     }
 
     public function storeSupplierPayment(Request $request, Payable $payable): RedirectResponse
@@ -102,13 +162,14 @@ class ERPAccountingPaymentController extends Controller
 
             $payableAccount = Account::query()->where('code', '2001')->firstOrFail();
             $cashAccount = Account::query()->findOrFail((int) $validated['cash_account_id']);
+            $paymentDate = $this->resolvedSupplierPaymentDate($lockedPayable, (string) $validated['payment_date']);
 
             $entry = $this->glPostingService->post(
                 ErpCompanyResolver::resolveForGlPosting($request),
                 sourceModule: 'supplier_payment',
                 sourceReference: $lockedPayable->bill_no,
                 description: 'Pembayaran supplier '.$lockedPayable->bill_no.' - '.($lockedPayable->vendor?->name ?? 'Supplier'),
-                entryDate: $validated['payment_date'],
+                entryDate: $paymentDate,
                 lines: [
                     ['account_id' => $payableAccount->id, 'debit' => $amount, 'credit' => 0],
                     ['account_id' => $cashAccount->id, 'debit' => 0, 'credit' => $amount],
@@ -117,7 +178,7 @@ class ERPAccountingPaymentController extends Controller
 
             PayablePayment::query()->create([
                 'payable_id' => $lockedPayable->id,
-                'payment_date' => $validated['payment_date'],
+                'payment_date' => $paymentDate,
                 'amount' => $amount,
                 'cash_account_id' => (int) $validated['cash_account_id'],
                 'note' => $validated['note'] ?? null,
@@ -140,16 +201,56 @@ class ERPAccountingPaymentController extends Controller
     public function memberPayments(Request $request): Response
     {
         $members = User::role(['anggota', 'manajer'])->orderBy('name')->get(['id', 'name']);
+        $searchOperator = DB::getDriverName() === 'pgsql' ? 'ilike' : 'like';
+        $historySearch = trim((string) $request->string('history_q'));
+        $historyPerPage = $this->resolvedMemberPaymentHistoryPerPage($request);
 
-        $distributions = TeamDistribution::query()
+        $baseQuery = TeamDistribution::query()
             ->with(['project:id,name,status,import_key,finished_at', 'user:id,name', 'cashOut:id,date,journal_entry_id'])
             ->when($request->filled('user_id'), fn ($q) => $q->where('user_id', $request->integer('user_id')))
             ->when($request->filled('year'), fn ($q) => $q->whereYear('created_at', $request->integer('year')))
             ->when($request->string('status')->toString() === 'unpaid', fn ($q) => $q->whereNull('paid_at'))
-            ->when($request->string('status')->toString() === 'paid', fn ($q) => $q->whereNotNull('paid_at'))
+            ->when($request->string('status')->toString() === 'paid', fn ($q) => $q->whereNotNull('paid_at'));
+
+        $distributions = (clone $baseQuery)
             ->orderByDesc('created_at')
             ->get()
             ->map(fn (TeamDistribution $distribution) => [
+                'id' => $distribution->id,
+                'user_id' => $distribution->user_id,
+                'user_name' => $distribution->user?->name ?? '-',
+                'project_id' => $distribution->project_id,
+                'project_name' => $distribution->project?->name ?? '-',
+                'project_status' => $distribution->project?->status,
+                'is_legacy_import' => filled($distribution->project?->import_key),
+                'legacy_payment_date' => $distribution->project?->import_key
+                    ? $distribution->project?->finished_at?->toDateString()
+                    : null,
+                'role_in_project' => $distribution->role_in_project,
+                'percentage' => (float) $distribution->percentage,
+                'base_pay' => (float) $distribution->base_pay,
+                'bonus' => (float) $distribution->bonus,
+                'total_pay' => (float) $distribution->total_pay,
+                'is_paid' => $distribution->isPaid(),
+                'paid_at' => $distribution->paid_at?->toDateString(),
+                'payment_date' => $distribution->cashOut?->date?->toDateString(),
+                'journal_entry_id' => $distribution->cashOut?->journal_entry_id,
+            ]);
+
+        $paidDistributions = (clone $baseQuery)
+            ->whereNotNull('paid_at')
+            ->when($historySearch !== '', function ($query) use ($historySearch, $searchOperator): void {
+                $query->where(function ($inner) use ($historySearch, $searchOperator): void {
+                    $inner->whereHas('user', fn ($userQuery) => $userQuery->where('name', $searchOperator, '%'.$historySearch.'%'))
+                        ->orWhereHas('project', fn ($projectQuery) => $projectQuery->where('name', $searchOperator, '%'.$historySearch.'%'))
+                        ->orWhere('role_in_project', $searchOperator, '%'.$historySearch.'%');
+                });
+            })
+            ->orderByDesc('paid_at')
+            ->orderByDesc('created_at')
+            ->paginate($historyPerPage)
+            ->withQueryString()
+            ->through(fn (TeamDistribution $distribution) => [
                 'id' => $distribution->id,
                 'user_id' => $distribution->user_id,
                 'user_name' => $distribution->user?->name ?? '-',
@@ -177,15 +278,27 @@ class ERPAccountingPaymentController extends Controller
         return Inertia::render('ERP/Accounting/MemberPayments', [
             'members' => $members,
             'distributions' => $distributions->values(),
+            'paidDistributions' => $paidDistributions,
             'summary' => [
                 'outstanding_total' => (float) $unpaid->sum('total_pay'),
                 'paid_total' => (float) $paid->sum('total_pay'),
                 'open_count' => $unpaid->count(),
             ],
-            'filters' => $request->only(['user_id', 'year', 'status']),
+            'filters' => array_merge(
+                $request->only(['user_id', 'year', 'status', 'history_q']),
+                ['history_per_page' => $historyPerPage]
+            ),
             'years' => range(now()->year, now()->year - 4),
             'cashAccounts' => Account::cashBankOptions(),
         ]);
+    }
+
+    private function resolvedMemberPaymentHistoryPerPage(Request $request): int
+    {
+        $perPage = (int) $request->query('history_per_page', 25);
+        $allowed = [25, 50, 75, 100, 125, 150, 175, 200, 225, 250];
+
+        return in_array($perPage, $allowed, true) ? $perPage : 25;
     }
 
     public function storeMemberPayment(Request $request, TeamDistribution $teamDistribution): RedirectResponse
@@ -321,5 +434,39 @@ class ERPAccountingPaymentController extends Controller
         }
 
         return $requestedDate;
+    }
+
+    private function resolvedSupplierPaymentDate(Payable $payable, string $requestedDate): string
+    {
+        return $this->resolvedLegacySupplierPaymentDate($payable) ?? $requestedDate;
+    }
+
+    private function resolvedLegacySupplierPaymentDate(Payable $payable): ?string
+    {
+        $importKey = $this->extractLegacyImportKeyFromPayable($payable);
+        if ($importKey === null) {
+            return null;
+        }
+
+        return ProcurementImportStaging::query()
+            ->where('source_import_key', $importKey)
+            ->value('procurement_date')
+            ?->toDateString();
+    }
+
+    private function extractLegacyImportKeyFromPayable(Payable $payable): ?string
+    {
+        $notes = (string) ($payable->purchaseOrder?->notes ?? '');
+        if ($notes === '') {
+            return null;
+        }
+
+        if (! preg_match('/Import key:\s*(.+)/i', $notes, $matches)) {
+            return null;
+        }
+
+        $importKey = trim((string) ($matches[1] ?? ''));
+
+        return $importKey !== '' ? $importKey : null;
     }
 }

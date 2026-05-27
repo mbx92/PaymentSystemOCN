@@ -4,6 +4,7 @@ import StatusBadge from '@/Components/StatusBadge.vue';
 import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
+import { reactive, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 import { useDateFormat } from '@/composables/useDateFormat';
 
@@ -14,6 +15,18 @@ const props = defineProps({
 
 const { format } = useCurrency();
 const { formatDate } = useDateFormat();
+const filters = reactive({
+  q: props.filters?.q ?? '',
+  per_page: Number(props.filters?.per_page ?? props.invoices?.per_page ?? 25),
+});
+
+let timer;
+watch(filters, (val) => {
+  clearTimeout(timer);
+  timer = setTimeout(() => {
+    router.get(route('erp.sales.project-invoices'), val, { preserveState: true, replace: true });
+  }, 250);
+}, { deep: true });
 
 const openInvoice = (invoice) => {
   router.visit(route('erp.sales.project-invoices.show', invoice.id));
@@ -46,6 +59,11 @@ const openInvoice = (invoice) => {
         <div class="ocn-panel__head">
           <h2 class="ocn-panel__title">Daftar invoice project</h2>
           <p class="ocn-panel__desc">Project selesai beserta status pembayaran invoice.</p>
+        </div>
+        <div class="card-body border-b border-base-200 pb-4">
+          <label class="input input-bordered input-sm flex w-full items-center gap-2 sm:max-w-md">
+            <input v-model="filters.q" type="search" class="grow" placeholder="Cari no invoice, project, atau client..." />
+          </label>
         </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra">
@@ -87,7 +105,7 @@ const openInvoice = (invoice) => {
         </div>
         <DataTablePagination
           :paginator="invoices"
-          @update:per-page="(n) => router.get(route('erp.sales.project-invoices'), { per_page: n }, { preserveState: true, replace: true })"
+          @update:per-page="(n) => { filters.per_page = n; }"
         />
       </div>
     </div>
