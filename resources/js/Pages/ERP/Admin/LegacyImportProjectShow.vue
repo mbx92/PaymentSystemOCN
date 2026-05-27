@@ -1,7 +1,7 @@
 ﻿<script setup>
 import AppLayout from "@/Layouts/AppLayout.vue";
 import { Head, Link, useForm } from "@inertiajs/vue3";
-import { reactive, ref, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { ArrowLeftIcon } from "@heroicons/vue/24/outline";
 import { showGlobalAlert } from "@/utils/globalAlert";
 
@@ -38,13 +38,17 @@ const procurementStagingDrafts = reactive({});
 const procurementStagingSavingId = ref(null);
 const procurementStagingConvertingId = ref(null);
 const activeTab = ref("overview");
-const requiresProcurementFirst =
-    props.project.requires_procurement_first === true;
-const procurementReadyForImport =
-    props.project.procurement_ready_for_import === true;
-const canImportProject =
-    props.project.is_importable &&
-    (!requiresProcurementFirst || procurementReadyForImport);
+const requiresProcurementFirst = computed(
+    () => props.project.requires_procurement_first === true,
+);
+const procurementReadyForImport = computed(
+    () => props.project.procurement_ready_for_import === true,
+);
+const canImportProject = computed(
+    () =>
+        props.project.is_importable &&
+        (!requiresProcurementFirst.value || procurementReadyForImport.value),
+);
 
 function setActiveTab(tab) {
     activeTab.value = tab;
@@ -1307,13 +1311,9 @@ watch(
                                             <div
                                                 class="text-xs text-base-content/60"
                                             >
-                                                {{
-                                                    staging.company_name
-                                                }}
+                                                {{ staging.company_name }}
                                                 &middot;
-                                                {{
-                                                    staging.warehouse_code
-                                                }}
+                                                {{ staging.warehouse_code }}
                                                 &middot;
                                                 {{
                                                     staging.procurement_date ||
@@ -1415,9 +1415,7 @@ watch(
                                                             String(vendor.id)
                                                         "
                                                     >
-                                                        {{
-                                                            vendor.code
-                                                        }}
+                                                        {{ vendor.code }}
                                                         &middot;
                                                         {{ vendor.name }}
                                                     </option>
@@ -1831,9 +1829,7 @@ watch(
                             >
                                 <div class="min-w-0">
                                     <div class="font-medium">
-                                        {{
-                                            staging.legacy_project_number
-                                        }}
+                                        {{ staging.legacy_project_number }}
                                         &middot;
                                         {{ staging.legacy_project_name }}
                                     </div>
@@ -2014,9 +2010,7 @@ watch(
                                                 <div
                                                     class="text-[11px] text-base-content/60"
                                                 >
-                                                    {{
-                                                        line.sku || "-"
-                                                    }}
+                                                    {{ line.sku || "-" }}
                                                     &middot;
                                                     {{ line.unit || "-" }}
                                                 </div>
@@ -2089,9 +2083,7 @@ watch(
                                                             String(vendor.id)
                                                         "
                                                     >
-                                                        {{
-                                                            vendor.code
-                                                        }}
+                                                        {{ vendor.code }}
                                                         &middot;
                                                         {{ vendor.name }}
                                                     </option>
