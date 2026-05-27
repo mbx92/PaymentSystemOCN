@@ -63,9 +63,61 @@ body {
 }
 
 .ocn-shell {
+    --ocn-sidebar-width: 18rem;
+    --ocn-sidebar-collapsed-width: 5rem;
+    --ocn-main-max-width: 80rem;
+    --ocn-main-padding-x: 1rem;
+    --ocn-main-padding-y: 1rem;
+    --ocn-main-padding-x-md: 2rem;
+    --ocn-main-padding-y-md: 2rem;
+    --ocn-topbar-padding-x: 1rem;
+    --ocn-topbar-padding-y: 0.75rem;
     background:
         radial-gradient(circle at top left, rgba(29, 78, 216, 0.12), transparent 30rem),
         linear-gradient(180deg, #f8fafc 0%, #eef3fb 100%);
+}
+
+.ocn-screen-mode--desktop {
+    --ocn-sidebar-width: 18rem;
+    --ocn-sidebar-collapsed-width: 5rem;
+    --ocn-main-max-width: 80rem;
+    --ocn-main-padding-x-md: 2rem;
+    --ocn-main-padding-y-md: 2rem;
+}
+
+.ocn-screen-mode--tablet {
+    --ocn-sidebar-width: 15rem;
+    --ocn-sidebar-collapsed-width: 4.75rem;
+    --ocn-main-max-width: 72rem;
+    --ocn-main-padding-x-md: 1.5rem;
+    --ocn-main-padding-y-md: 1.5rem;
+}
+
+.ocn-screen-mode--ipad-9-2021 {
+    --ocn-sidebar-width: 14.5rem;
+    --ocn-sidebar-collapsed-width: 4.75rem;
+    --ocn-main-max-width: min(100%, 69rem);
+    --ocn-main-padding-x: 0.9rem;
+    --ocn-main-padding-y: 0.9rem;
+    --ocn-main-padding-x-md: 1.25rem;
+    --ocn-main-padding-y-md: 1.25rem;
+    --ocn-topbar-padding-x: 0.9rem;
+    --ocn-topbar-padding-y: 0.7rem;
+}
+
+.ocn-screen-mode--mobile {
+    --ocn-main-max-width: 100%;
+    --ocn-main-padding-x: 0.85rem;
+    --ocn-main-padding-y: 0.85rem;
+    --ocn-main-padding-x-md: 1rem;
+    --ocn-main-padding-y-md: 1rem;
+}
+
+.ocn-screen-density--compact {
+    --ocn-main-padding-x: 0.85rem;
+    --ocn-main-padding-y: 0.85rem;
+    --ocn-main-padding-x-md: 1.2rem;
+    --ocn-main-padding-y-md: 1.2rem;
 }
 
 .ocn-sidebar {
@@ -107,6 +159,60 @@ body {
     border-bottom: 1px solid rgba(148, 163, 184, 0.24);
     box-shadow: 0 8px 28px rgba(15, 23, 42, 0.06);
     backdrop-filter: blur(18px);
+}
+
+.ocn-sidebar-shell {
+    width: var(--ocn-sidebar-width);
+}
+
+.ocn-sidebar-shell--collapsed {
+    width: var(--ocn-sidebar-collapsed-width);
+}
+
+.ocn-topbar-shell {
+    padding: var(--ocn-topbar-padding-y) var(--ocn-topbar-padding-x);
+}
+
+.ocn-main-shell {
+    padding: var(--ocn-main-padding-y) var(--ocn-main-padding-x);
+}
+
+.ocn-main-shell--default {
+    max-width: var(--ocn-main-max-width);
+    margin-inline: auto;
+}
+
+.ocn-main-shell--pos {
+    max-width: none;
+}
+
+@media (min-width: 768px) {
+    .ocn-content-shell--expanded {
+        padding-left: var(--ocn-sidebar-width);
+    }
+
+    .ocn-content-shell--collapsed {
+        padding-left: var(--ocn-sidebar-collapsed-width);
+    }
+
+    .ocn-main-shell {
+        padding: var(--ocn-main-padding-y-md) var(--ocn-main-padding-x-md);
+    }
+}
+
+@media (min-width: 768px) and (max-width: 1180px) {
+    .ocn-screen-mode--ipad-9-2021 .ocn-panel__head {
+        padding: 0.9rem 1rem;
+    }
+
+    .ocn-screen-mode--ipad-9-2021 .card-body {
+        padding: 1rem;
+    }
+
+    .ocn-screen-mode--ipad-9-2021 .table :where(th, td) {
+        padding-top: 0.8rem;
+        padding-bottom: 0.8rem;
+    }
 }
 
 .ocn-sidebar::-webkit-scrollbar {

@@ -9,12 +9,21 @@ class ErpSetting extends Model
 {
     public const MODULE_MENU_LAYOUT_GRID = 'grid';
     public const MODULE_MENU_LAYOUT_LIST = 'list';
+    public const SCREEN_MODE_AUTO = 'auto';
+    public const SCREEN_MODE_DESKTOP = 'desktop';
+    public const SCREEN_MODE_TABLET = 'tablet';
+    public const SCREEN_MODE_IPAD_9_2021 = 'ipad_9_2021';
+    public const SCREEN_MODE_MOBILE = 'mobile';
+    public const SCREEN_DENSITY_COMFORTABLE = 'comfortable';
+    public const SCREEN_DENSITY_COMPACT = 'compact';
 
     protected $fillable = [
         'app_name',
         'app_tagline',
         'app_logo_path',
         'module_menu_layout',
+        'screen_mode',
+        'screen_density',
         'thermal_printer_enabled',
         'thermal_printer_host',
         'thermal_printer_port',
@@ -85,6 +94,45 @@ class ErpSetting extends Model
         return in_array($this->module_menu_layout, self::moduleMenuLayoutOptions(), true)
             ? $this->module_menu_layout
             : self::MODULE_MENU_LAYOUT_GRID;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function screenModeOptions(): array
+    {
+        return [
+            self::SCREEN_MODE_AUTO,
+            self::SCREEN_MODE_DESKTOP,
+            self::SCREEN_MODE_TABLET,
+            self::SCREEN_MODE_IPAD_9_2021,
+            self::SCREEN_MODE_MOBILE,
+        ];
+    }
+
+    public function resolvedScreenMode(): string
+    {
+        return in_array($this->screen_mode, self::screenModeOptions(), true)
+            ? $this->screen_mode
+            : self::SCREEN_MODE_AUTO;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function screenDensityOptions(): array
+    {
+        return [
+            self::SCREEN_DENSITY_COMFORTABLE,
+            self::SCREEN_DENSITY_COMPACT,
+        ];
+    }
+
+    public function resolvedScreenDensity(): string
+    {
+        return in_array($this->screen_density, self::screenDensityOptions(), true)
+            ? $this->screen_density
+            : self::SCREEN_DENSITY_COMFORTABLE;
     }
 
     /**

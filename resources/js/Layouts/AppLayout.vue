@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue';
-import { Link, usePage } from '@inertiajs/vue3';
+import { Link, router, usePage } from '@inertiajs/vue3';
 import {
     HomeIcon, CodeBracketIcon, ArrowDownCircleIcon, ArrowUpCircleIcon, ChartBarIcon,
     UsersIcon, Bars3Icon, XMarkIcon, ArrowRightOnRectangleIcon, BuildingOffice2Icon, BellAlertIcon,
@@ -31,6 +31,8 @@ const inventoryAlerts = computed(() => page.props.inventoryAlerts ?? { lowStockC
 const localNotificationCenter = ref(page.props.notificationCenter ?? { total_count: 0, groups: [], items: [] });
 const erpSetting = computed(() => page.props.erpSetting ?? {});
 const uiPreferences = computed(() => page.props.uiPreferences ?? { module_menu_orders: {} });
+const viewportWidth = ref(0);
+const viewportHeight = ref(0);
 const sidebarOpen = ref(false);
 const readSidebarCollapsedPreference = () => {
     try {
@@ -219,6 +221,38 @@ const assistantMetaFromIntent = (intent) => {
         tone: intentMeta.source === 'action' ? 'warning' : intentMeta.source === 'data' ? 'success' : 'neutral',
     };
 };
+
+const refreshViewport = () => {
+    viewportWidth.value = window.innerWidth;
+    viewportHeight.value = window.innerHeight;
+};
+
+const resolveAutoScreenMode = () => {
+    const width = Math.max(viewportWidth.value, viewportHeight.value);
+    const height = Math.min(viewportWidth.value, viewportHeight.value);
+
+    if (height >= 780 && height <= 834 && width >= 1024 && width <= 1185) {
+        return 'ipad_9_2021';
+    }
+    if (height < 640) {
+        return 'mobile';
+    }
+    if (height < 1024) {
+        return 'tablet';
+    }
+
+    return 'desktop';
+};
+
+const configuredScreenMode = computed(() => erpSetting.value?.screen_mode ?? 'auto');
+const resolvedScreenMode = computed(() => configuredScreenMode.value === 'auto'
+    ? resolveAutoScreenMode()
+    : configuredScreenMode.value);
+const screenDensity = computed(() => erpSetting.value?.screen_density ?? 'comfortable');
+const shellClasses = computed(() => [
+    `ocn-screen-mode--${resolvedScreenMode.value.replaceAll('_', '-')}`,
+    `ocn-screen-density--${screenDensity.value}`,
+]);
 
 const permissions = computed(() => page.props.auth?.permissions ?? []);
 const usePermissionMenus = computed(() =>
@@ -440,6 +474,8 @@ const pollNotifications = async () => {
 };
 
 onMounted(() => {
+    refreshViewport();
+    window.addEventListener('resize', refreshViewport);
     emitNewNotificationToasts(localNotificationCenter.value);
 
     if (auth.value?.user) {
@@ -450,6 +486,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+    window.removeEventListener('resize', refreshViewport);
     if (notificationPollTimer) {
         window.clearInterval(notificationPollTimer);
     }
@@ -575,12 +612,12 @@ const handleSidebarItemMouseLeave = () => {
 </script>
 
 <template>
-    <div class="min-h-screen ocn-shell">
+    <div :class="['min-h-screen ocn-shell', ...shellClasses]">
         <div v-if="sidebarOpen" class="fixed inset-0 z-40 bg-black/50 md:hidden" @click="sidebarOpen = false" />
 
         <aside
-            :class="['fixed inset-y-0 left-0 z-50 ocn-sidebar flex flex-col transition-all duration-300',
-                desktopSidebarCollapsed ? 'w-20' : 'w-72',
+            :class="['fixed inset-y-0 left-0 z-50 ocn-sidebar ocn-sidebar-shell flex flex-col transition-all duration-300',
+                desktopSidebarCollapsed ? 'ocn-sidebar-shell--collapsed' : 'ocn-sidebar-shell--expanded',
                 sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0']"
         >
             <div :class="['flex items-center border-b border-white/10 py-5', desktopSidebarCollapsed ? 'justify-center px-3' : 'gap-3 px-6']">
@@ -647,8 +684,8 @@ const handleSidebarItemMouseLeave = () => {
             {{ hoveredSidebarItem }}
         </div>
 
-        <div :class="[desktopSidebarCollapsed ? 'md:pl-20' : 'md:pl-72', 'flex flex-col min-h-screen transition-all duration-300']">
-            <header class="sticky top-0 z-30 ocn-topbar px-4 py-3 flex items-center gap-4">
+        <div :class="['ocn-content-shell flex flex-col min-h-screen transition-all duration-300', desktopSidebarCollapsed ? 'ocn-content-shell--collapsed' : 'ocn-content-shell--expanded']">
+            <header class="sticky top-0 z-30 ocn-topbar ocn-topbar-shell flex items-center gap-4">
                 <button class="btn btn-ghost btn-sm md:hidden" @click="sidebarOpen = true">
                     <Bars3Icon class="w-5 h-5" />
                 </button>
@@ -757,8 +794,8 @@ const handleSidebarItemMouseLeave = () => {
             <FlashMessage :flash="flash" />
 
             <main :class="[
-                'flex-1 w-full',
-                isPosFullscreen ? 'px-3 py-4 md:px-4 md:py-5 max-w-none' : 'p-4 md:p-8 max-w-7xl mx-auto',
+                'ocn-main-shell flex-1 w-full',
+                isPosFullscreen ? 'ocn-main-shell--pos' : 'ocn-main-shell--default',
             ]">
                 <slot />
             </main>

@@ -73,6 +73,8 @@ class HandleInertiaRequests extends Middleware
                 'app_tagline' => $erpSetting?->app_tagline ?? 'Integrated Business Platform',
                 'app_logo_url' => $erpSetting?->app_logo_path ? Storage::url($erpSetting->app_logo_path) : null,
                 'module_menu_layout' => $erpSetting?->resolvedModuleMenuLayout() ?? ErpSetting::MODULE_MENU_LAYOUT_GRID,
+                'screen_mode' => $erpSetting?->resolvedScreenMode() ?? ErpSetting::SCREEN_MODE_AUTO,
+                'screen_density' => $erpSetting?->resolvedScreenDensity() ?? ErpSetting::SCREEN_DENSITY_COMFORTABLE,
             ],
             'erpCompanyContext' => fn () => $this->erpCompanyContextProps($request),
             'uiPreferences' => fn () => $user ? $user->resolvedUiPreferences() : User::defaultUiPreferences(),

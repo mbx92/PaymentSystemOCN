@@ -2,16 +2,20 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\CashIn;
-use App\Models\CashOut;
+use App\ERP\Core\Services\ErpCompanyResolver;
 use App\Models\Project;
 use App\Models\TeamDistribution;
+use App\Services\AccountingCashSummaryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
 class DashboardController extends Controller
 {
+    public function __construct(
+        private readonly AccountingCashSummaryService $accountingCashSummaryService,
+    ) {}
+
     public function index(Request $request)
     {
         $user = Auth::user();
@@ -26,25 +30,15 @@ class DashboardController extends Controller
     private function adminDashboard(Request $request)
     {
         $year = $request->get('year', now()->year);
-
-        $totalIncome  = CashIn::sum('amount');
-        $totalExpense = CashOut::sum('amount');
+        $companyId = ErpCompanyResolver::resolveForReporting($request);
+        $cashSummary = $this->accountingCashSummaryService->totals($companyId);
         $activeCount  = Project::active()->count();
-        $netProfit    = $totalIncome - $totalExpense;
         $projectStatus = Project::query()
             ->selectRaw('status, count(*) as total')
             ->groupBy('status')
             ->pluck('total', 'status');
 
-        // Monthly chart data for the selected year
-        $monthlyData = [];
-        for ($m = 1; $m <= 12; $m++) {
-            $monthlyData[] = [
-                'month'   => $m,
-                'income'  => (float) CashIn::whereYear('date', $year)->whereMonth('date', $m)->sum('amount'),
-                'expense' => (float) CashOut::whereYear('date', $year)->whereMonth('date', $m)->sum('amount'),
-            ];
-        }
+        $monthlyData = $this->accountingCashSummaryService->monthlyData((int) $year, $companyId);
 
         $recentProjects = Project::withTrashed(false)
             ->with('payments')
@@ -83,9 +77,9 @@ class DashboardController extends Controller
 
         return Inertia::render('Dashboard/Index', [
             'stats' => [
-                'total_income'  => (float) $totalIncome,
-                'total_expense' => (float) $totalExpense,
-                'net_profit'    => (float) $netProfit,
+                'total_income'  => (float) $cashSummary['cash_in'],
+                'total_expense' => (float) $cashSummary['cash_out'],
+                'net_cashflow'  => (float) $cashSummary['net_cashflow'],
                 'active_count'  => $activeCount,
             ],
             'monthlyData'     => $monthlyData,

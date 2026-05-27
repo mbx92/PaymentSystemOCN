@@ -13,6 +13,8 @@ const form = useForm({
   app_logo: null,
   remove_logo: false,
   module_menu_layout: props.setting?.module_menu_layout ?? 'grid',
+  screen_mode: props.setting?.screen_mode ?? 'auto',
+  screen_density: props.setting?.screen_density ?? 'comfortable',
 });
 
 const onFileChange = (event) => {
@@ -164,6 +166,145 @@ const submit = () => {
           </div>
 
           <p v-if="form.errors.module_menu_layout" class="text-xs text-error">{{ form.errors.module_menu_layout }}</p>
+
+          <div class="flex justify-end">
+            <button class="btn btn-primary" :disabled="form.processing" @click="submit">
+              Simpan ERP Setting
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Setting Layar</h2>
+          <p class="ocn-panel__desc">Atur profil tampilan berdasarkan device. Mode iPad 9 2021 menyiapkan layout khusus untuk layar 10.2 inch.</p>
+        </div>
+        <div class="card-body space-y-5">
+          <div class="space-y-3">
+            <p class="text-sm font-semibold text-base-content">Profil device</p>
+            <div class="grid gap-4 xl:grid-cols-2">
+              <label
+                class="cursor-pointer rounded-2xl border p-4 transition"
+                :class="form.screen_mode === 'auto' ? 'border-primary bg-primary/5' : 'border-base-300 bg-base-100'"
+              >
+                <input v-model="form.screen_mode" type="radio" class="sr-only" value="auto">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-semibold text-base-content">Auto detect</p>
+                    <p class="mt-1 text-sm text-base-content/65">Layout menyesuaikan ukuran layar aktual. Sistem akan memberi treatment khusus saat viewport cocok dengan iPad 9 2021.</p>
+                  </div>
+                  <span class="badge" :class="form.screen_mode === 'auto' ? 'badge-primary' : 'badge-ghost'">Recommended</span>
+                </div>
+              </label>
+
+              <label
+                class="cursor-pointer rounded-2xl border p-4 transition"
+                :class="form.screen_mode === 'desktop' ? 'border-primary bg-primary/5' : 'border-base-300 bg-base-100'"
+              >
+                <input v-model="form.screen_mode" type="radio" class="sr-only" value="desktop">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-semibold text-base-content">Desktop</p>
+                    <p class="mt-1 text-sm text-base-content/65">Ruang kerja lebar untuk monitor kantor atau laptop besar.</p>
+                  </div>
+                  <span class="badge" :class="form.screen_mode === 'desktop' ? 'badge-primary' : 'badge-ghost'">Wide</span>
+                </div>
+              </label>
+
+              <label
+                class="cursor-pointer rounded-2xl border p-4 transition"
+                :class="form.screen_mode === 'tablet' ? 'border-primary bg-primary/5' : 'border-base-300 bg-base-100'"
+              >
+                <input v-model="form.screen_mode" type="radio" class="sr-only" value="tablet">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-semibold text-base-content">Tablet Umum</p>
+                    <p class="mt-1 text-sm text-base-content/65">Spacing lebih rapat, sidebar dan konten lebih efisien untuk layar sentuh menengah.</p>
+                  </div>
+                  <span class="badge" :class="form.screen_mode === 'tablet' ? 'badge-primary' : 'badge-ghost'">Tablet</span>
+                </div>
+              </label>
+
+              <label
+                class="cursor-pointer rounded-2xl border p-4 transition"
+                :class="form.screen_mode === 'ipad_9_2021' ? 'border-primary bg-primary/5' : 'border-base-300 bg-base-100'"
+              >
+                <input v-model="form.screen_mode" type="radio" class="sr-only" value="ipad_9_2021">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-semibold text-base-content">iPad 9 2021 10.2"</p>
+                    <p class="mt-1 text-sm text-base-content/65">Preset khusus untuk viewport iPad 9: sidebar diperkecil, area konten diperlebar, dan padding dibuat lebih nyaman untuk mode sentuh.</p>
+                  </div>
+                  <span class="badge" :class="form.screen_mode === 'ipad_9_2021' ? 'badge-primary' : 'badge-ghost'">Special</span>
+                </div>
+              </label>
+
+              <label
+                class="cursor-pointer rounded-2xl border p-4 transition"
+                :class="form.screen_mode === 'mobile' ? 'border-primary bg-primary/5' : 'border-base-300 bg-base-100'"
+              >
+                <input v-model="form.screen_mode" type="radio" class="sr-only" value="mobile">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-semibold text-base-content">Mobile</p>
+                    <p class="mt-1 text-sm text-base-content/65">Fokus ke satu kolom dengan area sentuh lebih besar untuk smartphone.</p>
+                  </div>
+                  <span class="badge" :class="form.screen_mode === 'mobile' ? 'badge-primary' : 'badge-ghost'">Touch</span>
+                </div>
+              </label>
+            </div>
+            <p v-if="form.errors.screen_mode" class="text-xs text-error">{{ form.errors.screen_mode }}</p>
+          </div>
+
+          <div class="space-y-3">
+            <p class="text-sm font-semibold text-base-content">Kerapatan layout</p>
+            <div class="grid gap-4 lg:grid-cols-2">
+              <label
+                class="cursor-pointer rounded-2xl border p-4 transition"
+                :class="form.screen_density === 'comfortable' ? 'border-primary bg-primary/5' : 'border-base-300 bg-base-100'"
+              >
+                <input v-model="form.screen_density" type="radio" class="sr-only" value="comfortable">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-semibold text-base-content">Comfortable</p>
+                    <p class="mt-1 text-sm text-base-content/65">Jarak elemen lebih lega, nyaman untuk presentasi dan penggunaan sentuh.</p>
+                  </div>
+                  <span class="badge" :class="form.screen_density === 'comfortable' ? 'badge-primary' : 'badge-ghost'">Default</span>
+                </div>
+              </label>
+
+              <label
+                class="cursor-pointer rounded-2xl border p-4 transition"
+                :class="form.screen_density === 'compact' ? 'border-primary bg-primary/5' : 'border-base-300 bg-base-100'"
+              >
+                <input v-model="form.screen_density" type="radio" class="sr-only" value="compact">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-semibold text-base-content">Compact</p>
+                    <p class="mt-1 text-sm text-base-content/65">Lebih banyak informasi per layar untuk operator yang butuh kepadatan data.</p>
+                  </div>
+                  <span class="badge" :class="form.screen_density === 'compact' ? 'badge-primary' : 'badge-ghost'">Dense</span>
+                </div>
+              </label>
+            </div>
+            <p v-if="form.errors.screen_density" class="text-xs text-error">{{ form.errors.screen_density }}</p>
+          </div>
+
+          <div class="rounded-2xl border border-base-300 bg-base-200/60 p-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p class="text-sm font-semibold text-base-content">Preview penerapan</p>
+                <p class="mt-1 text-sm text-base-content/65">
+                  Profil aktif:
+                  <span class="font-semibold text-base-content">{{ form.screen_mode }}</span>
+                  · density:
+                  <span class="font-semibold text-base-content">{{ form.screen_density }}</span>
+                </p>
+              </div>
+              <span class="badge badge-outline">Global ERP layout</span>
+            </div>
+          </div>
 
           <div class="flex justify-end">
             <button class="btn btn-primary" :disabled="form.processing" @click="submit">

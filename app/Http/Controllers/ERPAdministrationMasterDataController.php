@@ -72,6 +72,8 @@ class ERPAdministrationMasterDataController extends Controller
                 'app_logo_path' => $setting?->app_logo_path,
                 'app_logo_url' => $setting?->app_logo_path ? Storage::url($setting->app_logo_path) : null,
                 'module_menu_layout' => $setting?->resolvedModuleMenuLayout() ?? ErpSetting::MODULE_MENU_LAYOUT_GRID,
+                'screen_mode' => $setting?->resolvedScreenMode() ?? ErpSetting::SCREEN_MODE_AUTO,
+                'screen_density' => $setting?->resolvedScreenDensity() ?? ErpSetting::SCREEN_DENSITY_COMFORTABLE,
             ],
         ]);
     }
@@ -84,6 +86,8 @@ class ERPAdministrationMasterDataController extends Controller
             'app_logo' => 'nullable|image|max:2048',
             'remove_logo' => 'nullable|boolean',
             'module_menu_layout' => ['required', Rule::in(ErpSetting::moduleMenuLayoutOptions())],
+            'screen_mode' => ['required', Rule::in(ErpSetting::screenModeOptions())],
+            'screen_density' => ['required', Rule::in(ErpSetting::screenDensityOptions())],
         ]);
 
         $setting = ErpSetting::query()->firstOrCreate([], [
@@ -109,6 +113,8 @@ class ERPAdministrationMasterDataController extends Controller
             'app_tagline' => $validated['app_tagline'] ?? null,
             'app_logo_path' => $logoPath,
             'module_menu_layout' => $validated['module_menu_layout'],
+            'screen_mode' => $validated['screen_mode'],
+            'screen_density' => $validated['screen_density'],
         ]);
 
         return back()->with('flash', ['type' => 'success', 'message' => 'ERP Setting berhasil diperbarui.']);

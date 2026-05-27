@@ -1,6 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import RevenueBarChart from '@/Components/Charts/RevenueBarChart.vue';
+import RevenueLineChart from '@/Components/Charts/RevenueLineChart.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
 import { Link, router } from '@inertiajs/vue3';
 import { useCurrency } from '@/composables/useCurrency';
@@ -53,11 +53,11 @@ const changeYear = (year) => {
                 </div>
                 <div class="ocn-panel ocn-stat-card">
                     <div class="card-body p-5">
-                        <h3 class="text-sm font-medium text-base-content/70">Laba Bersih</h3>
-                        <p :class="['text-2xl font-bold mt-1', stats.net_profit >= 0 ? 'text-primary' : 'text-error']">
-                            {{ format(stats.net_profit) }}
+                        <h3 class="text-sm font-medium text-base-content/70">Net Cashflow</h3>
+                        <p :class="['text-2xl font-bold mt-1', stats.net_cashflow >= 0 ? 'text-primary' : 'text-error']">
+                            {{ format(stats.net_cashflow) }}
                         </p>
-                        <p class="text-xs text-base-content/50 mt-2">Selisih kas masuk dan keluar</p>
+                        <p class="text-xs text-base-content/50 mt-2">Disamakan dengan cashflow accounting, bukan laba rugi akuntansi</p>
                     </div>
                 </div>
                 <div class="ocn-panel ocn-stat-card">
@@ -73,10 +73,10 @@ const changeYear = (year) => {
             <div class="ocn-panel">
                 <div class="ocn-panel__head">
                     <h2 class="ocn-panel__title">Pendapatan vs pengeluaran</h2>
-                    <p class="ocn-panel__desc">Perbandingan bulanan sepanjang {{ selectedYear }}</p>
+                    <p class="ocn-panel__desc">Line chart bulanan sepanjang {{ selectedYear }}</p>
                 </div>
                 <div class="card-body">
-                    <RevenueBarChart :monthly-data="monthlyData" />
+                    <RevenueLineChart :monthly-data="monthlyData" />
                 </div>
             </div>
 
