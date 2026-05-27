@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { reactive, ref, watch } from 'vue';
@@ -179,7 +179,7 @@ watch(
           <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Legacy Import OCN</p>
-              <h1 class="ocn-panel__title mt-1">{{ project.project_number }} · {{ project.title }}</h1>
+              <h1 class="ocn-panel__title mt-1">{{ project.project_number }} &middot; {{ project.title }}</h1>
               <p class="ocn-panel__desc mt-1">Detail compare dan kesiapan import untuk satu project legacy.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
@@ -214,8 +214,8 @@ watch(
         </div>
       </div>
 
-      <div class="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-        <div class="space-y-4">
+      <div class="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+        <div class="min-w-0 space-y-4">
           <div class="rounded-xl border border-base-200 bg-base-100 p-4">
             <div class="flex flex-wrap items-center gap-2">
               <span class="badge badge-sm" :class="importStatusClass(project.import_status)">
@@ -250,8 +250,8 @@ watch(
             </div>
             <div class="mt-4 text-xs text-base-content/60">
               Import key: <code class="rounded bg-base-200 px-1">{{ project.import_key }}</code>
-              <span v-if="generatedAt"> · Generated at {{ generatedAt }}</span>
-              <span v-if="source?.database"> · Source {{ source.database }}</span>
+              <span v-if="generatedAt"> &middot; Generated at {{ generatedAt }}</span>
+              <span v-if="source?.database"> &middot; Source {{ source.database }}</span>
             </div>
           </div>
 
@@ -303,7 +303,7 @@ watch(
 
           <div v-if="project.details?.items?.length" class="rounded-xl border border-base-200 bg-base-100 p-4">
             <div class="font-medium text-base-content">Item project</div>
-            <div class="mt-3 overflow-x-auto">
+            <div v-if="false" class="mt-3 overflow-x-auto">
               <table class="table table-sm">
                 <thead>
                   <tr>
@@ -321,7 +321,7 @@ watch(
                   <tr v-for="item in project.details.items" :key="item.legacy_item_id">
                     <td>
                       <div>{{ item.name }}</div>
-                      <div class="text-[11px] text-base-content/60">{{ item.sku || '-' }} · {{ item.unit || '-' }}</div>
+                      <div class="text-[11px] text-base-content/60">{{ item.sku || '-' }} &middot; {{ item.unit || '-' }}</div>
                     </td>
                     <td>{{ Number(item.quantity || 0).toLocaleString('id-ID') }}</td>
                     <td>{{ Number(item.price || 0).toLocaleString('id-ID') }}</td>
@@ -332,7 +332,7 @@ watch(
                       <div v-if="item.matched_product">{{ item.matched_product.name }}</div>
                       <div v-if="item.matched_product" class="text-[11px] text-base-content/60">{{ item.matched_product.sku }}</div>
                       <div v-if="item.existing_material" class="text-[11px] text-base-content/60">
-                        ERP cost {{ Number(item.existing_material.unit_cost || 0).toLocaleString('id-ID') }} · ERP price {{ Number(item.existing_material.unit_price || 0).toLocaleString('id-ID') }}
+                        ERP cost {{ Number(item.existing_material.unit_cost || 0).toLocaleString('id-ID') }} &middot; ERP price {{ Number(item.existing_material.unit_price || 0).toLocaleString('id-ID') }}
                       </div>
                       <div v-else class="text-base-content/50">Belum ada</div>
                     </td>
@@ -340,6 +340,54 @@ watch(
                   </tr>
                 </tbody>
               </table>
+            </div>
+            <div class="mt-3 space-y-2">
+              <div
+                v-for="item in project.details.items"
+                :key="`compact-${item.legacy_item_id}`"
+                class="rounded-lg border border-base-200 bg-base-200/20 px-3 py-2.5"
+              >
+                <div class="flex flex-col gap-1 md:flex-row md:items-start md:justify-between">
+                  <div class="min-w-0">
+                    <div class="truncate text-sm font-medium text-base-content">{{ item.name }}</div>
+                    <div class="text-[11px] text-base-content/60">{{ item.sku || '-' }} &middot; {{ item.unit || '-' }}</div>
+                  </div>
+                  <span class="badge badge-xs shrink-0" :class="compareStatusClass(item.status)">{{ item.status }}</span>
+                </div>
+
+                <div class="mt-2 grid gap-2 md:grid-cols-5">
+                  <div class="rounded-md bg-base-100 px-2.5 py-2">
+                    <div class="text-[10px] font-semibold uppercase tracking-[0.12em] text-base-content/50">Qty</div>
+                    <div class="mt-1 text-sm font-semibold text-base-content">{{ Number(item.quantity || 0).toLocaleString('id-ID') }}</div>
+                  </div>
+                  <div class="rounded-md bg-base-100 px-2.5 py-2">
+                    <div class="text-[10px] font-semibold uppercase tracking-[0.12em] text-base-content/50">Harga</div>
+                    <div class="mt-1 text-sm font-semibold text-base-content">{{ Number(item.price || 0).toLocaleString('id-ID') }}</div>
+                  </div>
+                  <div class="rounded-md bg-base-100 px-2.5 py-2">
+                    <div class="text-[10px] font-semibold uppercase tracking-[0.12em] text-base-content/50">Cost</div>
+                    <div class="mt-1 text-sm font-semibold text-base-content">{{ Number(item.cost || 0).toLocaleString('id-ID') }}</div>
+                  </div>
+                  <div class="rounded-md bg-base-100 px-2.5 py-2">
+                    <div class="text-[10px] font-semibold uppercase tracking-[0.12em] text-base-content/50">Total</div>
+                    <div class="mt-1 text-sm font-semibold text-base-content">{{ Number(item.total_price || 0).toLocaleString('id-ID') }}</div>
+                  </div>
+                  <div class="rounded-md bg-base-100 px-2.5 py-2">
+                    <div class="text-[10px] font-semibold uppercase tracking-[0.12em] text-base-content/50">Total cost</div>
+                    <div class="mt-1 text-sm font-semibold text-base-content">{{ Number(item.total_cost || 0).toLocaleString('id-ID') }}</div>
+                  </div>
+                </div>
+
+                <div class="mt-2 rounded-md bg-base-100 px-2.5 py-2">
+                  <div class="text-[10px] font-semibold uppercase tracking-[0.12em] text-base-content/50">Match ERP</div>
+                  <div v-if="item.matched_product" class="mt-1 text-sm font-medium text-base-content">{{ item.matched_product.name }}</div>
+                  <div v-if="item.matched_product" class="text-[11px] text-base-content/60">{{ item.matched_product.sku }}</div>
+                  <div v-if="item.existing_material" class="mt-1 text-[11px] text-base-content/65">
+                    ERP cost {{ Number(item.existing_material.unit_cost || 0).toLocaleString('id-ID') }} &middot; ERP price {{ Number(item.existing_material.unit_price || 0).toLocaleString('id-ID') }}
+                  </div>
+                  <div v-else class="mt-1 text-sm text-base-content/50">Belum ada</div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -390,7 +438,7 @@ watch(
                   <tr v-for="payment in project.details.technician_payments" :key="payment.legacy_payment_id">
                     <td>
                       <div>{{ payment.payment_number }}</div>
-                      <div class="text-[11px] text-base-content/60">{{ payment.paid_date || '-' }} · {{ payment.period || '-' }}</div>
+                      <div class="text-[11px] text-base-content/60">{{ payment.paid_date || '-' }} &middot; {{ payment.period || '-' }}</div>
                     </td>
                     <td>
                       <div>{{ payment.technician_name }}</div>
@@ -405,7 +453,7 @@ watch(
           </div>
         </div>
 
-        <div class="space-y-4">
+        <div class="min-w-0 space-y-4">
           <div class="rounded-xl border border-base-200 bg-base-100 p-4">
             <div class="font-medium text-base-content">Aksi terkait</div>
             <div class="mt-3 flex flex-col gap-2">
@@ -453,7 +501,7 @@ watch(
             </div>
           </div>
 
-          <div class="rounded-xl border border-base-200 bg-base-100 p-4">
+          <div v-if="false" class="rounded-xl border border-base-200 bg-base-100 p-4">
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div class="font-medium text-base-content">Procurement terkait</div>
@@ -484,8 +532,8 @@ watch(
                 <summary class="cursor-pointer">
                   <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                     <div>
-                      <div class="font-medium">{{ staging.legacy_project_number }} · {{ staging.legacy_project_name }}</div>
-                      <div class="text-xs text-base-content/60">{{ staging.company_name }} · {{ staging.warehouse_code }} · {{ staging.procurement_date || '-' }}</div>
+                      <div class="font-medium">{{ staging.legacy_project_number }} &middot; {{ staging.legacy_project_name }}</div>
+                      <div class="text-xs text-base-content/60">{{ staging.company_name }} &middot; {{ staging.warehouse_code }} &middot; {{ staging.procurement_date || '-' }}</div>
                     </div>
                     <div class="flex flex-wrap items-center gap-2 text-xs">
                       <span class="badge badge-outline badge-sm">{{ staging.status }}</span>
@@ -508,7 +556,7 @@ watch(
                         <select v-model="procurementStagingDraft(staging).bulk_vendor_id" class="select select-sm select-bordered flex-1" :disabled="staging.status === 'converted'">
                           <option value="">Pilih supplier</option>
                           <option v-for="vendor in procurementVendors" :key="vendor.id" :value="String(vendor.id)">
-                            {{ vendor.code }} · {{ vendor.name }}
+                            {{ vendor.code }} &middot; {{ vendor.name }}
                           </option>
                         </select>
                         <button type="button" class="btn btn-outline btn-sm" :disabled="staging.status === 'converted' || !procurementStagingDraft(staging).bulk_vendor_id" @click="applyVendorToAllProcurementLines(staging)">
@@ -544,7 +592,7 @@ watch(
                         <tr v-for="(line, lineIndex) in staging.lines" :key="line.id">
                           <td>
                             <div>{{ line.product_name }}</div>
-                            <div class="text-[11px] text-base-content/60">{{ line.sku || '-' }} · {{ line.unit || '-' }}</div>
+                            <div class="text-[11px] text-base-content/60">{{ line.sku || '-' }} &middot; {{ line.unit || '-' }}</div>
                           </td>
                           <td class="min-w-24">
                             <input v-model="procurementStagingDraft(staging).lines[lineIndex].qty" type="number" min="0.01" step="0.01" class="input input-xs input-bordered w-24" :disabled="staging.status === 'converted'">
@@ -557,7 +605,7 @@ watch(
                             <select v-model="procurementStagingDraft(staging).lines[lineIndex].vendor_id" class="select select-xs select-bordered w-full" :disabled="staging.status === 'converted'">
                               <option value="">Belum dipilih</option>
                               <option v-for="vendor in procurementVendors" :key="vendor.id" :value="String(vendor.id)">
-                                {{ vendor.code }} · {{ vendor.name }}
+                                {{ vendor.code }} &middot; {{ vendor.name }}
                               </option>
                             </select>
                           </td>
@@ -609,6 +657,218 @@ watch(
               </details>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div class="rounded-xl border border-base-200 bg-base-100 p-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div class="font-medium text-base-content">Procurement terkait</div>
+            <div class="mt-1 text-xs text-base-content/65">
+              Jalankan cek staging setelah master product diubah menjadi <strong>service</strong> agar line jasa dibersihkan dari procurement project ini.
+            </div>
+          </div>
+          <button
+            v-if="relatedProcurementStagings.length"
+            type="button"
+            class="btn btn-outline btn-sm"
+            :disabled="reconcileStagingForm.processing"
+            @click="reconcileProjectProcurementStaging"
+          >
+            {{ reconcileStagingForm.processing ? 'Mengecek staging...' : 'Cek staging project ini' }}
+          </button>
+        </div>
+        <div v-if="!relatedProcurementStagings.length" class="mt-3 text-sm text-base-content/65">
+          Belum ada procurement staging untuk project ini.
+        </div>
+        <div v-else id="procurement-staging" class="mt-3 space-y-4">
+          <details
+            v-for="staging in relatedProcurementStagings"
+            :key="staging.id"
+            class="overflow-hidden rounded-xl border border-base-200 bg-base-200/20"
+            open
+          >
+            <summary class="cursor-pointer list-none bg-base-100 px-4 py-3">
+              <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div class="min-w-0">
+                  <div class="font-medium">{{ staging.legacy_project_number }} &middot; {{ staging.legacy_project_name }}</div>
+                  <div class="text-xs text-base-content/60">{{ staging.company_name }} &middot; {{ staging.warehouse_code }} &middot; {{ staging.procurement_date || '-' }}</div>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 text-xs lg:justify-end">
+                  <span class="badge badge-outline badge-sm">{{ staging.status }}</span>
+                  <span class="badge badge-outline badge-sm">{{ staging.lines.length }} line</span>
+                  <span v-if="staging.conversion_summary?.purchase_orders?.length" class="badge badge-outline badge-sm">{{ staging.conversion_summary.purchase_orders.length }} PO</span>
+                  <span v-if="staging.conversion_summary?.goods_receipts?.length" class="badge badge-outline badge-sm">{{ staging.conversion_summary.goods_receipts.length }} GR</span>
+                </div>
+              </div>
+            </summary>
+
+            <div class="space-y-4 border-t border-base-200 px-4 py-4 text-sm">
+              <div class="grid gap-3 xl:grid-cols-[220px_minmax(0,1fr)]">
+                <div class="rounded-lg border border-base-200 bg-base-100 p-3">
+                  <label class="form-control">
+                    <span class="label-text text-[10px] font-semibold uppercase tracking-[0.14em] text-base-content/55">Tanggal procurement</span>
+                    <input v-model="procurementStagingDraft(staging).procurement_date" type="date" class="input input-sm input-bordered mt-2 w-full" :disabled="staging.status === 'converted'">
+                  </label>
+                </div>
+                <div class="rounded-lg border border-base-200 bg-base-100 p-3">
+                <label class="form-control min-w-0">
+                  <span class="label-text text-[10px] font-semibold uppercase tracking-[0.14em] text-base-content/55">Supplier semua line</span>
+                  <div class="mt-2 flex flex-col gap-2 lg:flex-row lg:items-end">
+                    <select v-model="procurementStagingDraft(staging).bulk_vendor_id" class="select select-sm select-bordered w-full min-w-0 flex-1" :disabled="staging.status === 'converted'">
+                      <option value="">Pilih supplier</option>
+                      <option v-for="vendor in procurementVendors" :key="vendor.id" :value="String(vendor.id)">
+                        {{ vendor.code }} &middot; {{ vendor.name }}
+                      </option>
+                    </select>
+                    <button type="button" class="btn btn-outline btn-sm lg:min-w-32" :disabled="staging.status === 'converted' || !procurementStagingDraft(staging).bulk_vendor_id" @click="applyVendorToAllProcurementLines(staging)">
+                      Terapkan ke semua
+                    </button>
+                  </div>
+                </label>
+                </div>
+              </div>
+
+              <div class="rounded-lg border border-base-200 bg-base-100 p-3">
+              <label class="form-control">
+                <span class="label-text text-[10px] font-semibold uppercase tracking-[0.14em] text-base-content/55">Catatan procurement</span>
+                <textarea
+                  v-model="procurementStagingDraft(staging).notes"
+                  class="textarea textarea-bordered textarea-sm mt-2 min-h-20 w-full"
+                  :disabled="staging.status === 'converted'"
+                  placeholder="Supplier dipilih belakangan, catatan negosiasi, atau instruksi procurement lainnya"
+                />
+              </label>
+              </div>
+
+              <div v-if="false" class="overflow-x-auto">
+                <table class="table table-xs">
+                  <thead>
+                    <tr>
+                      <th>Produk</th>
+                      <th>Qty</th>
+                      <th>Unit cost</th>
+                      <th>Line total</th>
+                      <th>Vendor</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(line, lineIndex) in staging.lines" :key="line.id">
+                      <td>
+                        <div>{{ line.product_name }}</div>
+                        <div class="text-[11px] text-base-content/60">{{ line.sku || '-' }} &middot; {{ line.unit || '-' }}</div>
+                      </td>
+                      <td class="min-w-24">
+                        <input v-model="procurementStagingDraft(staging).lines[lineIndex].qty" type="number" min="0.01" step="0.01" class="input input-xs input-bordered w-24" :disabled="staging.status === 'converted'">
+                      </td>
+                      <td class="min-w-28">
+                        <input v-model="procurementStagingDraft(staging).lines[lineIndex].unit_cost" type="number" min="0" step="0.01" class="input input-xs input-bordered w-28" :disabled="staging.status === 'converted'">
+                      </td>
+                      <td>{{ procurementLineTotal(procurementStagingDraft(staging).lines[lineIndex]).toLocaleString('id-ID') }}</td>
+                      <td class="min-w-56">
+                        <select v-model="procurementStagingDraft(staging).lines[lineIndex].vendor_id" class="select select-xs select-bordered w-full" :disabled="staging.status === 'converted'">
+                          <option value="">Belum dipilih</option>
+                          <option v-for="vendor in procurementVendors" :key="vendor.id" :value="String(vendor.id)">
+                            {{ vendor.code }} &middot; {{ vendor.name }}
+                          </option>
+                        </select>
+                      </td>
+                      <td>
+                        <span class="badge badge-xs" :class="line.status === 'converted' ? 'badge-success' : (procurementStagingDraft(staging).lines[lineIndex].vendor_id ? 'badge-info' : 'badge-warning')">
+                          {{ line.status === 'converted' ? 'converted' : (procurementStagingDraft(staging).lines[lineIndex].vendor_id ? 'ready' : 'draft') }}
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="space-y-2">
+                <div
+                  v-for="(line, lineIndex) in staging.lines"
+                  :key="`compact-${line.id}`"
+                  class="rounded-lg border border-base-200 bg-base-100 px-3 py-3"
+                >
+                  <div class="flex flex-col gap-1.5 lg:flex-row lg:items-start lg:justify-between">
+                    <div class="min-w-0">
+                      <div class="truncate text-sm font-medium text-base-content">{{ line.product_name }}</div>
+                      <div class="text-[11px] text-base-content/60">{{ line.sku || '-' }} &middot; {{ line.unit || '-' }}</div>
+                    </div>
+                    <span class="badge badge-xs shrink-0" :class="line.status === 'converted' ? 'badge-success' : (procurementStagingDraft(staging).lines[lineIndex].vendor_id ? 'badge-info' : 'badge-warning')">
+                      {{ line.status === 'converted' ? 'converted' : (procurementStagingDraft(staging).lines[lineIndex].vendor_id ? 'ready' : 'draft') }}
+                    </span>
+                  </div>
+
+                  <div class="mt-3 grid gap-2 xl:grid-cols-[88px_120px_minmax(0,1fr)_140px]">
+                    <label class="form-control">
+                      <span class="label-text text-[10px] font-semibold uppercase tracking-[0.12em] text-base-content/50">Qty</span>
+                      <input v-model="procurementStagingDraft(staging).lines[lineIndex].qty" type="number" min="0.01" step="0.01" class="input input-xs input-bordered w-full" :disabled="staging.status === 'converted'">
+                    </label>
+                    <label class="form-control">
+                      <span class="label-text text-[10px] font-semibold uppercase tracking-[0.12em] text-base-content/50">Unit cost</span>
+                      <input v-model="procurementStagingDraft(staging).lines[lineIndex].unit_cost" type="number" min="0" step="0.01" class="input input-xs input-bordered w-full" :disabled="staging.status === 'converted'">
+                    </label>
+                    <label class="form-control min-w-0">
+                      <span class="label-text text-[10px] font-semibold uppercase tracking-[0.12em] text-base-content/50">Vendor</span>
+                      <select v-model="procurementStagingDraft(staging).lines[lineIndex].vendor_id" class="select select-xs select-bordered w-full" :disabled="staging.status === 'converted'">
+                        <option value="">Belum dipilih</option>
+                        <option v-for="vendor in procurementVendors" :key="`compact-${line.id}-${vendor.id}`" :value="String(vendor.id)">
+                          {{ vendor.code }} &middot; {{ vendor.name }}
+                        </option>
+                      </select>
+                    </label>
+                    <div class="rounded-md border border-base-200 bg-base-200/40 px-2.5 py-2">
+                      <div class="text-[10px] font-semibold uppercase tracking-[0.12em] text-base-content/50">Line total</div>
+                      <div class="mt-1 text-sm font-semibold text-base-content">{{ procurementLineTotal(procurementStagingDraft(staging).lines[lineIndex]).toLocaleString('id-ID') }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex flex-col gap-3 rounded-lg border border-base-200 bg-base-100 p-3 lg:flex-row lg:items-center lg:justify-between">
+                <div class="text-xs text-base-content/60">
+                  <span v-if="staging.status !== 'converted'">
+                    Simpan draft bila supplier atau qty belum final. Convert akan langsung membentuk PO, GR, dan posting stok.
+                  </span>
+                  <span v-else>
+                    Staging ini sudah dikonversi. Data line tetap ditampilkan sebagai referensi procurement.
+                  </span>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" class="btn btn-outline btn-sm" :disabled="staging.status === 'converted' || procurementStagingSaveForm.processing" @click="saveProcurementStaging(staging)">
+                    {{ procurementStagingSavingId === staging.id && procurementStagingSaveForm.processing ? 'Menyimpan...' : 'Simpan draft staging' }}
+                  </button>
+                  <button type="button" class="btn btn-primary btn-sm" :disabled="!procurementStagingReadyToConvert(staging) || procurementStagingConvertForm.processing || staging.status === 'converted'" @click="convertProcurementStaging(staging)">
+                    {{ procurementStagingConvertingId === staging.id && procurementStagingConvertForm.processing ? 'Mengonversi...' : 'Convert ke PO + GR' }}
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="staging.conversion_summary?.purchase_orders?.length || staging.conversion_summary?.goods_receipts?.length" class="rounded-lg border border-success/30 bg-success/10 p-3 text-sm">
+                <div class="font-medium text-base-content">Dokumen hasil konversi</div>
+                <div v-if="staging.converted_at" class="mt-1 text-xs text-base-content/65">
+                  Dikonversi {{ staging.converted_at }}<span v-if="staging.converted_by_name"> oleh {{ staging.converted_by_name }}</span>
+                </div>
+                <div v-if="staging.conversion_summary?.purchase_orders?.length" class="mt-3">
+                  <div class="text-xs uppercase tracking-[0.12em] text-base-content/60">Purchase Order</div>
+                  <div class="mt-1 flex flex-wrap gap-2">
+                    <Link v-for="po in staging.conversion_summary.purchase_orders" :key="po.number" class="link link-primary text-sm" :href="route('erp.purchasing.purchase-orders.show', po.number)">
+                      {{ po.number }}
+                    </Link>
+                  </div>
+                </div>
+                <div v-if="staging.conversion_summary?.goods_receipts?.length" class="mt-3">
+                  <div class="text-xs uppercase tracking-[0.12em] text-base-content/60">Goods Receipt</div>
+                  <div class="mt-1 flex flex-wrap gap-2">
+                    <Link v-for="gr in staging.conversion_summary.goods_receipts" :key="gr.number" class="link link-primary text-sm" :href="route('erp.purchasing.goods-receipts.show', gr.number)">
+                      {{ gr.number }}
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </details>
         </div>
       </div>
     </div>

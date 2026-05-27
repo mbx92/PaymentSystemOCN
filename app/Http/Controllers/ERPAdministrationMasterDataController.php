@@ -993,6 +993,7 @@ class ERPAdministrationMasterDataController extends Controller
                     'name' => $product->name,
                     'warehouse_id' => $product->warehouse_id,
                 ]),
+            'svcSkuNormalizationSummary' => $this->svcSkuNormalizationSummary(),
             'backupMeta' => $this->databaseBackupService->backupMeta(),
             'legacyQcReport' => session('legacy_project_sales_qc'),
             'procurementVendors' => Vendor::query()
@@ -1045,6 +1046,47 @@ class ERPAdministrationMasterDataController extends Controller
                     ])->values(),
                 ]),
         ]);
+    }
+
+    public function normalizeSvcSkuProducts(): RedirectResponse
+    {
+        $updatedCount = 0;
+
+        DB::transaction(function () use (&$updatedCount): void {
+            MasterProduct::query()
+                ->where('sku', 'like', 'SVC-%')
+                ->orderBy('id')
+                ->chunkById(100, function ($products) use (&$updatedCount): void {
+                    foreach ($products as $product) {
+                        $needsUpdate = $product->product_type !== MasterProduct::PRODUCT_TYPE_SERVICE
+                            || $product->warehouse_id !== null
+                            || (float) $product->stock !== 0.0
+                            || (float) $product->min_stock !== 0.0
+                            || (bool) $product->low_stock_alert_enabled !== false;
+
+                        if (! $needsUpdate) {
+                            continue;
+                        }
+
+                        $product->forceFill([
+                            'product_type' => MasterProduct::PRODUCT_TYPE_SERVICE,
+                            'warehouse_id' => null,
+                            'stock' => 0,
+                            'min_stock' => 0,
+                            'low_stock_alert_enabled' => false,
+                        ])->save();
+
+                        $updatedCount++;
+                    }
+                });
+        });
+
+        return redirect()
+            ->route('erp.admin.data-import', ['tab' => 'products'])
+            ->with('flash', [
+                'type' => 'success',
+                'message' => "Normalisasi SKU SVC ke Jasa / Non Stok selesai. {$updatedCount} produk diperbarui.",
+            ]);
     }
 
     public function legacyImport(): Response
@@ -2271,6 +2313,52 @@ class ERPAdministrationMasterDataController extends Controller
             ->values();
 
         return $notes->isEmpty() ? null : $notes->implode("\n");
+    }
+
+    private function svcSkuNormalizationSummary(): array
+    {
+        $products = MasterProduct::query()
+            ->with('warehouse:id,code,name')
+            ->where('sku', 'like', 'SVC-%')
+            ->orderBy('sku')
+            ->get([
+                'id',
+                'sku',
+                'name',
+                'product_type',
+                'warehouse_id',
+                'stock',
+                'min_stock',
+                'low_stock_alert_enabled',
+            ]);
+
+        $pending = $products->filter(function (MasterProduct $product): bool {
+            return $product->product_type !== MasterProduct::PRODUCT_TYPE_SERVICE
+                || $product->warehouse_id !== null
+                || (float) $product->stock !== 0.0
+                || (float) $product->min_stock !== 0.0
+                || (bool) $product->low_stock_alert_enabled !== false;
+        })->values();
+
+        return [
+            'total_count' => $products->count(),
+            'pending_count' => $pending->count(),
+            'normalized_count' => $products->count() - $pending->count(),
+            'samples' => $pending
+                ->take(8)
+                ->map(fn (MasterProduct $product) => [
+                    'id' => $product->id,
+                    'sku' => $product->sku,
+                    'name' => $product->name,
+                    'product_type' => $product->product_type,
+                    'warehouse_name' => $product->warehouse?->name,
+                    'warehouse_code' => $product->warehouse?->code,
+                    'stock' => (float) $product->stock,
+                    'min_stock' => (float) $product->min_stock,
+                    'low_stock_alert_enabled' => (bool) $product->low_stock_alert_enabled,
+                ])
+                ->values(),
+        ];
     }
 
     public function serverMonitoring(ServerMetricsService $metrics): Response

@@ -14,6 +14,7 @@ const props = defineProps({
   seeders: { type: Array, default: () => [] },
   warehouses: { type: Array, default: () => [] },
   projectMaterialProducts: { type: Array, default: () => [] },
+  svcSkuNormalizationSummary: { type: Object, default: () => ({ total_count: 0, pending_count: 0, normalized_count: 0, samples: [] }) },
   backupMeta: { type: Object, default: () => ({}) },
   legacyQcReport: { type: Object, default: null },
   procurementVendors: { type: Array, default: () => [] },
@@ -51,6 +52,7 @@ const customerForm = useForm({ file: null });
 const legacyQcForm = useForm({});
 const legacyImportForm = useForm({ import_keys: [] });
 const clearWarehouseForm = useForm({ warehouse_id: '' });
+const normalizeSvcSkuForm = useForm({});
 const syncOriginWarehouseForm = useForm({});
 const syncProjectMaterialWarehouseForm = useForm({});
 const relocateProjectMaterialForm = useForm({
@@ -74,6 +76,7 @@ const warehouseClearTargetLabel = computed(() => {
 
 const canConfirmWarehouseClear = computed(() => clearWarehouseDeletePhrase.value.trim().toUpperCase() === 'CONFRIM');
 const canConfirmAction = computed(() => actionConfirmPhrase.value.trim().toUpperCase() === 'CONFRIM');
+const svcSkuSummary = computed(() => props.svcSkuNormalizationSummary ?? { total_count: 0, pending_count: 0, normalized_count: 0, samples: [] });
 
 const flash = computed(() => page.props.flash ?? {});
 const importErrors = computed(() => flash.value?.import_errors ?? []);
@@ -381,6 +384,7 @@ const actionConfirmTitle = computed(() => {
   if (pendingAction.value.type === 'import-projects') return 'Konfirmasi impor project';
   if (pendingAction.value.type === 'import-customers') return 'Konfirmasi impor customer';
   if (pendingAction.value.type === 'run-all-seeders') return 'Konfirmasi jalankan semua seeder';
+  if (pendingAction.value.type === 'normalize-svc-skus') return 'Konfirmasi normalisasi SKU SVC';
 
   return 'Konfirmasi jalankan seeder';
 });
@@ -402,6 +406,10 @@ const actionConfirmDescription = computed(() => {
 
   if (pendingAction.value.type === 'run-all-seeders') {
     return 'Anda akan menjalankan seluruh daftar seeder pada halaman ini secara berurutan. Gunakan hanya bila Anda memang ingin mengisi data master awal secara massal.';
+  }
+
+  if (pendingAction.value.type === 'normalize-svc-skus') {
+    return `Anda akan mengubah ${svcSkuSummary.value.pending_count || 0} produk dengan SKU prefix SVC- menjadi Jasa / Non Stok. Sistem akan mengosongkan warehouse asal, mematikan alert stok rendah, dan mengatur stok serta minimum stok menjadi 0.`;
   }
 
   return `Anda akan menjalankan seeder ${pendingAction.value.seeder?.label ?? pendingAction.value.seeder?.class ?? ''}. Pastikan aksi ini memang diperlukan untuk data saat ini.`;
@@ -442,6 +450,11 @@ async function submitPendingAction() {
     return;
   }
 
+  if (action.type === 'normalize-svc-skus') {
+    normalizeSvcSkuProducts();
+    return;
+  }
+
   if (action.type === 'run-seeder' && action.seeder) {
     await runSeeder(action.seeder);
   }
@@ -461,6 +474,12 @@ function submitClearWarehouseProductsFromModal() {
 
 function syncOriginWarehouses() {
   syncOriginWarehouseForm.post(route('erp.admin.data-import.master-products.sync-origin-warehouses'), {
+    preserveScroll: true,
+  });
+}
+
+function normalizeSvcSkuProducts() {
+  normalizeSvcSkuForm.post(route('erp.admin.data-import.master-products.normalize-svc-services'), {
     preserveScroll: true,
   });
 }
@@ -724,6 +743,75 @@ async function runAllSeeders() {
                 {{ syncOriginWarehouseForm.processing ? 'Memproses…' : 'Sync warehouse asal item' }}
               </button>
             </div>
+          </div>
+
+          <div class="rounded-2xl border border-base-200 bg-base-200/30 p-4 space-y-4">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <h3 class="font-semibold text-sm">Normalisasi SKU SVC ke Jasa / Non Stok</h3>
+                <p class="text-xs text-base-content/70 mt-1">
+                  Gunakan utilitas ini untuk merapikan produk dengan prefix <code>SVC-</code> agar diperlakukan sebagai jasa.
+                  Sistem akan mengubah tipe menjadi <code>service</code>, mengosongkan warehouse asal, dan menonaktifkan perilaku stok.
+                </p>
+              </div>
+              <button
+                type="button"
+                class="btn btn-warning btn-sm"
+                :disabled="!svcSkuSummary.pending_count || normalizeSvcSkuForm.processing"
+                @click="openActionConfirmModal({ type: 'normalize-svc-skus' })"
+              >
+                {{ normalizeSvcSkuForm.processing ? 'Memproses…' : 'Normalisasi SKU SVC' }}
+              </button>
+            </div>
+
+            <div class="grid gap-3 md:grid-cols-3">
+              <div class="rounded-xl border border-base-200 bg-base-100 p-3">
+                <div class="text-[11px] font-semibold uppercase tracking-[0.12em] text-base-content/60">Total SKU SVC</div>
+                <div class="mt-2 text-2xl font-semibold">{{ svcSkuSummary.total_count || 0 }}</div>
+              </div>
+              <div class="rounded-xl border border-warning/30 bg-warning/10 p-3">
+                <div class="text-[11px] font-semibold uppercase tracking-[0.12em] text-base-content/60">Perlu dinormalisasi</div>
+                <div class="mt-2 text-2xl font-semibold text-warning">{{ svcSkuSummary.pending_count || 0 }}</div>
+              </div>
+              <div class="rounded-xl border border-success/30 bg-success/10 p-3">
+                <div class="text-[11px] font-semibold uppercase tracking-[0.12em] text-base-content/60">Sudah normal</div>
+                <div class="mt-2 text-2xl font-semibold text-success">{{ svcSkuSummary.normalized_count || 0 }}</div>
+              </div>
+            </div>
+
+            <div v-if="svcSkuSummary.samples?.length" class="overflow-x-auto">
+              <table class="table table-sm">
+                <thead>
+                  <tr>
+                    <th>SKU</th>
+                    <th>Produk</th>
+                    <th>Tipe</th>
+                    <th>Warehouse</th>
+                    <th class="text-right">Stok</th>
+                    <th class="text-right">Min</th>
+                    <th>Alert</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="product in svcSkuSummary.samples" :key="product.id">
+                    <td class="font-mono text-xs">{{ product.sku }}</td>
+                    <td class="font-medium">{{ product.name }}</td>
+                    <td>{{ product.product_type }}</td>
+                    <td>{{ product.warehouse_code ? `${product.warehouse_code} - ${product.warehouse_name}` : '-' }}</td>
+                    <td class="text-right">{{ Number(product.stock || 0).toLocaleString('id-ID') }}</td>
+                    <td class="text-right">{{ Number(product.min_stock || 0).toLocaleString('id-ID') }}</td>
+                    <td>
+                      <span class="badge badge-xs" :class="product.low_stock_alert_enabled ? 'badge-warning' : 'badge-success'">
+                        {{ product.low_stock_alert_enabled ? 'aktif' : 'off' }}
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p v-else class="text-xs text-base-content/60">
+              Tidak ada produk SKU <code>SVC-</code> yang masih perlu dinormalisasi.
+            </p>
           </div>
 
           <div class="rounded-xl border border-base-200 bg-base-200/30 p-4 space-y-3">
