@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Core\Services\ErpCompanyResolver;
+use App\ERP\Core\Services\FiscalPeriodService;
 use App\ERP\Shared\Enums\DocumentStatus;
 use App\Models\CashOut;
 use App\Models\CategoryCoaMapping;
@@ -20,7 +21,10 @@ use Inertia\Response;
 
 class OperationalController extends Controller
 {
-    public function __construct(private readonly GlPostingService $glPostingService) {}
+    public function __construct(
+        private readonly GlPostingService $glPostingService,
+        private readonly FiscalPeriodService $fiscalPeriodService,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -82,8 +86,10 @@ class OperationalController extends Controller
             'note' => 'nullable|string|max:1000',
             'recipient_name' => 'nullable|string|max:255',
         ]);
+        $companyId = ErpCompanyResolver::resolveForGlPosting($request);
+        $this->fiscalPeriodService->ensureDateIsOpen($validated['date'], $companyId, 'date', 'Posting biaya operasional');
 
-        DB::transaction(function () use ($validated, $request): void {
+        DB::transaction(function () use ($validated, $companyId): void {
             $expenseAccountId = $this->resolveExpenseAccountId();
             $payload = [
                 'project_id' => $validated['project_id'] ?? null,
@@ -105,7 +111,7 @@ class OperationalController extends Controller
             $expenseAccount = Account::query()->findOrFail($expenseAccountId);
             $cashAccount = Account::query()->findOrFail((int) $validated['cash_account_id']);
             $entry = $this->glPostingService->post(
-                ErpCompanyResolver::resolveForGlPosting($request),
+                $companyId,
                 sourceModule: 'operational_cash_out',
                 sourceReference: (string) $cashOut->id,
                 description: 'Biaya operasional'.($cashOut->project_id ? ' proyek '.$cashOut->project_id : ''),
@@ -126,6 +132,8 @@ class OperationalController extends Controller
     {
         abort_unless($cashOut->category === 'operasional', 404);
         $this->authorizeMutation($cashOut->created_by);
+        $companyId = $this->resolvedCompanyId($cashOut);
+        $this->fiscalPeriodService->ensureDateIsOpen($cashOut->date ?? now(), $companyId, 'date', 'Perubahan biaya operasional');
 
         $validated = $request->validate([
             'project_id' => 'nullable|uuid|exists:projects,id',
@@ -135,6 +143,7 @@ class OperationalController extends Controller
             'note' => 'nullable|string|max:1000',
             'recipient_name' => 'nullable|string|max:255',
         ]);
+        $this->fiscalPeriodService->ensureDateIsOpen($validated['date'], $companyId, 'date', 'Perubahan biaya operasional');
 
         $cashOut->update(array_merge($validated, ['category' => 'operasional']));
 
@@ -145,6 +154,7 @@ class OperationalController extends Controller
     {
         abort_unless($cashOut->category === 'operasional', 404);
         $this->authorizeMutation($cashOut->created_by);
+        $this->fiscalPeriodService->ensureDateIsOpen($cashOut->date ?? now(), $this->resolvedCompanyId($cashOut), 'date', 'Penghapusan biaya operasional');
         $cashOut->delete();
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Biaya operasional berhasil dihapus.']);
@@ -176,5 +186,12 @@ class OperationalController extends Controller
             return;
         }
         abort(403, 'Anda tidak memiliki izin untuk mengubah transaksi ini.');
+    }
+
+    private function resolvedCompanyId(CashOut $cashOut): ?int
+    {
+        $cashOut->loadMissing(['journalEntry:id,company_id', 'creator:id,company_id']);
+
+        return $cashOut->journalEntry?->company_id ?? $cashOut->creator?->company_id;
     }
 }

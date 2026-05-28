@@ -3,12 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\ERP\Accounting\Models\Account;
+use App\ERP\Accounting\Models\JournalLine;
 use App\ERP\Accounting\Models\PayablePayment;
 use App\ERP\Core\Models\Company;
 use App\ERP\Core\Services\ErpCompanyResolver;
+use App\ERP\Shared\Enums\DocumentStatus;
 use App\Models\CashIn;
 use App\Models\CashOut;
 use App\Models\PosSale;
+use App\Models\AccountingInventoryRecord;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -26,6 +29,8 @@ class ERPAccountingOverviewController extends Controller
         [$dateFrom, $dateTo] = $this->resolveDateRange($request, $selectedYear);
         $posRows = $this->posOverviewRows($companyId, $dateFrom, $dateTo);
         $supplierPaymentRows = $this->supplierPaymentOverviewRows($companyId, $dateFrom, $dateTo);
+        $inventoryRows = $this->inventoryOverviewRows($companyId, $dateFrom, $dateTo);
+        $openingCashByAccount = $this->openingCashBalanceByAccount($companyId, $dateFrom);
 
         $periodCashInTotal = (float) $this->applyDateRange($this->cashInBaseQuery($companyId), $dateFrom, $dateTo)
             ->sum('amount')
@@ -33,11 +38,14 @@ class ERPAccountingOverviewController extends Controller
         $periodCashOutTotal = (float) $this->applyDateRange($this->cashOutBaseQuery($companyId), $dateFrom, $dateTo)
             ->sum('amount')
             + (float) $posRows->where('direction', 'out')->sum('amount')
-            + (float) $supplierPaymentRows->sum('amount');
+            + (float) $supplierPaymentRows->sum('amount')
+            + (float) $inventoryRows->sum('amount');
 
-        $cashBalanceByAccount = $this->cashBalanceByAccount($companyId, $posRows, $supplierPaymentRows);
-        $companySummaries = $this->companySummaries($companyId, $dateFrom, $dateTo, $posRows, $supplierPaymentRows);
-        $transactionBreakdown = $this->transactionBreakdown($companyId, $dateFrom, $dateTo, $posRows, $supplierPaymentRows);
+        $cashBalanceByAccount = $this->cashBalanceByAccount($companyId, $dateFrom, $dateTo, $openingCashByAccount, $posRows, $supplierPaymentRows, $inventoryRows);
+        $companySummaries = $this->companySummaries($companyId, $dateFrom, $dateTo, $posRows, $supplierPaymentRows, $inventoryRows);
+        $transactionBreakdown = $this->transactionBreakdown($companyId, $dateFrom, $dateTo, $posRows, $supplierPaymentRows, $inventoryRows);
+        $openingCashBalance = (float) $cashBalanceByAccount->sum('opening_balance');
+        $endingCashBalance = (float) $cashBalanceByAccount->sum('ending_balance');
 
         return Inertia::render('ERP/Accounting/Overview', [
             'selected_year' => $selectedYear,
@@ -50,16 +58,18 @@ class ERPAccountingOverviewController extends Controller
                 'cash_in_year' => $periodCashInTotal,
                 'cash_out_year' => $periodCashOutTotal,
                 'net_year' => $periodCashInTotal - $periodCashOutTotal,
-                'cash_balance' => (float) $cashBalanceByAccount->sum('balance'),
+                'opening_cash_balance' => $openingCashBalance,
+                'cash_balance' => $endingCashBalance,
+                'ending_cash_balance' => $endingCashBalance,
                 'cash_account_count' => $cashBalanceByAccount->count(),
                 'company_count' => $companySummaries->count(),
             ],
-            'monthly_data' => $this->monthlyData($companyId, $dateFrom, $dateTo, $posRows, $supplierPaymentRows),
+            'monthly_data' => $this->monthlyData($companyId, $dateFrom, $dateTo, $posRows, $supplierPaymentRows, $inventoryRows),
             'cash_balance_chart' => $cashBalanceByAccount
                 ->take(8)
                 ->map(fn (array $row): array => [
                     'label' => $row['account_label'],
-                    'value' => max($row['balance'], 0),
+                    'value' => max($row['ending_balance'], 0),
                 ])
                 ->values()
                 ->all(),
@@ -122,7 +132,7 @@ class ERPAccountingOverviewController extends Controller
     /**
      * @return list<array{month:int,income:float,expense:float,net:float}>
      */
-    private function monthlyData(?int $companyId, ?Carbon $dateFrom, ?Carbon $dateTo, Collection $posRows, Collection $supplierPaymentRows): array
+    private function monthlyData(?int $companyId, ?Carbon $dateFrom, ?Carbon $dateTo, Collection $posRows, Collection $supplierPaymentRows, Collection $inventoryRows): array
     {
         $incomeRows = $this->applyDateRange($this->cashInBaseQuery($companyId), $dateFrom, $dateTo)
             ->get(['date', 'amount']);
@@ -151,13 +161,17 @@ class ERPAccountingOverviewController extends Controller
         $supplierExpenseByMonth = $supplierPaymentRows
             ->groupBy(fn (array $row) => (int) Carbon::parse($row['date'])->format('n'))
             ->map(fn (Collection $rows) => (float) $rows->sum('amount'));
+        $inventoryExpenseByMonth = $inventoryRows
+            ->groupBy(fn (array $row) => (int) Carbon::parse($row['date'])->format('n'))
+            ->map(fn (Collection $rows) => (float) $rows->sum('amount'));
 
         return collect(range(1, 12))
-            ->map(function (int $month) use ($incomeByMonth, $expenseByMonth, $posIncomeByMonth, $posExpenseByMonth, $supplierExpenseByMonth): array {
+            ->map(function (int $month) use ($incomeByMonth, $expenseByMonth, $posIncomeByMonth, $posExpenseByMonth, $supplierExpenseByMonth, $inventoryExpenseByMonth): array {
                 $income = (float) ($incomeByMonth[$month] ?? 0) + (float) ($posIncomeByMonth[$month] ?? 0);
                 $expense = (float) ($expenseByMonth[$month] ?? 0)
                     + (float) ($posExpenseByMonth[$month] ?? 0)
-                    + (float) ($supplierExpenseByMonth[$month] ?? 0);
+                    + (float) ($supplierExpenseByMonth[$month] ?? 0)
+                    + (float) ($inventoryExpenseByMonth[$month] ?? 0);
 
                 return [
                     'month' => $month,
@@ -172,15 +186,15 @@ class ERPAccountingOverviewController extends Controller
     /**
      * @return Collection<int, array{account_id:int,account_label:string,income:float,expense:float,balance:float}>
      */
-    private function cashBalanceByAccount(?int $companyId, Collection $posRows, Collection $supplierPaymentRows): Collection
+    private function cashBalanceByAccount(?int $companyId, ?Carbon $dateFrom, ?Carbon $dateTo, Collection $openingCashByAccount, Collection $posRows, Collection $supplierPaymentRows, Collection $inventoryRows): Collection
     {
-        $incomeByAccount = $this->cashInBaseQuery($companyId)
+        $incomeByAccount = $this->applyDateRange($this->cashInBaseQuery($companyId), $dateFrom, $dateTo)
             ->whereNotNull('cash_account_id')
             ->selectRaw('cash_account_id, SUM(amount) as total')
             ->groupBy('cash_account_id')
             ->pluck('total', 'cash_account_id');
 
-        $expenseByAccount = $this->cashOutBaseQuery($companyId)
+        $expenseByAccount = $this->applyDateRange($this->cashOutBaseQuery($companyId), $dateFrom, $dateTo)
             ->whereNotNull('cash_account_id')
             ->selectRaw('cash_account_id, SUM(amount) as total')
             ->groupBy('cash_account_id')
@@ -202,12 +216,18 @@ class ERPAccountingOverviewController extends Controller
             ->whereNotNull('cash_account_id')
             ->groupBy('cash_account_id')
             ->map(fn (Collection $rows) => (float) $rows->sum('amount'));
+        $inventoryExpenseByAccount = $inventoryRows
+            ->whereNotNull('cash_account_id')
+            ->groupBy('cash_account_id')
+            ->map(fn (Collection $rows) => (float) $rows->sum('amount'));
 
-        $accountIds = collect($incomeByAccount->keys())
+        $accountIds = collect($openingCashByAccount->keys())
+            ->merge($incomeByAccount->keys())
             ->merge($expenseByAccount->keys())
             ->merge($posIncomeByAccount->keys())
             ->merge($posExpenseByAccount->keys())
             ->merge($supplierExpenseByAccount->keys())
+            ->merge($inventoryExpenseByAccount->keys())
             ->map(fn ($id) => (int) $id)
             ->unique()
             ->values();
@@ -228,32 +248,58 @@ class ERPAccountingOverviewController extends Controller
         $supplierAccountLabels = $supplierPaymentRows
             ->whereNotNull('cash_account_id')
             ->pluck('cash_account_label', 'cash_account_id');
+        $inventoryAccountLabels = $inventoryRows
+            ->whereNotNull('cash_account_id')
+            ->pluck('cash_account_label', 'cash_account_id');
 
         return $accountIds
-            ->map(function (int $accountId) use ($accounts, $incomeByAccount, $expenseByAccount, $posIncomeByAccount, $posExpenseByAccount, $supplierExpenseByAccount, $posAccountLabels, $supplierAccountLabels): array {
+            ->map(function (int $accountId) use ($accounts, $openingCashByAccount, $incomeByAccount, $expenseByAccount, $posIncomeByAccount, $posExpenseByAccount, $supplierExpenseByAccount, $inventoryExpenseByAccount, $posAccountLabels, $supplierAccountLabels, $inventoryAccountLabels): array {
                 $account = $accounts->get($accountId);
+                $openingBalance = (float) ($openingCashByAccount[$accountId] ?? 0);
                 $income = (float) ($incomeByAccount[$accountId] ?? 0) + (float) ($posIncomeByAccount[$accountId] ?? 0);
                 $expense = (float) ($expenseByAccount[$accountId] ?? 0)
                     + (float) ($posExpenseByAccount[$accountId] ?? 0)
-                    + (float) ($supplierExpenseByAccount[$accountId] ?? 0);
+                    + (float) ($supplierExpenseByAccount[$accountId] ?? 0)
+                    + (float) ($inventoryExpenseByAccount[$accountId] ?? 0);
+                $endingBalance = $openingBalance + $income - $expense;
 
                 return [
                     'account_id' => $accountId,
                     'account_label' => $account?->displayLabel()
-                        ?? (string) ($posAccountLabels[$accountId] ?? $supplierAccountLabels[$accountId] ?? 'Akun kas/bank tidak dikenal'),
+                        ?? (string) ($posAccountLabels[$accountId] ?? $supplierAccountLabels[$accountId] ?? $inventoryAccountLabels[$accountId] ?? 'Akun kas/bank tidak dikenal'),
+                    'opening_balance' => $openingBalance,
                     'income' => $income,
                     'expense' => $expense,
-                    'balance' => $income - $expense,
+                    'ending_balance' => $endingBalance,
+                    'balance' => $endingBalance,
                 ];
             })
-            ->sortByDesc(fn (array $row) => $row['balance'])
+            ->sortByDesc(fn (array $row) => $row['ending_balance'])
             ->values();
+    }
+
+    /**
+     * @return Collection<int, float>
+     */
+    private function openingCashBalanceByAccount(?int $companyId, Carbon $dateFrom): Collection
+    {
+        return JournalLine::query()
+            ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->where('accounts.is_cash_bank', true)
+            ->where('accounts.type', 'asset')
+            ->where('journal_entries.status', DocumentStatus::Posted->value)
+            ->when($companyId, fn ($q) => $q->where('journal_entries.company_id', $companyId))
+            ->whereDate('journal_entries.entry_date', '<', $dateFrom->toDateString())
+            ->groupBy('journal_lines.account_id')
+            ->pluck(DB::raw('SUM(journal_lines.debit - journal_lines.credit) as opening_balance'), 'journal_lines.account_id')
+            ->map(fn ($balance): float => (float) $balance);
     }
 
     /**
      * @return Collection<int, array{company_id:int|null,company_name:string,cash_in_year:float,cash_out_year:float,net_year:float}>
      */
-    private function companySummaries(?int $companyId, ?Carbon $dateFrom, ?Carbon $dateTo, Collection $posRows, Collection $supplierPaymentRows): Collection
+    private function companySummaries(?int $companyId, ?Carbon $dateFrom, ?Carbon $dateTo, Collection $posRows, Collection $supplierPaymentRows, Collection $inventoryRows): Collection
     {
         $resolvedCompanyIdSql = 'COALESCE(journal_entries.company_id, users.company_id)';
         $resolvedCompanyNameSql = "COALESCE(journal_companies.name, user_companies.name, 'Belum ditentukan')";
@@ -353,6 +399,21 @@ class ERPAccountingOverviewController extends Controller
             $summaryMap[$key] = $existing;
         }
 
+        foreach ($inventoryRows as $row) {
+            $key = $row['company_id'] !== null ? (string) $row['company_id'] : 'null';
+            $existing = $summaryMap[$key] ?? [
+                'company_id' => $row['company_id'],
+                'company_name' => $row['company_name'],
+                'cash_in_year' => 0.0,
+                'cash_out_year' => 0.0,
+                'net_year' => 0.0,
+            ];
+
+            $existing['cash_out_year'] += (float) $row['amount'];
+            $existing['net_year'] = $existing['cash_in_year'] - $existing['cash_out_year'];
+            $summaryMap[$key] = $existing;
+        }
+
         return collect($summaryMap)
             ->sortByDesc(fn (array $row) => $row['net_year'])
             ->values();
@@ -364,7 +425,7 @@ class ERPAccountingOverviewController extends Controller
      *     highlights: list<array{label:string,income:float,expense:float}>
      * }
      */
-    private function transactionBreakdown(?int $companyId, ?Carbon $dateFrom, ?Carbon $dateTo, Collection $posRows, Collection $supplierPaymentRows): array
+    private function transactionBreakdown(?int $companyId, ?Carbon $dateFrom, ?Carbon $dateTo, Collection $posRows, Collection $supplierPaymentRows, Collection $inventoryRows): array
     {
         $incomeRows = DB::table('cash_in')
             ->leftJoin('cash_categories', function ($join): void {
@@ -442,6 +503,17 @@ class ERPAccountingOverviewController extends Controller
         }
 
         foreach ($supplierPaymentRows as $row) {
+            $key = (string) $row['category'];
+            $existing = $bucket[$key] ?? [
+                'label' => $this->humanizeCategoryLabel((string) $row['category']),
+                'income' => 0.0,
+                'expense' => 0.0,
+            ];
+            $existing['expense'] += (float) $row['amount'];
+            $bucket[$key] = $existing;
+        }
+
+        foreach ($inventoryRows as $row) {
             $key = (string) $row['category'];
             $existing = $bucket[$key] ?? [
                 'label' => $this->humanizeCategoryLabel((string) $row['category']),
@@ -602,6 +674,50 @@ class ERPAccountingOverviewController extends Controller
                 'category' => 'pembayaran_hutang_supplier',
                 'cash_account_id' => $payment->cash_account_id ? (int) $payment->cash_account_id : null,
                 'cash_account_label' => $payment->cashAccount?->displayLabel(),
+            ];
+        })->values();
+    }
+
+    /**
+     * @return Collection<int, array{
+     *     company_id:int|null,
+     *     company_name:string,
+     *     date:string,
+     *     amount:float,
+     *     category:string,
+     *     cash_account_id:int|null,
+     *     cash_account_label:string|null
+     * }>
+     */
+    private function inventoryOverviewRows(?int $companyId, ?Carbon $dateFrom, ?Carbon $dateTo): Collection
+    {
+        $records = AccountingInventoryRecord::query()
+            ->with(['journalEntry:id,company_id', 'cashAccount:id,code,name'])
+            ->when($companyId, fn (Builder $q) => $q->whereHas('journalEntry', fn (Builder $journal) => $journal->where('company_id', $companyId)))
+            ->when($dateFrom, fn (Builder $q) => $q->whereDate('acquisition_date', '>=', $dateFrom->toDateString()))
+            ->when($dateTo, fn (Builder $q) => $q->whereDate('acquisition_date', '<=', $dateTo->toDateString()))
+            ->orderBy('acquisition_date')
+            ->get(['id', 'acquisition_date', 'amount', 'cash_account_id', 'journal_entry_id']);
+
+        if ($records->isEmpty()) {
+            return collect();
+        }
+
+        $companyNames = Company::query()
+            ->whereIn('id', $records->pluck('journalEntry.company_id')->filter()->unique()->values()->all())
+            ->pluck('name', 'id');
+
+        return $records->map(function (AccountingInventoryRecord $record) use ($companyNames): array {
+            $resolvedCompanyId = $record->journalEntry?->company_id ? (int) $record->journalEntry->company_id : null;
+
+            return [
+                'company_id' => $resolvedCompanyId,
+                'company_name' => $resolvedCompanyId ? (string) ($companyNames[$resolvedCompanyId] ?? 'Belum ditentukan') : 'Belum ditentukan',
+                'date' => $record->acquisition_date?->format('Y-m-d') ?? now()->toDateString(),
+                'amount' => (float) $record->amount,
+                'category' => 'pembelian_inventaris',
+                'cash_account_id' => $record->cash_account_id ? (int) $record->cash_account_id : null,
+                'cash_account_label' => $record->cashAccount?->displayLabel(),
             ];
         })->values();
     }

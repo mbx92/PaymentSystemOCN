@@ -148,7 +148,11 @@ class ERPAccountingPaymentController extends Controller
 
         DB::transaction(function () use ($payable, $validated, $request): void {
             $lockedPayable = Payable::query()
-                ->with('vendor')
+                ->with([
+                    'vendor',
+                    'journalEntry:id,company_id',
+                    'goodsReceipt.warehouse:id,company_id',
+                ])
                 ->lockForUpdate()
                 ->findOrFail($payable->id);
 
@@ -165,7 +169,7 @@ class ERPAccountingPaymentController extends Controller
             $paymentDate = $this->resolvedSupplierPaymentDate($lockedPayable, (string) $validated['payment_date']);
 
             $entry = $this->glPostingService->post(
-                ErpCompanyResolver::resolveForGlPosting($request),
+                $this->resolveSupplierPaymentCompanyId($lockedPayable, $request),
                 sourceModule: 'supplier_payment',
                 sourceReference: $lockedPayable->bill_no,
                 description: 'Pembayaran supplier '.$lockedPayable->bill_no.' - '.($lockedPayable->vendor?->name ?? 'Supplier'),
@@ -196,6 +200,19 @@ class ERPAccountingPaymentController extends Controller
         });
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Pembayaran supplier berhasil diposting ke hutang usaha dan kas/bank.']);
+    }
+
+    private function resolveSupplierPaymentCompanyId(Payable $payable, Request $request): int
+    {
+        if ($payable->journalEntry?->company_id) {
+            return (int) $payable->journalEntry->company_id;
+        }
+
+        if ($payable->goodsReceipt?->warehouse?->company_id) {
+            return (int) $payable->goodsReceipt->warehouse->company_id;
+        }
+
+        return ErpCompanyResolver::resolveForGlPosting($request);
     }
 
     public function memberPayments(Request $request): Response

@@ -124,18 +124,43 @@ class TeamDistributionController extends Controller
                     'team_distribution_rate' => number_format((float) $validated['distribution_rate'], 2, '.', ''),
                 ]);
 
-            TeamDistribution::where('project_id', $validated['project_id'])->delete();
+            // Ambil distribusi yang sudah dibayar terlebih dahulu agar payment link tidak hilang
+            $paidDistributions = TeamDistribution::query()
+                ->where('project_id', $validated['project_id'])
+                ->whereNotNull('paid_at')
+                ->get()
+                ->keyBy('user_id');
+
+            // Hapus hanya yang BELUM dibayar untuk menghindari kehilangan link cash_out
+            TeamDistribution::query()
+                ->where('project_id', $validated['project_id'])
+                ->whereNull('paid_at')
+                ->delete();
 
             foreach ($validated['distributions'] as $dist) {
-                TeamDistribution::create([
-                    'project_id'      => $validated['project_id'],
-                    'user_id'         => $dist['user_id'],
-                    'role_in_project' => $dist['role_in_project'],
-                    'percentage'      => $dist['percentage'],
-                    'base_pay'        => $dist['base_pay'],
-                    'bonus'           => $dist['bonus'],
-                    'total_pay'       => $dist['base_pay'] + $dist['bonus'],
-                ]);
+                $existing = $paidDistributions->get($dist['user_id']);
+
+                if ($existing) {
+                    // Update record yang sudah ada (sudah dibayar): hanya perbarui kalkulasi,
+                    // pertahankan paid_at, cash_out_id agar payment link tidak hilang
+                    $existing->update([
+                        'role_in_project' => $dist['role_in_project'],
+                        'percentage'      => $dist['percentage'],
+                        'base_pay'        => $dist['base_pay'],
+                        'bonus'           => $dist['bonus'],
+                        'total_pay'       => $dist['base_pay'] + $dist['bonus'],
+                    ]);
+                } else {
+                    TeamDistribution::create([
+                        'project_id'      => $validated['project_id'],
+                        'user_id'         => $dist['user_id'],
+                        'role_in_project' => $dist['role_in_project'],
+                        'percentage'      => $dist['percentage'],
+                        'base_pay'        => $dist['base_pay'],
+                        'bonus'           => $dist['bonus'],
+                        'total_pay'       => $dist['base_pay'] + $dist['bonus'],
+                    ]);
+                }
             }
         });
 
@@ -165,6 +190,9 @@ class TeamDistributionController extends Controller
         $materialItems = $project->materials;
         $referralTotal = (float) $project->referrals->sum('commission_amount');
         $operationalTotal = (float) $project->cashOuts->where('category', 'operasional')->sum('amount');
+        // Gunakan nilai kontrak (total_value / budget / material) bukan cashIn
+        // agar distributable amount tidak berubah-ubah seiring termin masuk
+        $contractValue = $project->resolveListTotalValue();
         $paidAmount = $cashInTotal;
         $materialCostTotal = (float) $materialItems
             ->filter(fn ($item) => $item->product?->product_type !== 'service')
@@ -173,7 +201,8 @@ class TeamDistributionController extends Controller
             ->filter(fn ($item) => $item->product?->product_type === 'service')
             ->sum(fn ($item) => (float) $item->planned_qty * (float) $item->unit_cost);
         $directCostTotal = $materialCostTotal + $serviceCostTotal;
-        $marginAmount = $paidAmount - $directCostTotal - $operationalTotal;
+        // Margin = paid - biaya langsung - operasional - referral (semua komponen pengurang)
+        $marginAmount = $paidAmount - $directCostTotal - $operationalTotal - $referralTotal;
 
         $distributionRate = (float) ($project->team_distribution_rate ?? 30);
         $companyReserveAmount = max($marginAmount * ($distributionRate / 100), 0);
@@ -187,7 +216,7 @@ class TeamDistributionController extends Controller
             'status_key' => Str::lower((string) $project->status),
             'client_name' => $project->client_name,
             'started_at' => $project->started_at?->format('Y-m-d'),
-            'total_value' => $paidAmount,
+            'total_value' => $contractValue,
             'paid_amount' => $paidAmount,
             'material_cost_total' => $materialCostTotal,
             'service_cost_total' => $serviceCostTotal,

@@ -121,28 +121,26 @@ const submitProject = () => {
                 <div class="ocn-panel__head">
                     <h2 class="ocn-panel__title">Filter project</h2>
                 </div>
-                <div class="card-body">
-                    <div class="flex flex-wrap gap-3 items-center">
-                        <label class="input input-bordered input-sm flex items-center gap-2 max-w-xs">
-                            <MagnifyingGlassIcon class="w-4 h-4 opacity-50" />
-                            <input v-model="search" type="text" placeholder="Cari project / klien…" class="grow" />
+                <div class="p-4 sm:p-5">
+                    <div class="flex flex-wrap sm:flex-nowrap gap-2 items-center">
+                        <label class="input input-bordered input-sm flex items-center gap-2 w-full sm:w-40 md:w-48 shrink">
+                            <MagnifyingGlassIcon class="w-4 h-4 opacity-50 shrink-0" />
+                            <input v-model="search" type="text" placeholder="Cari project…" class="grow min-w-0" />
                         </label>
-                        <select v-model="status" class="select select-bordered select-sm">
+                        <select v-model="status" class="select select-bordered select-sm w-full sm:w-28 md:w-32 shrink-0">
                             <option value="">Semua Status</option>
                             <option value="negosiasi">Negosiasi</option>
                             <option value="berjalan">Berjalan</option>
                             <option value="selesai">Selesai</option>
                             <option value="dibatalkan">Dibatalkan</option>
                         </select>
-                        <select v-model="projectType" class="select select-bordered select-sm">
+                        <select v-model="projectType" class="select select-bordered select-sm w-full sm:w-32 md:w-40 shrink-0">
                             <option value="">Semua Tipe</option>
                             <option v-for="type in project_types" :key="type.key" :value="type.key">{{ type.label }}</option>
                         </select>
-                        <div class="ml-auto">
-                            <button type="button" class="btn btn-primary btn-sm gap-2" @click="openAddProjectModal">
-                                <PlusIcon class="w-4 h-4" /> Tambah Project
-                            </button>
-                        </div>
+                        <button type="button" class="btn btn-primary btn-sm gap-2 shrink-0 sm:ml-auto" @click="openAddProjectModal">
+                            <PlusIcon class="w-4 h-4 shrink-0" /> Tambah Project
+                        </button>
                     </div>
                 </div>
             </div>

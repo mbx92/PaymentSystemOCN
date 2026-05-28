@@ -189,7 +189,10 @@ class ProjectController extends Controller
             ->when($request->status, fn ($q) => $q->where('status', $request->status))
             ->when($request->project_type, fn ($q) => $q->where('project_type', $request->project_type));
 
-        $projects = $query->latest()->paginate($this->resolvedPerPage($request))->withQueryString()
+        $projects = $query->orderByRaw('COALESCE(started_at, finished_at, created_at) DESC')
+            ->orderByDesc('finished_at')
+            ->orderByDesc('created_at')
+            ->paginate($this->resolvedPerPage($request))->withQueryString()
             ->through(fn ($p) => [
                 'id' => $p->id,
                 'name' => $p->name,

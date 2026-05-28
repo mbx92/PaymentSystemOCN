@@ -7,6 +7,7 @@ use App\Models\Project;
 use App\Models\TeamDistribution;
 use App\Services\AccountingCashSummaryService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
@@ -29,9 +30,13 @@ class DashboardController extends Controller
 
     private function adminDashboard(Request $request)
     {
-        $year = $request->get('year', now()->year);
+        $year = (int) $request->get('year', now()->year);
         $companyId = ErpCompanyResolver::resolveForReporting($request);
-        $cashSummary = $this->accountingCashSummaryService->totals($companyId);
+        $dateFrom = Carbon::create($year, 1, 1)->startOfDay();
+        $dateTo = Carbon::create($year, 12, 31)->endOfDay();
+        $cashSummary = $this->accountingCashSummaryService->totals($companyId, $dateFrom, $dateTo);
+        $openingCashBalance = $this->accountingCashSummaryService->openingCashBalance($companyId, $dateFrom);
+        $endingCashBalance = $openingCashBalance + (float) $cashSummary['net_cashflow'];
         $activeCount  = Project::active()->count();
         $projectStatus = Project::query()
             ->selectRaw('status, count(*) as total')
@@ -43,7 +48,9 @@ class DashboardController extends Controller
         $recentProjects = Project::withTrashed(false)
             ->with('payments')
             ->withSum('cashIns as paid_amount', 'amount')
-            ->latest()
+            ->orderByRaw('COALESCE(started_at, finished_at, created_at) DESC')
+            ->orderByDesc('finished_at')
+            ->orderByDesc('created_at')
             ->take(5)
             ->get()
             ->map(fn ($p) => [
@@ -58,14 +65,18 @@ class DashboardController extends Controller
         $overduePayments = Project::query()
             ->withSum('cashIns as paid_amount', 'amount')
             ->where('status', 'selesai')
+            ->with(['convertedBudget.items', 'materials.product'])
             ->get()
             ->map(function (Project $project) {
-                $remaining = max((float) $project->total_value - (float) ($project->paid_amount ?? 0), 0);
+                // Gunakan resolveListTotalValue() bukan total_value langsung
+                // agar project tanpa total_value (pakai budget/material) juga terdeteksi
+                $contractValue = $project->resolveListTotalValue();
+                $remaining = max($contractValue - (float) ($project->paid_amount ?? 0), 0);
                 return [
                     'id' => $project->id,
                     'name' => $project->name,
                     'client_name' => $project->client_name,
-                    'total_value' => (float) $project->total_value,
+                    'total_value' => $contractValue,
                     'paid_amount' => (float) ($project->paid_amount ?? 0),
                     'remaining_amount' => $remaining,
                 ];
@@ -80,6 +91,8 @@ class DashboardController extends Controller
                 'total_income'  => (float) $cashSummary['cash_in'],
                 'total_expense' => (float) $cashSummary['cash_out'],
                 'net_cashflow'  => (float) $cashSummary['net_cashflow'],
+                'opening_cash_balance' => (float) $openingCashBalance,
+                'ending_cash_balance' => (float) $endingCashBalance,
                 'active_count'  => $activeCount,
             ],
             'monthlyData'     => $monthlyData,
@@ -91,6 +104,9 @@ class DashboardController extends Controller
                 'dibatalkan' => (int) ($projectStatus['dibatalkan'] ?? 0),
             ],
             'overduePayments' => $overduePayments,
+            'filters' => [
+                'company_id' => $request->query('company_id', $companyId ?? ErpCompanyResolver::ALL_COMPANIES),
+            ],
             'selectedYear'    => (int) $year,
             'years'           => range(now()->year, now()->year - 4),
         ]);

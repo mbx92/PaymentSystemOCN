@@ -2,7 +2,7 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import RevenueLineChart from '@/Components/Charts/RevenueLineChart.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
-import { Link, router } from '@inertiajs/vue3';
+import { Link, router, usePage } from '@inertiajs/vue3';
 import { useCurrency } from '@/composables/useCurrency';
 
 const props = defineProps({
@@ -13,42 +13,67 @@ const props = defineProps({
     overduePayments: Array,
     selectedYear: Number,
     years: Array,
+    filters: Object,
 });
 
 const { format } = useCurrency();
+const page = usePage();
+const erpCompanyContext = () => page.props.erpCompanyContext ?? null;
+
+const changeFilters = (next = {}) => {
+    router.get(route('dashboard'), {
+        year: next.year ?? props.selectedYear,
+        company_id: next.company_id ?? props.filters?.company_id ?? erpCompanyContext()?.current_company_id ?? undefined,
+    }, { preserveState: true, replace: true });
+};
 
 const changeYear = (year) => {
-    router.get(route('dashboard'), { year }, { preserveState: true });
+    changeFilters({ year });
+};
+
+const changeCompany = (companyId) => {
+    changeFilters({ company_id: companyId || undefined });
 };
 </script>
 
 <template>
     <AppLayout>
         <div class="space-y-6">
-            <div class="flex items-center justify-between">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 class="text-3xl font-black tracking-tight text-base-content">Dashboard</h1>
                     <p class="text-sm text-base-content/60 mt-1">Ringkasan kesehatan keuangan dan aktivitas project.</p>
                 </div>
-                <select class="select select-bordered select-sm" :value="selectedYear" @change="changeYear($event.target.value)">
-                    <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
-                </select>
+                <div class="flex flex-col gap-2 sm:flex-row">
+                    <select
+                        v-if="erpCompanyContext()?.companies?.length"
+                        class="select select-bordered select-sm"
+                        :value="filters?.company_id ?? erpCompanyContext()?.current_company_id ?? 'all'"
+                        @change="changeCompany($event.target.value)"
+                    >
+                        <option value="all">Semua Usaha</option>
+                        <option v-for="company in erpCompanyContext().companies" :key="company.id" :value="company.id">{{ company.name }}</option>
+                    </select>
+                    <select class="select select-bordered select-sm" :value="selectedYear" @change="changeYear($event.target.value)">
+                        <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
+                    </select>
+                </div>
             </div>
 
             <!-- Stat Cards -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 <div class="ocn-panel ocn-stat-card">
                     <div class="card-body p-5">
                         <h3 class="text-sm font-medium text-base-content/70">Total Pendapatan</h3>
                         <p class="text-2xl font-bold text-success mt-1">{{ format(stats.total_income) }}</p>
-                        <p class="text-xs text-base-content/50 mt-2">Akumulasi semua kas masuk</p>
+                        <p class="text-xs text-base-content/50 mt-2">Kas masuk sepanjang {{ selectedYear }}</p>
                     </div>
                 </div>
                 <div class="ocn-panel ocn-stat-card">
                     <div class="card-body p-5">
                         <h3 class="text-sm font-medium text-base-content/70">Total Pengeluaran</h3>
                         <p class="text-2xl font-bold text-error mt-1">{{ format(stats.total_expense) }}</p>
-                        <p class="text-xs text-base-content/50 mt-2">Biaya tim, referral, operasional</p>
+                        <p class="text-xs text-base-content/50 mt-2">Kas keluar sepanjang {{ selectedYear }}</p>
                     </div>
                 </div>
                 <div class="ocn-panel ocn-stat-card">
@@ -57,7 +82,25 @@ const changeYear = (year) => {
                         <p :class="['text-2xl font-bold mt-1', stats.net_cashflow >= 0 ? 'text-primary' : 'text-error']">
                             {{ format(stats.net_cashflow) }}
                         </p>
-                        <p class="text-xs text-base-content/50 mt-2">Disamakan dengan cashflow accounting, bukan laba rugi akuntansi</p>
+                        <p class="text-xs text-base-content/50 mt-2">Disamakan dengan accounting overview untuk periode {{ selectedYear }}</p>
+                    </div>
+                </div>
+                <div class="ocn-panel ocn-stat-card">
+                    <div class="card-body p-5">
+                        <h3 class="text-sm font-medium text-base-content/70">Saldo Awal Kas</h3>
+                        <p :class="['text-2xl font-bold mt-1', stats.opening_cash_balance >= 0 ? 'text-primary' : 'text-error']">
+                            {{ format(stats.opening_cash_balance) }}
+                        </p>
+                        <p class="text-xs text-base-content/50 mt-2">Saldo buku kas sebelum {{ selectedYear }} dimulai</p>
+                    </div>
+                </div>
+                <div class="ocn-panel ocn-stat-card">
+                    <div class="card-body p-5">
+                        <h3 class="text-sm font-medium text-base-content/70">Saldo Akhir Kas</h3>
+                        <p :class="['text-2xl font-bold mt-1', stats.ending_cash_balance >= 0 ? 'text-primary' : 'text-error']">
+                            {{ format(stats.ending_cash_balance) }}
+                        </p>
+                        <p class="text-xs text-base-content/50 mt-2">Saldo awal ditambah net cashflow periode {{ selectedYear }}</p>
                     </div>
                 </div>
                 <div class="ocn-panel ocn-stat-card">
@@ -85,7 +128,7 @@ const changeYear = (year) => {
                     <div class="ocn-panel__head flex flex-wrap items-center justify-between gap-2">
                         <div>
                             <h2 class="ocn-panel__title">Piutang project</h2>
-                            <p class="ocn-panel__desc">Project selesai yang belum lunas sepenuhnya.</p>
+                            <p class="ocn-panel__desc">Project selesai yang belum lunas sepenuhnya. Daftar project masih global karena master project belum punya flag usaha.</p>
                         </div>
                         <Link :href="route('erp.sales.project-invoices')" class="btn btn-outline btn-xs shrink-0">Buka invoice</Link>
                     </div>
@@ -121,6 +164,7 @@ const changeYear = (year) => {
                 <div class="ocn-panel">
                     <div class="ocn-panel__head">
                         <h2 class="ocn-panel__title">Status project</h2>
+                        <p class="ocn-panel__desc">Ringkasan project masih global lintas usaha.</p>
                     </div>
                     <div class="card-body">
                         <div class="space-y-2 text-sm">
@@ -150,7 +194,7 @@ const changeYear = (year) => {
                 <div class="ocn-panel__head flex flex-wrap items-center justify-between gap-2">
                     <div>
                         <h2 class="ocn-panel__title">Project terbaru</h2>
-                        <p class="ocn-panel__desc">Status dan progress termin terbaru.</p>
+                        <p class="ocn-panel__desc">Diurutkan berdasarkan tanggal project terbaru. Daftar ini masih global lintas usaha.</p>
                     </div>
                     <Link :href="route('projects.index')" class="btn btn-primary btn-sm shrink-0">Lihat semua</Link>
                 </div>

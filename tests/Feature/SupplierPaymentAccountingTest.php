@@ -6,6 +6,10 @@ use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Accounting\Models\Payable;
 use App\ERP\Accounting\Models\PayablePayment;
+use App\ERP\Core\Models\Company;
+use App\ERP\Inventory\Models\Warehouse;
+use App\ERP\Purchasing\Models\GoodsReceipt;
+use App\ERP\Purchasing\Models\PurchaseOrder;
 use App\ERP\Purchasing\Models\Vendor;
 use App\ERP\Shared\Enums\DocumentStatus;
 use App\Models\User;
@@ -128,6 +132,76 @@ class SupplierPaymentAccountingTest extends TestCase
             ->assertSessionHasErrors('amount');
 
         $this->assertDatabaseCount('payable_payments', 0);
+    }
+
+    public function test_supplier_payment_uses_payable_company_instead_of_active_user_company(): void
+    {
+        $this->disableErpMiddleware();
+
+        $companyOcn = Company::query()->create(['name' => 'OC Networks', 'is_active' => true]);
+        $companyNuma = Company::query()->create(['name' => 'Numa Packaging', 'is_active' => true]);
+        $user = User::factory()->create(['company_id' => $companyOcn->id]);
+        $cash = $this->createAccount('1001', 'Kas', 'asset');
+        $this->createAccount('2001', 'Hutang Usaha', 'liability');
+        $vendor = $this->createVendor();
+        $warehouse = Warehouse::query()->create([
+            'code' => 'WH-NUMA',
+            'company_id' => $companyNuma->id,
+            'name' => 'Gudang Numa',
+            'is_active' => true,
+        ]);
+        $po = PurchaseOrder::query()->create([
+            'number' => 'PO-TEST-001',
+            'vendor_id' => $vendor->id,
+            'order_date' => '2026-05-10',
+            'eta_date' => '2026-05-11',
+            'total_amount' => 150000,
+            'status' => DocumentStatus::Approved,
+        ]);
+        $receipt = GoodsReceipt::query()->create([
+            'number' => 'GR-TEST-001',
+            'purchase_order_id' => $po->id,
+            'received_date' => '2026-05-12',
+            'warehouse_id' => $warehouse->id,
+            'warehouse_name' => $warehouse->name,
+            'status' => DocumentStatus::Approved,
+        ]);
+        $apEntry = JournalEntry::query()->create([
+            'company_id' => $companyNuma->id,
+            'entry_no' => 'JE-AP-TEST-001',
+            'entry_date' => '2026-05-12',
+            'description' => 'Hutang supplier Numa',
+            'status' => 'posted',
+            'source_module' => 'purchasing',
+            'source_reference' => $receipt->number,
+        ]);
+        $payable = Payable::query()->create([
+            'vendor_id' => $vendor->id,
+            'purchase_order_id' => $po->id,
+            'goods_receipt_id' => $receipt->id,
+            'bill_no' => 'BILL-NUMA-001',
+            'bill_date' => '2026-05-12',
+            'due_date' => '2026-05-26',
+            'amount' => 150000,
+            'paid_amount' => 0,
+            'status' => DocumentStatus::Posted,
+            'journal_entry_id' => $apEntry->id,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->post(route('erp.accounting.payments.supplier.store', $payable), [
+                'payment_date' => '2026-05-14',
+                'amount' => 60000,
+                'cash_account_id' => $cash->id,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $payment = PayablePayment::query()->firstOrFail();
+        $entry = JournalEntry::query()->findOrFail($payment->journal_entry_id);
+
+        $this->assertSame($companyNuma->id, (int) $entry->company_id);
     }
 
     private function createAccount(string $code, string $name, string $type): Account

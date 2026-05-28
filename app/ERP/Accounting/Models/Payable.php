@@ -51,6 +51,11 @@ class Payable extends Model
         return $this->belongsTo(\App\ERP\Purchasing\Models\GoodsReceipt::class);
     }
 
+    public function journalEntry(): BelongsTo
+    {
+        return $this->belongsTo(JournalEntry::class);
+    }
+
     public function payments(): HasMany
     {
         return $this->hasMany(PayablePayment::class);

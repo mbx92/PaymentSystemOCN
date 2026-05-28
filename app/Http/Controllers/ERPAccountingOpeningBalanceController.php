@@ -26,7 +26,7 @@ class ERPAccountingOpeningBalanceController extends Controller
         $accounts = Account::query()
             ->where('is_active', true)
             ->orderBy('code')
-            ->get(['id', 'code', 'name', 'type', 'normal_balance']);
+            ->get(['id', 'code', 'name', 'type', 'normal_balance', 'is_cash_bank']);
 
         $openingQuery = JournalEntry::query()
             ->with(['lines.account', 'company:id,name'])

@@ -12,6 +12,7 @@ use App\Http\Controllers\CrmCustomerController;
 use App\Http\Controllers\CrmLeadController;
 use App\Http\Controllers\CrmPipelineController;
 use App\Http\Controllers\ERPAccountingCoaSettingsController;
+use App\Http\Controllers\ERPAccountingFiscalPeriodController;
 use App\Http\Controllers\ERPAccountingOverviewController;
 use App\Http\Controllers\ERPAccountingOpeningBalanceController;
 use App\Http\Controllers\ERPAccountingPaymentController;
@@ -131,6 +132,7 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/accounting/cashflow', [CashflowController::class, 'index'])->name('erp.accounting.cashflow');
         Route::get('erp/accounting/cash-flow', fn () => redirect()->route('erp.accounting.cashflow', request()->query()))->name('erp.accounting.cashflow.redirect-legacy');
         Route::get('erp/accounting/opening-balance', [ERPAccountingOpeningBalanceController::class, 'index'])->name('erp.accounting.opening-balance');
+        Route::get('erp/accounting/tutup-buku', [ERPAccountingFiscalPeriodController::class, 'index'])->name('erp.accounting.fiscal-periods');
         Route::get('erp/accounting/utilities', [ERPAccountingUtilityController::class, 'index'])->name('erp.accounting.utilities');
         Route::get('erp/accounting/mutasi-kas-bank', [CashBankTransferController::class, 'index'])->name('erp.accounting.cash-bank-transfer');
         Route::get('erp/accounting/inventaris', [AccountingInventoryController::class, 'index'])->name('erp.accounting.inventaris');
@@ -143,9 +145,13 @@ Route::middleware('auth')->group(function () {
         Route::patch('erp/accounting/cashflow/cash-out/{cashOut}', [CashflowController::class, 'updateCashOut'])->name('erp.accounting.cashflow.cash-out.update');
         Route::delete('erp/accounting/cashflow/cash-out/{cashOut}', [CashflowController::class, 'destroyCashOut'])->name('erp.accounting.cashflow.cash-out.destroy');
         Route::post('erp/accounting/opening-balance', [ERPAccountingOpeningBalanceController::class, 'store'])->name('erp.accounting.opening-balance.store');
+        Route::post('erp/accounting/tutup-buku', [ERPAccountingFiscalPeriodController::class, 'store'])->name('erp.accounting.fiscal-periods.store');
+        Route::post('erp/accounting/tutup-buku/{fiscalPeriod}/reopen', [ERPAccountingFiscalPeriodController::class, 'reopen'])->name('erp.accounting.fiscal-periods.reopen');
         Route::post('erp/accounting/utilities/move-journals', [ERPAccountingUtilityController::class, 'moveJournalEntries'])->name('erp.accounting.utilities.move-journals');
+        Route::post('erp/accounting/utilities/reverse-journal-sides', [ERPAccountingUtilityController::class, 'reverseJournalEntrySides'])->name('erp.accounting.utilities.reverse-journal-sides');
         Route::post('erp/accounting/utilities/correct-pos-channel-payable', [ERPAccountingUtilityController::class, 'correctPosChannelPayable'])->name('erp.accounting.utilities.correct-pos-channel-payable');
         Route::post('erp/accounting/utilities/backfill-cash-accounts', [ERPAccountingUtilityController::class, 'backfillCashAccountIds'])->name('erp.accounting.utilities.backfill-cash-accounts');
+        Route::post('erp/accounting/utilities/sync-supplier-payment-companies', [ERPAccountingUtilityController::class, 'syncSupplierPaymentCompanies'])->name('erp.accounting.utilities.sync-supplier-payment-companies');
         Route::post('erp/accounting/utilities/reassign-cash-accounts', [ERPAccountingUtilityController::class, 'reassignCashAccounts'])->name('erp.accounting.utilities.reassign-cash-accounts');
         Route::post('erp/accounting/utilities/sync-inventory-reservations', [ERPAccountingUtilityController::class, 'syncInventoryReservations'])->name('erp.accounting.utilities.sync-inventory-reservations');
         Route::post('erp/accounting/utilities/rebuild-inventory-stocks', [ERPAccountingUtilityController::class, 'rebuildInventoryStocks'])->name('erp.accounting.utilities.rebuild-inventory-stocks');
@@ -331,6 +337,8 @@ Route::middleware('auth')->group(function () {
         Route::get('laporan/pos', [ReportController::class, 'pos'])->name('reports.pos');
         Route::get('laporan/bulanan', [ReportController::class, 'monthly'])->name('reports.monthly');
         Route::get('laporan/anggota', fn () => redirect()->route('erp.accounting.payments.member', request()->query()))->name('reports.member-payments');
+        Route::get('laporan/revenue-per-usaha', [ERPReportingController::class, 'companyRevenue'])->name('reports.company-revenue');
+        Route::get('laporan/laba-rugi-per-usaha', [ERPReportingController::class, 'profitLossByCompany'])->name('reports.company-profit-loss');
         Route::get('erp/accounting/chart-of-accounts', [ERPReportingController::class, 'chartOfAccounts'])->name('erp.accounting.coa');
         Route::post('erp/accounting/chart-of-accounts', [ERPReportingController::class, 'storeChartOfAccount'])->name('erp.accounting.coa.store');
         Route::patch('erp/accounting/chart-of-accounts/{account}', [ERPReportingController::class, 'updateChartOfAccount'])->name('erp.accounting.coa.update');

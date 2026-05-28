@@ -23,20 +23,56 @@ const props = defineProps({
 const { format } = useCurrency();
 const page = usePage();
 const erpCompanyContext = () => page.props.erpCompanyContext ?? null;
+const yearRange = (year) => ({
+  from: `${year}-01-01`,
+  to: `${year}-12-31`,
+});
 const selectedYear = ref(props.selected_year ?? new Date().getFullYear());
 const companyId = ref(props.filters?.company_id ?? erpCompanyContext()?.current_company_id ?? 'all');
-const dateFrom = ref(props.filters?.date_from ?? '');
-const dateTo = ref(props.filters?.date_to ?? '');
+const initialYearRange = yearRange(selectedYear.value);
+const dateFrom = ref(props.filters?.date_from ?? initialYearRange.from);
+const dateTo = ref(props.filters?.date_to ?? initialYearRange.to);
+const syncingYearRange = ref(false);
 
 const yearOptions = Array.from({ length: 5 }, (_, idx) => new Date().getFullYear() - idx);
 
-watch([selectedYear, companyId, dateFrom, dateTo], ([yearValue, companyValue, fromValue, toValue]) => {
+const reloadOverview = () => {
   router.get(route('erp.accounting.overview'), {
-    year: yearValue,
-    company_id: companyValue || undefined,
-    date_from: fromValue || undefined,
-    date_to: toValue || undefined,
+    year: selectedYear.value,
+    company_id: companyId.value || undefined,
+    date_from: dateFrom.value || undefined,
+    date_to: dateTo.value || undefined,
   }, { preserveState: true, replace: true });
+};
+
+const resetFilters = () => {
+  syncingYearRange.value = true;
+  selectedYear.value = new Date().getFullYear();
+  companyId.value = erpCompanyContext()?.current_company_id ?? 'all';
+  const nextRange = yearRange(selectedYear.value);
+  dateFrom.value = nextRange.from;
+  dateTo.value = nextRange.to;
+  syncingYearRange.value = false;
+  reloadOverview();
+};
+
+watch(selectedYear, (yearValue) => {
+  syncingYearRange.value = true;
+  const nextRange = yearRange(yearValue);
+  dateFrom.value = nextRange.from;
+  dateTo.value = nextRange.to;
+  syncingYearRange.value = false;
+  reloadOverview();
+});
+
+watch(companyId, reloadOverview);
+
+watch([dateFrom, dateTo], ([fromValue, toValue]) => {
+  if (syncingYearRange.value) {
+    return;
+  }
+
+  reloadOverview();
 });
 
 const percentNetClass = (value) => (Number(value ?? 0) >= 0 ? 'text-primary' : 'text-error');
@@ -67,6 +103,9 @@ const percentNetClass = (value) => (Number(value ?? 0) >= 0 ? 'text-primary' : '
                 <option value="all">Semua Usaha</option>
                 <option v-for="company in erpCompanyContext().companies" :key="company.id" :value="company.id">{{ company.name }}</option>
               </select>
+              <button type="button" class="btn btn-outline btn-sm shrink-0" @click="resetFilters">
+                Reset Filter
+              </button>
               <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.accounting')">
                 <ArrowLeftIcon class="h-4 w-4" />
                 Back
@@ -76,26 +115,52 @@ const percentNetClass = (value) => (Number(value ?? 0) >= 0 ? 'text-primary' : '
         </div>
       </div>
 
-      <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div class="rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm">
-          <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Kas masuk {{ selected_year }}</p>
-          <p class="mt-2 text-2xl font-bold text-success">{{ format(stats?.cash_in_year) }}</p>
-          <p class="mt-2 text-xs text-base-content/55">{{ stats?.company_count ?? 0 }} usaha terpantau</p>
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Ringkasan periode</h2>
+          <p class="ocn-panel__desc">Baris atas untuk arus kas periode aktif, baris bawah untuk posisi saldo kas sebelum dan sesudah periode.</p>
         </div>
-        <div class="rounded-2xl border border-rose-100 bg-white p-5 shadow-sm">
-          <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Kas keluar {{ selected_year }}</p>
-          <p class="mt-2 text-2xl font-bold text-error">{{ format(stats?.cash_out_year) }}</p>
-          <p class="mt-2 text-xs text-base-content/55">Kontrol biaya dari seluruh transaksi accounting</p>
-        </div>
-        <div class="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm">
-          <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Net cashflow {{ selected_year }}</p>
-          <p class="mt-2 text-2xl font-bold" :class="percentNetClass(stats?.net_year)">{{ format(stats?.net_year) }}</p>
-          <p class="mt-2 text-xs text-base-content/55">Selisih pemasukan dan pengeluaran tahun berjalan</p>
-        </div>
-        <div class="rounded-2xl border border-amber-100 bg-white p-5 shadow-sm">
-          <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Saldo kas terpantau</p>
-          <p class="mt-2 text-2xl font-bold text-primary">{{ format(stats?.cash_balance) }}</p>
-          <p class="mt-2 text-xs text-base-content/55">{{ stats?.cash_account_count ?? 0 }} akun kas/bank aktif di dashboard</p>
+        <div class="card-body space-y-4">
+          <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div class="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-5 shadow-sm">
+              <p class="text-xs font-semibold uppercase tracking-wide text-emerald-800/70">Kas masuk {{ selected_year }}</p>
+              <p class="mt-2 text-2xl font-bold text-success">{{ format(stats?.cash_in_year) }}</p>
+              <p class="mt-2 text-xs text-base-content/55">{{ stats?.company_count ?? 0 }} usaha terpantau pada periode ini</p>
+            </div>
+            <div class="rounded-2xl border border-rose-100 bg-rose-50/50 p-5 shadow-sm">
+              <p class="text-xs font-semibold uppercase tracking-wide text-rose-800/70">Kas keluar {{ selected_year }}</p>
+              <p class="mt-2 text-2xl font-bold text-error">{{ format(stats?.cash_out_year) }}</p>
+              <p class="mt-2 text-xs text-base-content/55">Sudah termasuk cash out, supplier payment, POS, dan inventaris</p>
+            </div>
+            <div class="rounded-2xl border border-sky-100 bg-sky-50/50 p-5 shadow-sm">
+              <p class="text-xs font-semibold uppercase tracking-wide text-sky-800/70">Net cashflow {{ selected_year }}</p>
+              <p class="mt-2 text-2xl font-bold" :class="percentNetClass(stats?.net_year)">{{ format(stats?.net_year) }}</p>
+              <p class="mt-2 text-xs text-base-content/55">Selisih kas masuk dan kas keluar untuk filter aktif</p>
+            </div>
+          </div>
+
+          <div class="grid gap-4 xl:grid-cols-2">
+            <div class="rounded-2xl border border-violet-100 bg-violet-50/50 p-5 shadow-sm">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-wide text-violet-800/70">Saldo awal kas</p>
+                  <p class="mt-2 text-2xl font-bold" :class="percentNetClass(stats?.opening_cash_balance)">{{ format(stats?.opening_cash_balance) }}</p>
+                </div>
+                <span class="badge badge-ghost badge-sm">Sebelum periode</span>
+              </div>
+              <p class="mt-2 text-xs text-base-content/55">Saldo buku besar akun kas/bank sebelum tanggal awal filter.</p>
+            </div>
+            <div class="rounded-2xl border border-amber-100 bg-amber-50/50 p-5 shadow-sm">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-wide text-amber-800/70">Saldo akhir kas</p>
+                  <p class="mt-2 text-2xl font-bold" :class="percentNetClass(stats?.ending_cash_balance ?? stats?.cash_balance)">{{ format(stats?.ending_cash_balance ?? stats?.cash_balance) }}</p>
+                </div>
+                <span class="badge badge-ghost badge-sm">{{ stats?.cash_account_count ?? 0 }} akun</span>
+              </div>
+              <p class="mt-2 text-xs text-base-content/55">Saldo awal ditambah net cashflow periode aktif.</p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -163,7 +228,7 @@ const percentNetClass = (value) => (Number(value ?? 0) >= 0 ? 'text-primary' : '
             <p class="ocn-panel__desc">Rekap per entitas usaha untuk memantau usaha mana yang paling agresif menghasilkan cashflow.</p>
           </div>
           <div class="overflow-x-auto">
-            <table class="table table-zebra">
+            <table class="table table-zebra table-xs whitespace-nowrap">
               <thead>
                 <tr>
                   <th>Usaha</th>
@@ -193,24 +258,26 @@ const percentNetClass = (value) => (Number(value ?? 0) >= 0 ? 'text-primary' : '
             <p class="ocn-panel__desc">Pantau saldo, arus masuk, dan arus keluar per akun kas/bank yang dipakai di transaksi accounting.</p>
           </div>
           <div class="overflow-x-auto">
-            <table class="table table-zebra">
+            <table class="table table-zebra table-xs whitespace-nowrap">
               <thead>
                 <tr>
                   <th>Akun</th>
+                  <th>Saldo Awal</th>
                   <th>Masuk</th>
                   <th>Keluar</th>
-                  <th>Saldo</th>
+                  <th>Saldo Akhir</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="row in cash_accounts ?? []" :key="row.account_id">
                   <td class="font-medium">{{ row.account_label }}</td>
+                  <td :class="percentNetClass(row.opening_balance)">{{ format(row.opening_balance) }}</td>
                   <td class="text-success">{{ format(row.income) }}</td>
                   <td class="text-error">{{ format(row.expense) }}</td>
-                  <td :class="['font-semibold', percentNetClass(row.balance)]">{{ format(row.balance) }}</td>
+                  <td :class="['font-semibold', percentNetClass(row.ending_balance ?? row.balance)]">{{ format(row.ending_balance ?? row.balance) }}</td>
                 </tr>
                 <tr v-if="!((cash_accounts ?? []).length)">
-                  <td colspan="4" class="py-10 text-center text-base-content/50">Belum ada akun kas/bank yang bisa dirangkum.</td>
+                  <td colspan="5" class="py-10 text-center text-base-content/50">Belum ada akun kas/bank yang bisa dirangkum.</td>
                 </tr>
               </tbody>
             </table>

@@ -52,8 +52,8 @@ class OpeningBalanceTest extends TestCase
                 ->where('accounts', fn ($accounts) => collect($accounts)->contains(fn ($account) => $account['code'] === '1001'))
                 ->where('accounts', fn ($accounts) => collect($accounts)->contains(fn ($account) => $account['code'] === '3001'))
                 ->where('accounts', fn ($accounts) => ! collect($accounts)->contains(fn ($account) => $account['code'] === '9999'))
-                ->where('openingEntries.0.entry_no', 'JE-OPENING')
-                ->where('openingEntries.0.total_debit', 500000));
+                ->where('openingEntries.data.0.entry_no', 'JE-OPENING')
+                ->where('openingEntries.data.0.total_debit', 500000));
     }
 
     public function test_opening_balance_posts_balanced_journal_to_gl(): void

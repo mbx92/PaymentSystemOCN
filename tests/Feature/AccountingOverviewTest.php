@@ -12,6 +12,7 @@ use App\ERP\Shared\Enums\DocumentStatus;
 use App\Models\CashIn;
 use App\Models\CashOut;
 use App\Models\PosSale;
+use App\Models\AccountingInventoryRecord;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -390,6 +391,280 @@ class AccountingOverviewTest extends TestCase
                 ->where('stats.cash_out_year', 300000)
                 ->where('stats.net_year', 450000)
                 ->where('stats.cash_balance', 450000)
+            );
+    }
+
+    public function test_accounting_overview_includes_inventory_outflow_in_cash_totals(): void
+    {
+        $this->disableErpMiddleware();
+
+        $company = Company::query()->create([
+            'name' => 'OCN Inventory',
+            'legal_name' => 'PT OCN Inventory',
+            'is_active' => true,
+        ]);
+        $viewer = User::factory()->create(['company_id' => $company->id]);
+        $cashAccount = Account::query()->create([
+            'code' => '1001',
+            'name' => 'Kas Besar',
+            'type' => 'asset',
+            'normal_balance' => 'debit',
+            'is_active' => true,
+            'is_cash_bank' => true,
+        ]);
+        $assetAccount = Account::query()->create([
+            'code' => '1401',
+            'name' => 'Peralatan',
+            'type' => 'asset',
+            'normal_balance' => 'debit',
+            'is_active' => true,
+            'is_cash_bank' => false,
+        ]);
+
+        $cashInJournal = JournalEntry::query()->create([
+            'company_id' => $company->id,
+            'entry_no' => 'JE-INV-CASH-IN',
+            'entry_date' => now()->toDateString(),
+            'description' => 'Kas masuk inventory',
+            'status' => DocumentStatus::Posted,
+            'source_module' => 'cash_in',
+            'source_reference' => 'ci-inv',
+        ]);
+        CashIn::query()->create([
+            'cash_account_id' => $cashAccount->id,
+            'category' => 'pendapatan_jasa',
+            'amount' => 2000000,
+            'date' => now()->toDateString(),
+            'created_by' => $viewer->id,
+            'journal_entry_id' => $cashInJournal->id,
+        ]);
+
+        $inventoryJournal = JournalEntry::query()->create([
+            'company_id' => $company->id,
+            'entry_no' => 'JE-INV-OUT',
+            'entry_date' => now()->toDateString(),
+            'description' => 'Pembelian inventaris',
+            'status' => DocumentStatus::Posted,
+            'source_module' => 'accounting_inventory',
+            'source_reference' => 'inv-001',
+        ]);
+        AccountingInventoryRecord::query()->create([
+            'item_name' => 'Laptop Keuangan',
+            'qty' => 1,
+            'amount' => 500000,
+            'acquisition_date' => now()->toDateString(),
+            'asset_account_id' => $assetAccount->id,
+            'cash_account_id' => $cashAccount->id,
+            'journal_entry_id' => $inventoryJournal->id,
+            'created_by' => $viewer->id,
+        ]);
+
+        $this->actingAs($viewer)
+            ->get(route('erp.accounting.overview', ['company_id' => $company->id, 'year' => now()->year]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Accounting/Overview')
+                ->where('stats.cash_in_year', 2000000)
+                ->where('stats.cash_out_year', 500000)
+                ->where('stats.net_year', 1500000)
+                ->where('stats.cash_balance', 1500000)
+            );
+    }
+
+    public function test_accounting_overview_cash_balance_uses_selected_year_period(): void
+    {
+        $this->disableErpMiddleware();
+
+        $company = Company::query()->create([
+            'name' => 'OCN Periodic',
+            'legal_name' => 'PT OCN Periodic',
+            'is_active' => true,
+        ]);
+        $viewer = User::factory()->create(['company_id' => $company->id]);
+        $cashAccount = Account::query()->create([
+            'code' => '1101',
+            'name' => 'Kas Utama',
+            'type' => 'asset',
+            'normal_balance' => 'debit',
+            'is_active' => true,
+            'is_cash_bank' => true,
+        ]);
+
+        $previousYear = now()->year - 1;
+        $currentYear = now()->year;
+
+        $previousJournal = JournalEntry::query()->create([
+            'company_id' => $company->id,
+            'entry_no' => 'JE-PREV-BAL',
+            'entry_date' => $previousYear.'-12-15',
+            'description' => 'Kas masuk tahun lalu',
+            'status' => DocumentStatus::Posted,
+            'source_module' => 'cash_in',
+            'source_reference' => 'prev-balance',
+        ]);
+        CashIn::query()->create([
+            'cash_account_id' => $cashAccount->id,
+            'category' => 'pendapatan_jasa',
+            'amount' => 10000000,
+            'date' => $previousYear.'-12-15',
+            'created_by' => $viewer->id,
+            'journal_entry_id' => $previousJournal->id,
+        ]);
+
+        $currentJournalIn = JournalEntry::query()->create([
+            'company_id' => $company->id,
+            'entry_no' => 'JE-CURR-IN',
+            'entry_date' => $currentYear.'-05-10',
+            'description' => 'Kas masuk tahun ini',
+            'status' => DocumentStatus::Posted,
+            'source_module' => 'cash_in',
+            'source_reference' => 'curr-balance-in',
+        ]);
+        CashIn::query()->create([
+            'cash_account_id' => $cashAccount->id,
+            'category' => 'pendapatan_jasa',
+            'amount' => 3000000,
+            'date' => $currentYear.'-05-10',
+            'created_by' => $viewer->id,
+            'journal_entry_id' => $currentJournalIn->id,
+        ]);
+
+        $currentJournalOut = JournalEntry::query()->create([
+            'company_id' => $company->id,
+            'entry_no' => 'JE-CURR-OUT',
+            'entry_date' => $currentYear.'-05-11',
+            'description' => 'Kas keluar tahun ini',
+            'status' => DocumentStatus::Posted,
+            'source_module' => 'cash_out',
+            'source_reference' => 'curr-balance-out',
+        ]);
+        CashOut::query()->create([
+            'cash_account_id' => $cashAccount->id,
+            'category' => 'operasional',
+            'amount' => 1000000,
+            'date' => $currentYear.'-05-11',
+            'recipient_name' => 'Vendor',
+            'created_by' => $viewer->id,
+            'journal_entry_id' => $currentJournalOut->id,
+        ]);
+
+        $this->actingAs($viewer)
+            ->get(route('erp.accounting.overview', ['company_id' => $company->id, 'year' => $currentYear]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Accounting/Overview')
+                ->where('stats.cash_in_year', 3000000)
+                ->where('stats.cash_out_year', 1000000)
+                ->where('stats.net_year', 2000000)
+                ->where('stats.cash_balance', 2000000)
+                ->where('cash_accounts.0.balance', 2000000)
+            );
+    }
+
+    public function test_accounting_overview_includes_opening_cash_balance_in_ending_cash_position(): void
+    {
+        $this->disableErpMiddleware();
+
+        $company = Company::query()->create([
+            'name' => 'OCN Opening Overview',
+            'legal_name' => 'PT OCN Opening Overview',
+            'is_active' => true,
+        ]);
+        $viewer = User::factory()->create(['company_id' => $company->id]);
+        $cashAccount = Account::query()->create([
+            'code' => '1101',
+            'name' => 'Kas Utama',
+            'type' => 'asset',
+            'normal_balance' => 'debit',
+            'is_active' => true,
+            'is_cash_bank' => true,
+        ]);
+        $equityAccount = Account::query()->create([
+            'code' => '3001',
+            'name' => 'Modal Pemilik',
+            'type' => 'equity',
+            'normal_balance' => 'credit',
+            'is_active' => true,
+            'is_cash_bank' => false,
+        ]);
+
+        $previousYear = now()->year - 1;
+        $currentYear = now()->year;
+
+        $openingEntry = JournalEntry::query()->create([
+            'company_id' => $company->id,
+            'entry_no' => 'JE-OPENING-OV',
+            'entry_date' => $previousYear.'-12-31',
+            'description' => 'Saldo awal overview',
+            'status' => DocumentStatus::Posted,
+            'source_module' => 'opening_balance',
+            'source_reference' => 'opening-overview',
+        ]);
+        $openingEntry->lines()->createMany([
+            [
+                'account_id' => $cashAccount->id,
+                'description' => 'Kas awal',
+                'debit' => 2000000,
+                'credit' => 0,
+            ],
+            [
+                'account_id' => $equityAccount->id,
+                'description' => 'Modal awal',
+                'debit' => 0,
+                'credit' => 2000000,
+            ],
+        ]);
+
+        $currentJournalIn = JournalEntry::query()->create([
+            'company_id' => $company->id,
+            'entry_no' => 'JE-CURR-IN-OV',
+            'entry_date' => $currentYear.'-05-10',
+            'description' => 'Kas masuk tahun ini',
+            'status' => DocumentStatus::Posted,
+            'source_module' => 'cash_in',
+            'source_reference' => 'curr-opening-in',
+        ]);
+        CashIn::query()->create([
+            'cash_account_id' => $cashAccount->id,
+            'category' => 'pendapatan_jasa',
+            'amount' => 3000000,
+            'date' => $currentYear.'-05-10',
+            'created_by' => $viewer->id,
+            'journal_entry_id' => $currentJournalIn->id,
+        ]);
+
+        $currentJournalOut = JournalEntry::query()->create([
+            'company_id' => $company->id,
+            'entry_no' => 'JE-CURR-OUT-OV',
+            'entry_date' => $currentYear.'-05-11',
+            'description' => 'Kas keluar tahun ini',
+            'status' => DocumentStatus::Posted,
+            'source_module' => 'cash_out',
+            'source_reference' => 'curr-opening-out',
+        ]);
+        CashOut::query()->create([
+            'cash_account_id' => $cashAccount->id,
+            'category' => 'operasional',
+            'amount' => 1000000,
+            'date' => $currentYear.'-05-11',
+            'recipient_name' => 'Vendor',
+            'created_by' => $viewer->id,
+            'journal_entry_id' => $currentJournalOut->id,
+        ]);
+
+        $this->actingAs($viewer)
+            ->get(route('erp.accounting.overview', ['company_id' => $company->id, 'year' => $currentYear]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Accounting/Overview')
+                ->where('stats.cash_in_year', 3000000)
+                ->where('stats.cash_out_year', 1000000)
+                ->where('stats.net_year', 2000000)
+                ->where('stats.opening_cash_balance', 2000000)
+                ->where('stats.ending_cash_balance', 4000000)
+                ->where('stats.cash_balance', 4000000)
+                ->where('cash_accounts.0.opening_balance', 2000000)
+                ->where('cash_accounts.0.ending_balance', 4000000)
             );
     }
 

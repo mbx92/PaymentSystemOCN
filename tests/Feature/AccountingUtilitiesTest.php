@@ -5,7 +5,12 @@ namespace Tests\Feature;
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\CoaSetting;
 use App\ERP\Accounting\Models\JournalEntry;
+use App\ERP\Accounting\Models\Payable;
+use App\ERP\Accounting\Models\PayablePayment;
 use App\ERP\Core\Models\Company;
+use App\ERP\Purchasing\Models\GoodsReceipt;
+use App\ERP\Purchasing\Models\PurchaseOrder;
+use App\ERP\Purchasing\Models\Vendor;
 use App\ERP\Inventory\Models\Warehouse;
 use App\Models\CashIn;
 use App\Models\MasterProduct;
@@ -227,6 +232,189 @@ class AccountingUtilitiesTest extends TestCase
             'account_id' => $payable->id,
             'debit' => '0.00',
             'credit' => '6616.00',
+        ]);
+    }
+
+    public function test_accounting_utilities_can_reverse_selected_journal_entry_sides(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $company = Company::query()->create(['name' => 'Usaha Reverse', 'is_active' => true]);
+        $cash = Account::query()->create([
+            'code' => '1102',
+            'name' => 'Bank BRI',
+            'type' => 'asset',
+            'normal_balance' => 'debit',
+            'is_active' => true,
+            'is_cash_bank' => true,
+        ]);
+        $equipment = Account::query()->create([
+            'code' => '1401',
+            'name' => 'Peralatan',
+            'type' => 'asset',
+            'normal_balance' => 'debit',
+            'is_active' => true,
+        ]);
+        $equity = Account::query()->create([
+            'code' => '3001',
+            'name' => 'Modal Pemilik',
+            'type' => 'equity',
+            'normal_balance' => 'credit',
+            'is_active' => true,
+        ]);
+
+        $entry = JournalEntry::query()->create([
+            'company_id' => $company->id,
+            'entry_no' => 'JE-OPENING-REV',
+            'entry_date' => '2025-12-31',
+            'description' => 'Saldo awal terbalik',
+            'status' => 'posted',
+            'source_module' => 'opening_balance',
+            'source_reference' => 'OPENING-REV',
+        ]);
+        $entry->lines()->createMany([
+            ['account_id' => $equity->id, 'debit' => 40000000, 'credit' => 0],
+            ['account_id' => $cash->id, 'debit' => 0, 'credit' => 32000000],
+            ['account_id' => $equipment->id, 'debit' => 0, 'credit' => 8000000],
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->post(route('erp.accounting.utilities.reverse-journal-sides'), [
+                'journal_entry_ids' => [$entry->id],
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('journal_lines', [
+            'journal_entry_id' => $entry->id,
+            'account_id' => $equity->id,
+            'debit' => '0.00',
+            'credit' => '40000000.00',
+        ]);
+        $this->assertDatabaseHas('journal_lines', [
+            'journal_entry_id' => $entry->id,
+            'account_id' => $cash->id,
+            'debit' => '32000000.00',
+            'credit' => '0.00',
+        ]);
+        $this->assertDatabaseHas('journal_lines', [
+            'journal_entry_id' => $entry->id,
+            'account_id' => $equipment->id,
+            'debit' => '8000000.00',
+            'credit' => '0.00',
+        ]);
+    }
+
+    public function test_accounting_utilities_can_sync_supplier_payment_company_to_payable_company(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $companyOcn = Company::query()->create(['name' => 'OC Networks', 'is_active' => true]);
+        $companyNuma = Company::query()->create(['name' => 'Numa Packaging', 'is_active' => true]);
+        $cashAccount = Account::query()->create([
+            'code' => '1102',
+            'name' => 'Bank BRI',
+            'type' => 'asset',
+            'normal_balance' => 'debit',
+            'is_active' => true,
+            'is_cash_bank' => true,
+        ]);
+        $vendor = Vendor::query()->create([
+            'code' => 'SUP-NUMA',
+            'name' => 'Supplier Numa',
+            'lead_time_days' => 7,
+            'is_active' => true,
+        ]);
+        $warehouse = Warehouse::query()->create([
+            'code' => 'WH-NUMA',
+            'company_id' => $companyNuma->id,
+            'name' => 'Gudang Numa',
+            'is_active' => true,
+        ]);
+        $po = PurchaseOrder::query()->create([
+            'number' => 'PO-NUMA-001',
+            'vendor_id' => $vendor->id,
+            'order_date' => '2026-01-30',
+            'eta_date' => '2026-01-31',
+            'total_amount' => 500000,
+            'status' => 'approved',
+        ]);
+        $receipt = GoodsReceipt::query()->create([
+            'number' => 'GR-NUMA-001',
+            'purchase_order_id' => $po->id,
+            'received_date' => '2026-01-31',
+            'warehouse_id' => $warehouse->id,
+            'warehouse_name' => $warehouse->name,
+            'status' => 'approved',
+        ]);
+        $payableEntry = JournalEntry::query()->create([
+            'company_id' => $companyNuma->id,
+            'entry_no' => 'JE-AP-NUMA-001',
+            'entry_date' => '2026-01-31',
+            'description' => 'Hutang supplier Numa',
+            'status' => 'posted',
+            'source_module' => 'purchasing',
+            'source_reference' => $receipt->number,
+        ]);
+        $payable = Payable::query()->create([
+            'vendor_id' => $vendor->id,
+            'purchase_order_id' => $po->id,
+            'goods_receipt_id' => $receipt->id,
+            'bill_no' => 'BILL-NUMA-001',
+            'bill_date' => '2026-01-31',
+            'due_date' => '2026-02-14',
+            'amount' => 500000,
+            'paid_amount' => 500000,
+            'status' => 'paid',
+            'journal_entry_id' => $payableEntry->id,
+        ]);
+        $paymentEntry = JournalEntry::query()->create([
+            'company_id' => $companyOcn->id,
+            'entry_no' => 'JE-PAY-NUMA-001',
+            'entry_date' => '2026-01-31',
+            'description' => 'Bayar supplier salah usaha',
+            'status' => 'posted',
+            'source_module' => 'supplier_payment',
+            'source_reference' => $payable->bill_no,
+        ]);
+        PayablePayment::query()->create([
+            'payable_id' => $payable->id,
+            'payment_date' => '2026-01-31',
+            'amount' => 500000,
+            'cash_account_id' => $cashAccount->id,
+            'journal_entry_id' => $paymentEntry->id,
+            'paid_by' => $user->id,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.accounting.utilities', ['company_id' => $companyNuma->id]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Accounting/Utilities')
+                ->where('supplierPaymentCompanySync.entry_count', 1)
+                ->where('supplierPaymentCompanySync.candidate_count', 1)
+                ->where('supplierPaymentCompanySync.samples.0.bill_no', 'BILL-NUMA-001')
+                ->where('supplierPaymentCompanySync.samples.0.current_company_name', 'OC Networks')
+                ->where('supplierPaymentCompanySync.samples.0.expected_company_name', 'Numa Packaging')
+                ->etc());
+
+        $this
+            ->actingAs($user)
+            ->post(route('erp.accounting.utilities.sync-supplier-payment-companies'), [
+                'company_id' => $companyNuma->id,
+                'date_from' => '2026-01-01',
+                'date_to' => '2026-12-31',
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('journal_entries', [
+            'id' => $paymentEntry->id,
+            'company_id' => $companyNuma->id,
         ]);
     }
 

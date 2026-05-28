@@ -7,6 +7,8 @@ use App\ERP\Accounting\Models\JournalLine;
 use App\ERP\Accounting\Services\CashAccountIdBackfillService;
 use App\ERP\Accounting\Services\CashAccountReassignmentService;
 use App\ERP\Accounting\Services\CoaSettingService;
+use App\ERP\Accounting\Services\JournalEntrySideReversalService;
+use App\ERP\Accounting\Services\SupplierPaymentCompanySyncService;
 use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Core\Models\Company;
 use App\Services\ProjectMaterialReservationService;
@@ -99,6 +101,7 @@ class ERPAccountingUtilityController extends Controller
                 'id' => $account->id,
                 'label' => $account->displayLabel(),
             ])->values(),
+            'supplierPaymentCompanySync' => $this->supplierPaymentCompanySyncSummary($request),
             'cashAccountUsage' => app(CashAccountReassignmentService::class)->countsBySourceAccount(),
             'cashAccountReassignment' => $this->cashAccountReassignmentPreview($request),
             'inventoryReservationSync' => $this->inventoryReservationSyncSummary(),
@@ -179,6 +182,28 @@ class ERPAccountingUtilityController extends Controller
         ]);
     }
 
+    public function syncSupplierPaymentCompanies(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'company_id' => ['nullable', 'integer', 'exists:companies,id'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
+        ]);
+
+        $result = app(SupplierPaymentCompanySyncService::class)->apply(
+            isset($validated['company_id']) ? (int) $validated['company_id'] : null,
+            $validated['date_from'] ?? null,
+            $validated['date_to'] ?? null,
+        );
+
+        return back()->with('flash', [
+            'type' => $result['entry_count'] > 0 ? 'success' : 'info',
+            'message' => $result['entry_count'] > 0
+                ? "{$result['entry_count']} jurnal pembayaran supplier disinkronkan ke usaha asal dokumen hutangnya."
+                : 'Tidak ada jurnal pembayaran supplier yang perlu disinkronkan.',
+        ]);
+    }
+
     public function moveJournalEntries(Request $request): RedirectResponse
     {
         $validated = $request->validate([
@@ -209,6 +234,25 @@ class ERPAccountingUtilityController extends Controller
         return back()->with('flash', [
             'type' => 'success',
             'message' => $movedCount.' transaksi accounting dipindahkan ke '.($target?->name ?? 'usaha tujuan').'.',
+        ]);
+    }
+
+    public function reverseJournalEntrySides(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'journal_entry_ids' => ['required', 'array', 'min:1'],
+            'journal_entry_ids.*' => ['integer', 'exists:journal_entries,id'],
+        ]);
+
+        $result = app(JournalEntrySideReversalService::class)->apply(
+            collect($validated['journal_entry_ids'])
+                ->map(fn ($id): int => (int) $id)
+                ->all(),
+        );
+
+        return back()->with('flash', [
+            'type' => 'success',
+            'message' => "{$result['entry_count']} jurnal dibalik sisi debit/kreditnya. {$result['line_count']} baris jurnal diperbarui.",
         ]);
     }
 
@@ -426,5 +470,18 @@ class ERPAccountingUtilityController extends Controller
             ...$summary,
             'can_run' => true,
         ];
+    }
+
+    private function supplierPaymentCompanySyncSummary(Request $request): array
+    {
+        $companyId = $request->filled('company_id') && $request->string('company_id')->toString() !== 'all'
+            ? $request->integer('company_id')
+            : null;
+
+        return app(SupplierPaymentCompanySyncService::class)->summary(
+            $companyId ? (int) $companyId : null,
+            $request->filled('date_from') ? $request->string('date_from')->toString() : null,
+            $request->filled('date_to') ? $request->string('date_to')->toString() : null,
+        );
     }
 }

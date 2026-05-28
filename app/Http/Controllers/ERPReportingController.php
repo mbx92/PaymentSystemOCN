@@ -9,6 +9,7 @@ use App\ERP\Accounting\Models\PayablePayment;
 use App\ERP\Core\Services\ErpCompanyResolver;
 use App\Models\CashIn;
 use App\Models\CashOut;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -20,6 +21,227 @@ use Inertia\Response;
 
 class ERPReportingController extends Controller
 {
+    public function companyRevenue(Request $request): Response
+    {
+        [$selectedYear, $dateFrom, $dateTo] = $this->resolveReportingDateRange($request);
+        $companyId = ErpCompanyResolver::resolveForReporting($request);
+        $source = $this->sourceFilter($request);
+
+        $query = JournalLine::query()
+            ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->leftJoin('companies', 'companies.id', '=', 'journal_entries.company_id')
+            ->where('accounts.type', 'revenue')
+            ->whereDate('journal_entries.entry_date', '>=', $dateFrom->toDateString())
+            ->whereDate('journal_entries.entry_date', '<=', $dateTo->toDateString());
+
+        if ($companyId) {
+            $query->where('journal_entries.company_id', $companyId);
+        }
+
+        $this->applyJournalSourceFilter($query, $source);
+
+        $rows = $query
+            ->groupBy('journal_entries.company_id', 'companies.name')
+            ->selectRaw('journal_entries.company_id as company_id')
+            ->selectRaw("COALESCE(companies.name, 'Belum ditentukan') as company_name")
+            ->selectRaw('COUNT(DISTINCT journal_entries.id) as entry_count')
+            ->selectRaw('COUNT(DISTINCT journal_lines.account_id) as account_count')
+            ->selectRaw('SUM(journal_lines.credit - journal_lines.debit) as revenue_total')
+            ->orderByDesc('revenue_total')
+            ->get()
+            ->map(fn ($row): array => [
+                'company_id' => $row->company_id ? (int) $row->company_id : null,
+                'company_name' => (string) $row->company_name,
+                'entry_count' => (int) $row->entry_count,
+                'account_count' => (int) $row->account_count,
+                'revenue_total' => (float) $row->revenue_total,
+            ])
+            ->values();
+
+        $sourcePivotQuery = JournalLine::query()
+            ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->leftJoin('companies', 'companies.id', '=', 'journal_entries.company_id')
+            ->where('accounts.type', 'revenue')
+            ->whereDate('journal_entries.entry_date', '>=', $dateFrom->toDateString())
+            ->whereDate('journal_entries.entry_date', '<=', $dateTo->toDateString());
+
+        if ($companyId) {
+            $sourcePivotQuery->where('journal_entries.company_id', $companyId);
+        }
+
+        $this->applyJournalSourceFilter($sourcePivotQuery, $source);
+
+        $sourcePivot = $sourcePivotQuery
+            ->groupBy('journal_entries.company_id', 'companies.name', 'journal_entries.source_module')
+            ->selectRaw("COALESCE(companies.name, 'Belum ditentukan') as company_name")
+            ->selectRaw('journal_entries.source_module as source_module')
+            ->selectRaw('COUNT(DISTINCT journal_entries.id) as entry_count')
+            ->selectRaw('SUM(journal_lines.credit - journal_lines.debit) as revenue_total')
+            ->orderBy('company_name')
+            ->orderByDesc('revenue_total')
+            ->get()
+            ->map(fn ($row): array => [
+                'company_name' => (string) $row->company_name,
+                'source_label' => $this->journalSourceLabel((string) $row->source_module),
+                'entry_count' => (int) $row->entry_count,
+                'revenue_total' => (float) $row->revenue_total,
+            ])
+            ->values();
+
+        $accountBreakdownQuery = JournalLine::query()
+            ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->leftJoin('companies', 'companies.id', '=', 'journal_entries.company_id')
+            ->where('accounts.type', 'revenue')
+            ->whereDate('journal_entries.entry_date', '>=', $dateFrom->toDateString())
+            ->whereDate('journal_entries.entry_date', '<=', $dateTo->toDateString());
+
+        if ($companyId) {
+            $accountBreakdownQuery->where('journal_entries.company_id', $companyId);
+        }
+
+        $this->applyJournalSourceFilter($accountBreakdownQuery, $source);
+
+        $accountBreakdown = $accountBreakdownQuery
+            ->groupBy('companies.name', 'accounts.code', 'accounts.name')
+            ->selectRaw("COALESCE(companies.name, 'Belum ditentukan') as company_name")
+            ->selectRaw('accounts.code as account_code')
+            ->selectRaw('accounts.name as account_name')
+            ->selectRaw('SUM(journal_lines.credit - journal_lines.debit) as revenue_total')
+            ->orderBy('company_name')
+            ->orderBy('accounts.code')
+            ->get()
+            ->map(fn ($row): array => [
+                'company_name' => (string) $row->company_name,
+                'account_code' => (string) $row->account_code,
+                'account_name' => (string) $row->account_name,
+                'revenue_total' => (float) $row->revenue_total,
+            ])
+            ->values();
+
+        return Inertia::render('ERP/Reports/CompanyRevenue', [
+            'selected_year' => $selectedYear,
+            'filters' => [
+                'company_id' => $request->query('company_id', $companyId ?? ErpCompanyResolver::ALL_COMPANIES),
+                'date_from' => $dateFrom->toDateString(),
+                'date_to' => $dateTo->toDateString(),
+                'source' => $source,
+            ],
+            'totals' => [
+                'revenue' => (float) $rows->sum('revenue_total'),
+                'company_count' => $rows->count(),
+                'entry_count' => (int) $rows->sum('entry_count'),
+                'account_count' => $accountBreakdown
+                    ->map(fn (array $row) => $row['company_name'].'|'.$row['account_code'])
+                    ->unique()
+                    ->count(),
+            ],
+            'rows' => $rows->all(),
+            'source_pivot' => $sourcePivot->all(),
+            'account_breakdown' => $accountBreakdown->all(),
+            'sourceOptions' => $this->sourceOptions(),
+        ]);
+    }
+
+    public function profitLossByCompany(Request $request): Response
+    {
+        [$selectedYear, $dateFrom, $dateTo] = $this->resolveReportingDateRange($request);
+        $companyId = ErpCompanyResolver::resolveForReporting($request);
+        $source = $this->sourceFilter($request);
+
+        $query = JournalLine::query()
+            ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->leftJoin('companies', 'companies.id', '=', 'journal_entries.company_id')
+            ->whereIn('accounts.type', ['revenue', 'expense'])
+            ->whereDate('journal_entries.entry_date', '>=', $dateFrom->toDateString())
+            ->whereDate('journal_entries.entry_date', '<=', $dateTo->toDateString());
+
+        if ($companyId) {
+            $query->where('journal_entries.company_id', $companyId);
+        }
+
+        $this->applyJournalSourceFilter($query, $source);
+
+        $rows = $query
+            ->groupBy('journal_entries.company_id', 'companies.name')
+            ->selectRaw('journal_entries.company_id as company_id')
+            ->selectRaw("COALESCE(companies.name, 'Belum ditentukan') as company_name")
+            ->selectRaw("SUM(CASE WHEN accounts.type = 'revenue' THEN journal_lines.credit - journal_lines.debit ELSE 0 END) as revenue_total")
+            ->selectRaw("SUM(CASE WHEN accounts.type = 'expense' THEN journal_lines.debit - journal_lines.credit ELSE 0 END) as expense_total")
+            ->selectRaw('COUNT(DISTINCT journal_entries.id) as entry_count')
+            ->orderByDesc('revenue_total')
+            ->get()
+            ->map(fn ($row): array => [
+                'company_id' => $row->company_id ? (int) $row->company_id : null,
+                'company_name' => (string) $row->company_name,
+                'revenue_total' => (float) $row->revenue_total,
+                'expense_total' => (float) $row->expense_total,
+                'net_profit' => (float) $row->revenue_total - (float) $row->expense_total,
+                'entry_count' => (int) $row->entry_count,
+            ])
+            ->values();
+
+        $typePivotQuery = clone $query;
+        $typePivot = $typePivotQuery
+            ->groupBy('companies.name', 'accounts.type')
+            ->selectRaw("COALESCE(companies.name, 'Belum ditentukan') as company_name")
+            ->selectRaw('accounts.type as account_type')
+            ->selectRaw("SUM(CASE WHEN accounts.type = 'revenue' THEN journal_lines.credit - journal_lines.debit ELSE journal_lines.debit - journal_lines.credit END) as amount")
+            ->orderBy('company_name')
+            ->orderBy('account_type')
+            ->get()
+            ->map(fn ($row): array => [
+                'company_name' => (string) $row->company_name,
+                'account_type' => (string) $row->account_type,
+                'amount' => (float) $row->amount,
+            ])
+            ->values();
+
+        $accountBreakdownQuery = clone $query;
+        $accountBreakdown = $accountBreakdownQuery
+            ->groupBy('companies.name', 'accounts.code', 'accounts.name', 'accounts.type')
+            ->selectRaw("COALESCE(companies.name, 'Belum ditentukan') as company_name")
+            ->selectRaw('accounts.code as account_code')
+            ->selectRaw('accounts.name as account_name')
+            ->selectRaw('accounts.type as account_type')
+            ->selectRaw("SUM(CASE WHEN accounts.type = 'revenue' THEN journal_lines.credit - journal_lines.debit ELSE journal_lines.debit - journal_lines.credit END) as amount")
+            ->orderBy('company_name')
+            ->orderBy('accounts.type')
+            ->orderBy('accounts.code')
+            ->get()
+            ->map(fn ($row): array => [
+                'company_name' => (string) $row->company_name,
+                'account_code' => (string) $row->account_code,
+                'account_name' => (string) $row->account_name,
+                'account_type' => (string) $row->account_type,
+                'amount' => (float) $row->amount,
+            ])
+            ->values();
+
+        return Inertia::render('ERP/Reports/CompanyProfitLoss', [
+            'selected_year' => $selectedYear,
+            'filters' => [
+                'company_id' => $request->query('company_id', $companyId ?? ErpCompanyResolver::ALL_COMPANIES),
+                'date_from' => $dateFrom->toDateString(),
+                'date_to' => $dateTo->toDateString(),
+                'source' => $source,
+            ],
+            'totals' => [
+                'revenue' => (float) $rows->sum('revenue_total'),
+                'expense' => (float) $rows->sum('expense_total'),
+                'net_profit' => (float) $rows->sum('net_profit'),
+                'company_count' => $rows->count(),
+            ],
+            'rows' => $rows->all(),
+            'type_pivot' => $typePivot->all(),
+            'account_breakdown' => $accountBreakdown->all(),
+            'sourceOptions' => $this->sourceOptions(),
+        ]);
+    }
+
     public function chartOfAccounts(Request $request): Response
     {
         $query = Account::query()->orderBy('code');
@@ -431,6 +653,26 @@ class ERPReportingController extends Controller
         $source = $request->string('source')->toString();
 
         return in_array($source, ['project', 'pos', 'manual', 'opening_balance'], true) ? $source : '';
+    }
+
+    /**
+     * @return array{0:int,1:Carbon,2:Carbon}
+     */
+    private function resolveReportingDateRange(Request $request): array
+    {
+        $selectedYear = (int) $request->integer('year', now()->year);
+        $dateFrom = $request->filled('date_from')
+            ? Carbon::parse($request->string('date_from')->toString())->startOfDay()
+            : Carbon::create($selectedYear, 1, 1)->startOfDay();
+        $dateTo = $request->filled('date_to')
+            ? Carbon::parse($request->string('date_to')->toString())->endOfDay()
+            : Carbon::create($selectedYear, 12, 31)->endOfDay();
+
+        if ($dateFrom->greaterThan($dateTo)) {
+            [$dateFrom, $dateTo] = [$dateTo->copy()->startOfDay(), $dateFrom->copy()->endOfDay()];
+        }
+
+        return [$selectedYear, $dateFrom, $dateTo];
     }
 
     private function journalSourceLabel(string $sourceModule): string

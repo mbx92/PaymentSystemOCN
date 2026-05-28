@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\ERP\Accounting\Models\Account;
+use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Core\Services\ErpCompanyResolver;
+use App\ERP\Core\Services\FiscalPeriodService;
 use App\ERP\Shared\Enums\DocumentStatus;
 use App\Models\CashCategory;
 use App\Models\CashOut;
@@ -12,13 +14,17 @@ use App\Models\CategoryCoaMapping;
 use App\Models\Project;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class CashOutController extends Controller
 {
-    public function __construct(private readonly GlPostingService $glPostingService) {}
+    public function __construct(
+        private readonly GlPostingService $glPostingService,
+        private readonly FiscalPeriodService $fiscalPeriodService,
+    ) {}
 
     public function index(Request $request)
     {
@@ -81,29 +87,36 @@ class CashOutController extends Controller
         $validated['posted_by'] = Auth::id();
         $this->assertCategoryExists($validated['category']);
         $expenseAccountId = $this->resolveMappedAccountId($validated['category']);
-        $cashOut = CashOut::create($validated);
-        $expenseAccount = Account::query()->findOrFail($expenseAccountId);
-        $cashAccount = Account::query()->findOrFail((int) $validated['cash_account_id']);
+        $companyId = ErpCompanyResolver::resolveForGlPosting($request);
+        $this->fiscalPeriodService->ensureDateIsOpen($validated['date'], $companyId, 'date', 'Posting kas keluar');
 
-        $entry = $this->glPostingService->post(
-            ErpCompanyResolver::resolveForGlPosting($request),
-            sourceModule: 'cash_out',
-            sourceReference: (string) $cashOut->id,
-            description: 'Kas keluar proyek '.$cashOut->project_id,
-            entryDate: $validated['date'],
-            lines: [
-                ['account_id' => $expenseAccount->id, 'debit' => $validated['amount'], 'credit' => 0],
-                ['account_id' => $cashAccount->id, 'debit' => 0, 'credit' => $validated['amount']],
-            ]
-        );
+        DB::transaction(function () use ($validated, $expenseAccountId, $companyId): void {
+            $cashOut = CashOut::create($validated);
+            $expenseAccount = Account::query()->findOrFail($expenseAccountId);
+            $cashAccount = Account::query()->findOrFail((int) $validated['cash_account_id']);
 
-        $cashOut->update(['journal_entry_id' => $entry->id]);
+            $entry = $this->glPostingService->post(
+                $companyId,
+                sourceModule: 'cash_out',
+                sourceReference: (string) $cashOut->id,
+                description: 'Kas keluar proyek '.$cashOut->project_id,
+                entryDate: $validated['date'],
+                lines: [
+                    ['account_id' => $expenseAccount->id, 'debit' => $validated['amount'], 'credit' => 0],
+                    ['account_id' => $cashAccount->id, 'debit' => 0, 'credit' => $validated['amount']],
+                ]
+            );
+
+            $cashOut->update(['journal_entry_id' => $entry->id]);
+        });
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Kas keluar berhasil ditambahkan.']);
     }
 
     public function update(Request $request, CashOut $cashOut)
     {
+        $companyId = $this->resolvedCompanyId($cashOut);
+        $this->fiscalPeriodService->ensureDateIsOpen($cashOut->date ?? now(), $companyId, 'date', 'Perubahan kas keluar');
         $validated = $request->validate([
             'project_id' => 'nullable|uuid|exists:projects,id',
             'cash_account_id' => Account::cashBankIdValidationRules(),
@@ -115,18 +128,76 @@ class CashOutController extends Controller
         ]);
 
         $this->assertCategoryExists($validated['category']);
-        $this->resolveMappedAccountId($validated['category']);
+        $expenseAccountId = $this->resolveMappedAccountId($validated['category']);
+        $this->fiscalPeriodService->ensureDateIsOpen($validated['date'], $companyId, 'date', 'Perubahan kas keluar');
 
-        $cashOut->update($validated);
+        DB::transaction(function () use ($cashOut, $validated, $expenseAccountId, $companyId): void {
+            // Pola reverse-and-repost: batalkan jurnal lama, buat jurnal baru dengan nilai updated
+            if ($cashOut->journal_entry_id) {
+                $this->reverseJournalEntryLines($cashOut->journal_entry_id);
+            }
 
-        return back()->with('flash', ['type' => 'success', 'message' => 'Kas keluar berhasil diperbarui.']);
+            $cashOut->update($validated);
+
+            $expenseAccount = Account::query()->findOrFail($expenseAccountId);
+            $cashAccount    = Account::query()->findOrFail((int) $validated['cash_account_id']);
+
+            $newEntry = $this->glPostingService->post(
+                $companyId,
+                sourceModule: 'cash_out',
+                sourceReference: (string) $cashOut->id,
+                description: 'Koreksi kas keluar proyek '.$cashOut->project_id,
+                entryDate: $validated['date'],
+                lines: [
+                    ['account_id' => $expenseAccount->id, 'debit' => $validated['amount'], 'credit' => 0],
+                    ['account_id' => $cashAccount->id,    'debit' => 0, 'credit' => $validated['amount']],
+                ]
+            );
+
+            $cashOut->update(['journal_entry_id' => $newEntry->id]);
+        });
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Kas keluar berhasil diperbarui dan jurnal GL telah disinkronkan.']);
     }
 
     public function destroy(CashOut $cashOut)
     {
-        $cashOut->delete();
+        $companyId = $this->resolvedCompanyId($cashOut);
+        $this->fiscalPeriodService->ensureDateIsOpen($cashOut->date ?? now(), $companyId, 'date', 'Penghapusan kas keluar');
 
-        return back()->with('flash', ['type' => 'success', 'message' => 'Kas keluar berhasil dihapus.']);
+        DB::transaction(function () use ($cashOut): void {
+            // Reverse journal entry sebelum delete agar GL tetap balance
+            if ($cashOut->journal_entry_id) {
+                $this->reverseJournalEntryLines($cashOut->journal_entry_id);
+            }
+
+            $cashOut->delete();
+        });
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Kas keluar berhasil dihapus dan jurnal GL telah di-reverse.']);
+    }
+
+    /**
+     * Reverse (balik debit <-> credit) semua lines pada journal entry yang diberikan.
+     * Digunakan sebelum update (reverse-and-repost) dan sebelum delete.
+     */
+    private function reverseJournalEntryLines(int $journalEntryId): void
+    {
+        $entry = JournalEntry::query()->with('lines')->find($journalEntryId);
+
+        if (! $entry) {
+            return;
+        }
+
+        foreach ($entry->lines as $line) {
+            $debit  = round((float) $line->debit, 2);
+            $credit = round((float) $line->credit, 2);
+
+            $line->update([
+                'debit'  => number_format($credit, 2, '.', ''),
+                'credit' => number_format($debit, 2, '.', ''),
+            ]);
+        }
     }
 
     private function assertCategoryExists(string $category): void
@@ -180,5 +251,12 @@ class CashOutController extends Controller
                 'label' => $category->label,
             ])
             ->values();
+    }
+
+    private function resolvedCompanyId(CashOut $cashOut): ?int
+    {
+        $cashOut->loadMissing(['journalEntry:id,company_id', 'creator:id,company_id']);
+
+        return $cashOut->journalEntry?->company_id ?? $cashOut->creator?->company_id;
     }
 }

@@ -32,6 +32,7 @@ final class ModuleWorkspaceRegistry
                     ['key' => 'operational', 'title' => 'Operational', 'description' => 'View cepat untuk biaya operasional umum atau per project.', 'route' => 'erp.accounting.operational', 'icon' => 'arrow-up-circle'],
                     ['key' => 'kategori-pengeluaran', 'title' => 'Kategori Pengeluaran', 'description' => 'Mapping kategori expenses ke akun CoA.', 'route' => 'erp.accounting.expense-categories', 'icon' => 'book-open'],
                     ['key' => 'saldo-awal', 'title' => 'Saldo Awal', 'description' => 'Input jurnal pembuka awal periode langsung ke General Ledger.', 'route' => 'erp.accounting.opening-balance', 'icon' => 'scale'],
+                    ['key' => 'tutup-buku', 'title' => 'Tutup Buku', 'description' => 'Kunci periode accounting per bulan atau tahun agar transaksi historis tidak berubah.', 'route' => 'erp.accounting.fiscal-periods', 'icon' => 'lock-closed'],
                     ['key' => 'pembayaran', 'title' => 'Pembayaran', 'description' => 'Pusat proses pembayaran project dan tim.', 'route' => 'erp.accounting.payments', 'icon' => 'credit-card'],
                     ['key' => 'rekonsiliasi-kas', 'title' => 'Rekonsiliasi Kas', 'description' => 'Rekap mutasi kas/bank harian dan mingguan per sumber dana.', 'route' => 'erp.accounting.reconciliation', 'icon' => 'calendar-days'],
                     ['key' => 'general-ledger', 'title' => 'General Ledger', 'description' => 'Lihat jurnal umum yang sudah diposting.', 'route' => 'reports.general-ledger', 'icon' => 'book-open'],
@@ -101,6 +102,8 @@ final class ModuleWorkspaceRegistry
                 'label' => 'Reporting',
                 'menus' => [
                     ['key' => 'cashflow-report', 'title' => 'Cashflow Report', 'description' => 'Laporan arus kas dengan filter periode dan pivot kategori/project.', 'route' => 'reports.cashflow', 'icon' => 'arrows-right-left'],
+                    ['key' => 'revenue-per-usaha', 'title' => 'Revenue per Usaha', 'description' => 'Pendapatan tiap usaha berdasarkan jurnal revenue yang sudah diposting.', 'route' => 'reports.company-revenue', 'icon' => 'presentation-chart-line'],
+                    ['key' => 'laba-rugi-per-usaha', 'title' => 'Laba Rugi per Usaha', 'description' => 'Ringkasan revenue, beban, dan net profit per entitas usaha.', 'route' => 'reports.company-profit-loss', 'icon' => 'chart-bar'],
                     ['key' => 'project-report', 'title' => 'Project Report', 'description' => 'Laporan project dengan nilai kontrak, cash in/out, dan pivot status/tipe.', 'route' => 'reports.projects', 'icon' => 'presentation-chart-line'],
                     ['key' => 'pos-report', 'title' => 'POS Report', 'description' => 'Laporan transaksi POS dengan pivot status, channel, dan metode bayar.', 'route' => 'reports.pos', 'icon' => 'shopping-cart'],
                     ['key' => 'general-ledger', 'title' => 'General Ledger', 'description' => 'Laporan buku besar terintegrasi.', 'route' => 'reports.general-ledger', 'icon' => 'book-open'],

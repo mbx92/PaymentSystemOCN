@@ -15,6 +15,7 @@ const props = defineProps({
   posChannelCorrection: Object,
   cashAccountBackfill: Object,
   cashBankAccounts: Array,
+  supplierPaymentCompanySync: Object,
   cashAccountUsage: Array,
   cashAccountReassignment: Object,
   inventoryReservationSync: Object,
@@ -36,8 +37,16 @@ const moveForm = useForm({
   target_company_id: '',
   journal_entry_ids: [],
 });
+const reverseForm = useForm({
+  journal_entry_ids: [],
+});
 const correctionForm = useForm({
   journal_entry_ids: [],
+});
+const supplierPaymentSyncForm = useForm({
+  company_id: props.filters?.company_id ?? '',
+  date_from: props.filters?.date_from ?? '',
+  date_to: props.filters?.date_to ?? '',
 });
 const backfillForm = useForm({});
 const inventoryReservationForm = useForm({});
@@ -66,6 +75,10 @@ const inventoryReservationConfirmMessage = computed(() =>
 const inventoryStockRebuildSummary = computed(() => props.inventoryStockRebuild ?? {});
 const inventoryStockRebuildConfirmMessage = computed(() =>
   `Rebuild stok warehouse dari stock movement? ${inventoryStockRebuildSummary.value.warehouse_rows_updated ?? 0} baris akan diperbarui dan ${inventoryStockRebuildSummary.value.warehouse_rows_created ?? 0} baris akan dibuat.`,
+);
+const supplierPaymentCompanySync = computed(() => props.supplierPaymentCompanySync ?? {});
+const supplierPaymentSyncConfirmMessage = computed(() =>
+  `Sinkronkan ${supplierPaymentCompanySync.value.entry_count ?? 0} jurnal pembayaran supplier ke usaha asal hutangnya? Utility ini hanya mengubah company pada jurnal pembayaran supplier yang mismatch.`,
 );
 
 const reassignPreview = computed(() => props.cashAccountReassignment ?? null);
@@ -172,6 +185,17 @@ const submitMove = () => {
   });
 };
 
+const submitReverseSides = () => {
+  reverseForm.journal_entry_ids = selectedEntryIds.value;
+  reverseForm.post(route('erp.accounting.utilities.reverse-journal-sides'), {
+    preserveScroll: true,
+    onSuccess: () => {
+      selectedEntryIds.value = [];
+      reverseForm.reset('journal_entry_ids');
+    },
+  });
+};
+
 const submitPosChannelCorrection = () => {
   correctionForm.journal_entry_ids = selectedEntryIds.value;
   correctionForm.post(route('erp.accounting.utilities.correct-pos-channel-payable'), {
@@ -180,6 +204,19 @@ const submitPosChannelCorrection = () => {
       selectedEntryIds.value = [];
       correctionForm.reset('journal_entry_ids');
     },
+  });
+};
+
+const openSupplierPaymentSyncModal = () => {
+  supplierPaymentSyncForm.company_id = filters.company_id;
+  supplierPaymentSyncForm.date_from = filters.date_from;
+  supplierPaymentSyncForm.date_to = filters.date_to;
+  document.getElementById('modal-confirm-sync-supplier-payment-companies')?.showModal();
+};
+
+const confirmSupplierPaymentSync = () => {
+  supplierPaymentSyncForm.post(route('erp.accounting.utilities.sync-supplier-payment-companies'), {
+    preserveScroll: true,
   });
 };
 
@@ -328,6 +365,69 @@ const confirmCashAccountReassign = () => {
             >
               {{ moveForm.processing ? 'Memindahkan...' : 'Pindahkan' }}
             </button>
+          </div>
+        </div>
+        <div class="card-body pb-0">
+          <div class="rounded-xl border border-warning/30 bg-warning/10 p-4">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <h3 class="text-sm font-semibold">Balik sisi debit/kredit jurnal terpilih</h3>
+                <p class="mt-1 text-sm text-base-content/75">
+                  Gunakan untuk kasus jurnal yang seluruh arahnya terbalik, misalnya saldo awal yang asetnya masuk kredit dan modalnya masuk debit.
+                </p>
+              </div>
+              <button
+                type="button"
+                class="btn btn-warning btn-sm"
+                :disabled="selectedCount === 0 || reverseForm.processing"
+                @click="submitReverseSides"
+              >
+                {{ reverseForm.processing ? 'Membalik...' : `Balik ${selectedCount} jurnal` }}
+              </button>
+            </div>
+          </div>
+          <div class="mt-4 rounded-xl border border-info/30 bg-info/10 p-4">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <h3 class="text-sm font-semibold">Sinkronkan usaha pembayaran supplier</h3>
+                <p class="mt-1 text-sm text-base-content/75">
+                  Untuk kasus pembayaran hutang supplier sudah masuk ke usaha aktif di session, padahal bill asalnya milik usaha lain.
+                </p>
+                <p class="mt-2 text-xs text-base-content/60">
+                  Kandidat sesuai filter: {{ supplierPaymentCompanySync.entry_count ?? 0 }} jurnal / {{ supplierPaymentCompanySync.candidate_count ?? 0 }} pembayaran.
+                </p>
+              </div>
+              <button
+                type="button"
+                class="btn btn-info btn-sm"
+                :disabled="(supplierPaymentCompanySync.entry_count ?? 0) === 0 || supplierPaymentSyncForm.processing"
+                @click="openSupplierPaymentSyncModal"
+              >
+                {{ supplierPaymentSyncForm.processing ? 'Menyinkronkan...' : `Sync ${supplierPaymentCompanySync.entry_count ?? 0} jurnal` }}
+              </button>
+            </div>
+            <div v-if="supplierPaymentCompanySync.samples?.length" class="mt-3 overflow-x-auto rounded-lg border border-base-300 bg-base-100">
+              <table class="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Bill</th>
+                    <th>Tanggal</th>
+                    <th class="text-right">Nominal</th>
+                    <th>Usaha sekarang</th>
+                    <th>Usaha seharusnya</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="row in supplierPaymentCompanySync.samples" :key="row.payment_id">
+                    <td class="font-mono text-xs">{{ row.bill_no }}</td>
+                    <td class="whitespace-nowrap">{{ formatDate(row.payment_date) }}</td>
+                    <td class="text-right font-semibold">{{ format(row.amount) }}</td>
+                    <td>{{ row.current_company_name }}</td>
+                    <td>{{ row.expected_company_name }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
         <div class="mt-4 overflow-x-auto">
@@ -751,6 +851,14 @@ const confirmCashAccountReassign = () => {
       confirm-text="Pindahkan"
       confirm-class="btn-primary"
       @confirm="confirmCashAccountReassign"
+    />
+    <ConfirmModal
+      id="modal-confirm-sync-supplier-payment-companies"
+      title="Sinkronkan usaha pembayaran supplier"
+      :message="supplierPaymentSyncConfirmMessage"
+      confirm-text="Sinkronkan"
+      confirm-class="btn-info"
+      @confirm="confirmSupplierPaymentSync"
     />
     <ConfirmModal
       id="modal-confirm-backfill-cash-accounts"

@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\ERP\Accounting\Models\JournalLine;
 use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Accounting\Models\PayablePayment;
+use App\ERP\Shared\Enums\DocumentStatus;
 use App\Models\AccountingInventoryRecord;
 use App\Models\CashIn;
 use App\Models\CashOut;
@@ -36,6 +38,20 @@ class AccountingCashSummaryService
             'cash_out' => $cashOut,
             'net_cashflow' => $cashIn - $cashOut,
         ];
+    }
+
+    public function openingCashBalance(?int $companyId, Carbon $dateFrom): float
+    {
+        return (float) (JournalLine::query()
+            ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->where('accounts.is_cash_bank', true)
+            ->where('accounts.type', 'asset')
+            ->where('journal_entries.status', DocumentStatus::Posted->value)
+            ->when($companyId, fn ($q) => $q->where('journal_entries.company_id', $companyId))
+            ->whereDate('journal_entries.entry_date', '<', $dateFrom->toDateString())
+            ->selectRaw('COALESCE(SUM(journal_lines.debit - journal_lines.credit), 0) as opening_balance')
+            ->value('opening_balance') ?? 0);
     }
 
     /**

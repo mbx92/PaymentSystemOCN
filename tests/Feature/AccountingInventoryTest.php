@@ -92,11 +92,11 @@ class AccountingInventoryTest extends TestCase
             ->assertInertia(fn (\Inertia\Testing\AssertableInertia $page) => $page
                 ->component('ERP/Accounting/Cashflow')
                 ->where('totals.cash_out', 2500000)
-                ->has('entries', 1)
-                ->where('entries.0.type', 'out')
-                ->where('entries.0.source', 'inventaris')
-                ->where('entries.0.amount', 2500000)
-                ->where('entries.0.recipient_name', 'Printer Thermal')
+                ->has('entries.data', 1)
+                ->where('entries.data.0.type', 'out')
+                ->where('entries.data.0.source', 'inventaris')
+                ->where('entries.data.0.amount', 2500000)
+                ->where('entries.data.0.recipient_name', 'Printer Thermal')
             );
     }
 

@@ -81,6 +81,38 @@ const totalDebit = computed(() => form.lines.reduce((sum, line) => sum + toNumbe
 const totalCredit = computed(() => form.lines.reduce((sum, line) => sum + toNumber(line.credit), 0));
 const difference = computed(() => totalDebit.value - totalCredit.value);
 const isBalanced = computed(() => totalDebit.value > 0 && Math.abs(difference.value) < 0.01);
+const accountsById = computed(() => new Map((props.accounts ?? []).map((account) => [Number(account.id), account])));
+const lineWarnings = computed(() => form.lines.flatMap((line, index) => {
+  const account = accountsById.value.get(Number(line.account_id));
+  const debit = toNumber(line.debit);
+  const credit = toNumber(line.credit);
+
+  if (!account || (debit <= 0 && credit <= 0)) {
+    return [];
+  }
+
+  if (account.normal_balance === 'debit' && credit > 0 && debit === 0) {
+    return [{
+      index,
+      message: `${account.code} - ${account.name} normalnya debit, tetapi saat ini diisi di sisi kredit.`,
+      emphasis: account.is_cash_bank
+        ? 'Untuk akun kas/bank, pola ini biasanya membuat saldo awal menjadi negatif.'
+        : '',
+    }];
+  }
+
+  if (account.normal_balance === 'credit' && debit > 0 && credit === 0) {
+    return [{
+      index,
+      message: `${account.code} - ${account.name} normalnya kredit, tetapi saat ini diisi di sisi debit.`,
+      emphasis: account.type === 'equity'
+        ? 'Untuk akun modal/ekuitas, pola ini sering menandakan arah jurnal terbalik.'
+        : '',
+    }];
+  }
+
+  return [];
+}));
 
 const addLine = () => form.lines.push(blankLine());
 
@@ -258,6 +290,14 @@ const submit = () => {
           </div>
 
           <p v-if="form.errors.lines" class="text-sm text-error">{{ form.errors.lines }}</p>
+          <div v-if="lineWarnings.length" class="rounded-xl border border-warning/40 bg-warning/10 p-4 text-sm text-base-content">
+            <p class="font-semibold">Cek lagi arah debit/kredit</p>
+            <ul class="mt-2 space-y-1 text-base-content/80">
+              <li v-for="warning in lineWarnings" :key="`${warning.index}-${warning.message}`">
+                Baris {{ warning.index + 1 }}: {{ warning.message }} <span v-if="warning.emphasis">{{ warning.emphasis }}</span>
+              </li>
+            </ul>
+          </div>
 
           <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <button type="button" class="btn btn-outline btn-sm gap-1.5" @click="addLine">
