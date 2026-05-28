@@ -109,6 +109,115 @@ class CompanyFinancialReportsTest extends TestCase
             );
     }
 
+    public function test_expense_type_po_appears_in_profit_loss_report(): void
+    {
+        $this->disableErpMiddleware();
+
+        $company = Company::query()->create([
+            'name' => 'OC Networks',
+            'legal_name' => 'PT OC Networks',
+            'is_active' => true,
+        ]);
+        $user = User::factory()->create(['company_id' => $company->id]);
+
+        $expenseAccount = $this->createAccount('5101', 'Beban Pembelian', 'expense', 'debit');
+        $payableAccount = $this->createAccount('2101', 'Hutang Usaha Lain', 'liability', 'credit');
+
+        $entry = JournalEntry::query()->create([
+            'company_id' => $company->id,
+            'entry_no' => 'JE-PO-EXP-2026',
+            'entry_date' => '2026-04-05',
+            'description' => 'Posting biaya pembelian GRN-001',
+            'status' => DocumentStatus::Posted,
+            'source_module' => 'purchasing',
+            'source_reference' => 'GRN-001',
+        ]);
+
+        $entry->lines()->createMany([
+            [
+                'account_id' => $expenseAccount->id,
+                'description' => 'Biaya pembelian via PO (expense)',
+                'debit' => 2000000,
+                'credit' => 0,
+            ],
+            [
+                'account_id' => $payableAccount->id,
+                'description' => 'Hutang usaha',
+                'debit' => 0,
+                'credit' => 2000000,
+            ],
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('reports.company-profit-loss', ['company_id' => 'all', 'year' => 2026]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Reports/CompanyProfitLoss')
+                ->where('selected_year', 2026)
+                ->where('totals.expense', fn ($value) => (float) $value === 2000000.0)
+                ->where('totals.net_profit', fn ($value) => (float) $value === -2000000.0)
+                ->where('totals.company_count', 1)
+                ->has('rows', 1)
+                ->where('rows.0', fn ($row) => $row['company_name'] === 'OC Networks'
+                    && (float) $row['revenue_total'] === 0.0
+                    && (float) $row['expense_total'] === 2000000.0
+                    && (float) $row['net_profit'] === -2000000.0)
+            );
+    }
+
+    public function test_inventory_type_po_does_not_appear_in_profit_loss_report(): void
+    {
+        $this->disableErpMiddleware();
+
+        $company = Company::query()->create([
+            'name' => 'OC Networks',
+            'legal_name' => 'PT OC Networks',
+            'is_active' => true,
+        ]);
+        $user = User::factory()->create(['company_id' => $company->id]);
+
+        $inventoryAccount = $this->createAccount('1201', 'Persediaan Barang', 'asset', 'debit');
+        $payableAccount = $this->createAccount('2101', 'Hutang Usaha Lain', 'liability', 'credit');
+
+        $entry = JournalEntry::query()->create([
+            'company_id' => $company->id,
+            'entry_no' => 'JE-PO-INV-2026',
+            'entry_date' => '2026-04-06',
+            'description' => 'Posting penerimaan barang GRN-002',
+            'status' => DocumentStatus::Posted,
+            'source_module' => 'purchasing',
+            'source_reference' => 'GRN-002',
+        ]);
+
+        $entry->lines()->createMany([
+            [
+                'account_id' => $inventoryAccount->id,
+                'description' => 'Persediaan barang',
+                'debit' => 3000000,
+                'credit' => 0,
+            ],
+            [
+                'account_id' => $payableAccount->id,
+                'description' => 'Hutang usaha',
+                'debit' => 0,
+                'credit' => 3000000,
+            ],
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('reports.company-profit-loss', ['company_id' => 'all', 'year' => 2026]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Reports/CompanyProfitLoss')
+                ->where('selected_year', 2026)
+                ->where('totals.revenue', 0)
+                ->where('totals.expense', 0)
+                ->where('totals.net_profit', 0)
+                ->where('totals.company_count', 0)
+                ->where('rows', [])
+            );
+    }
+
     private function createAccount(string $code, string $name, string $type, string $normalBalance): Account
     {
         return Account::query()->create([

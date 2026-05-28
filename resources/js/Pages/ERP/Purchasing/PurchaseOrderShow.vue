@@ -80,6 +80,7 @@ const editForm = useForm({
   vendor_code: props.detail.supplier_code,
   order_date: props.detail.created_at,
   eta_date: props.detail.eta,
+  po_category: props.detail.po_category ?? 'inventory',
   notes: props.detail.notes ?? '',
   lines: readDraftLines() ?? databaseLines(),
 });
@@ -88,6 +89,7 @@ const normalizedEditPayload = (payload) => ({
   vendor_code: String(payload.vendor_code ?? ''),
   order_date: String(payload.order_date ?? ''),
   eta_date: String(payload.eta_date ?? ''),
+  po_category: String(payload.po_category ?? 'inventory'),
   notes: String(payload.notes ?? ''),
   lines: [...(payload.lines ?? [])]
     .map((line) => ({
@@ -101,6 +103,7 @@ const savedEditPayload = computed(() => normalizedEditPayload({
   vendor_code: props.detail.supplier_code,
   order_date: props.detail.created_at,
   eta_date: props.detail.eta,
+  po_category: props.detail.po_category ?? 'inventory',
   notes: props.detail.notes ?? '',
   lines: databaseLines(),
 }));
@@ -209,6 +212,11 @@ watch(
               </Link>
             </p>
               <p class="ocn-panel__desc mt-1">Dibuat {{ formatDate(detail.created_at) }} · ETA {{ formatDate(detail.eta) }} · Total {{ formatIdr(detail.amount) }}</p>
+              <p class="ocn-panel__desc mt-1">
+                <span class="badge badge-sm" :class="detail.po_category === 'expense' ? 'badge-warning' : 'badge-info'">
+                  {{ detail.po_category === 'expense' ? 'Beban/biaya' : 'Inventory' }}
+                </span>
+              </p>
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
               <div class="flex flex-wrap items-center gap-2">
@@ -252,6 +260,13 @@ watch(
                 <div>
                   <label class="label py-1"><span class="label-text">ETA</span></label>
                   <input v-model="editForm.eta_date" type="date" class="input input-bordered input-sm w-full" />
+                </div>
+                <div>
+                  <label class="label py-1"><span class="label-text">Kategori PO</span></label>
+                  <select v-model="editForm.po_category" class="select select-bordered select-sm w-full">
+                    <option value="inventory">Inventory (barang)</option>
+                    <option value="expense">Beban/biaya (non-inventaris)</option>
+                  </select>
                 </div>
                 <div class="md:col-span-4">
                   <label class="label py-1"><span class="label-text">Catatan</span></label>

@@ -28,6 +28,7 @@ class MasterProduct extends Model
         'status',
         'description',
         'selling_price',
+        'unit_cost',
         'stock',
         'min_stock',
         'low_stock_alert_enabled',
@@ -38,6 +39,7 @@ class MasterProduct extends Model
     {
         return [
             'selling_price' => 'decimal:2',
+            'unit_cost' => 'decimal:2',
             'stock' => 'int',
             'min_stock' => 'int',
             'warehouse_id' => 'int',

@@ -157,6 +157,11 @@ Route::middleware('auth')->group(function () {
         Route::post('erp/accounting/utilities/reassign-cash-accounts', [ERPAccountingUtilityController::class, 'reassignCashAccounts'])->name('erp.accounting.utilities.reassign-cash-accounts');
         Route::post('erp/accounting/utilities/sync-inventory-reservations', [ERPAccountingUtilityController::class, 'syncInventoryReservations'])->name('erp.accounting.utilities.sync-inventory-reservations');
         Route::post('erp/accounting/utilities/rebuild-inventory-stocks', [ERPAccountingUtilityController::class, 'rebuildInventoryStocks'])->name('erp.accounting.utilities.rebuild-inventory-stocks');
+        Route::post('erp/accounting/utilities/reclassify-po-expense', [ERPAccountingUtilityController::class, 'reclassifyPoExpense'])->name('erp.accounting.utilities.reclassify-po-expense');
+        Route::post('erp/accounting/utilities/backfill-unit-costs', [ERPAccountingUtilityController::class, 'backfillUnitCosts'])->name('erp.accounting.utilities.backfill-unit-costs');
+        Route::post('erp/accounting/utilities/backfill-cogs', [ERPAccountingUtilityController::class, 'backfillCogs'])->name('erp.accounting.utilities.backfill-cogs');
+        Route::post('erp/accounting/utilities/backfill-material-unit-costs', [ERPAccountingUtilityController::class, 'estimateMaterialUnitCosts'])->name('erp.accounting.utilities.backfill-material-unit-costs');
+        Route::post('erp/accounting/utilities/backfill-material-cogs', [ERPAccountingUtilityController::class, 'backfillMaterialCogs'])->name('erp.accounting.utilities.backfill-material-cogs');
         Route::post('erp/accounting/mutasi-kas-bank', [CashBankTransferController::class, 'store'])->name('erp.accounting.cash-bank-transfer.store');
         Route::post('erp/accounting/inventaris', [AccountingInventoryController::class, 'store'])->name('erp.accounting.inventaris.store');
     });

@@ -137,6 +137,9 @@ class CoaSeeder extends Seeder
             ['domain' => 'cash_out', 'category' => 'pinjaman', 'account_code' => '2004'],
             ['domain' => 'cash_out', 'category' => 'pengeluaran_lainnya', 'account_code' => '5013'],
             ['domain' => 'cash_out', 'category' => 'refund_penjualan_pos', 'account_code' => '4005'],
+
+            // Purchase Order → Account
+            ['domain' => 'purchase_order', 'category' => 'expense', 'account_code' => '5001'],
         ];
 
         foreach ($coaMappings as $mapping) {

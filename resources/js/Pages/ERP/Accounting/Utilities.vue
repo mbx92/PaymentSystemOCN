@@ -20,6 +20,9 @@ const props = defineProps({
   cashAccountReassignment: Object,
   inventoryReservationSync: Object,
   inventoryStockRebuild: Object,
+  poExpenseReclassify: Object,
+  cogsBackfill: Object,
+  materialCogsBackfill: Object,
 });
 
 const { formatDate } = useDateFormat();
@@ -51,6 +54,13 @@ const supplierPaymentSyncForm = useForm({
 const backfillForm = useForm({});
 const inventoryReservationForm = useForm({});
 const inventoryStockRebuildForm = useForm({});
+const poReclassifyForm = useForm({
+  po_numbers: [],
+});
+const cogsBackfillForm = useForm({});
+const unitCostForm = useForm({});
+const materialUnitCostForm = useForm({});
+const materialCogsForm = useForm({});
 const reassignForm = useForm({
   from_account_id: '',
   to_account_id: '',
@@ -75,6 +85,28 @@ const inventoryReservationConfirmMessage = computed(() =>
 const inventoryStockRebuildSummary = computed(() => props.inventoryStockRebuild ?? {});
 const inventoryStockRebuildConfirmMessage = computed(() =>
   `Rebuild stok warehouse dari stock movement? ${inventoryStockRebuildSummary.value.warehouse_rows_updated ?? 0} baris akan diperbarui dan ${inventoryStockRebuildSummary.value.warehouse_rows_created ?? 0} baris akan dibuat.`,
+);
+const cogsBackfillSummary = computed(() => props.cogsBackfill ?? {});
+const poExpenseReclassifySummary = computed(() => props.poExpenseReclassify ?? {});
+const poReclassifySelected = ref([]);
+const poSelectAll = ref(false);
+
+watch(poSelectAll, (val) => {
+  if (val) {
+    poReclassifySelected.value = (poExpenseReclassifySummary.value.candidates ?? []).map((po) => po.number);
+  } else {
+    poReclassifySelected.value = [];
+  }
+});
+
+watch(() => poExpenseReclassifySummary.value.candidates, () => {
+  poSelectAll.value = false;
+  poReclassifySelected.value = [];
+});
+const poReclassifyConfirmMessage = computed(() =>
+  poReclassifyForm.po_number
+    ? `Reklasifikasi PO ${poReclassifyForm.po_number}? Akan dibuat jurnal koreksi debit expense, kredit inventory.`
+    : 'Isi nomor PO terlebih dahulu.',
 );
 const supplierPaymentCompanySync = computed(() => props.supplierPaymentCompanySync ?? {});
 const supplierPaymentSyncConfirmMessage = computed(() =>
@@ -244,6 +276,34 @@ const confirmInventoryStockRebuild = () => {
   inventoryStockRebuildForm.post(route('erp.accounting.utilities.rebuild-inventory-stocks'), { preserveScroll: true });
 };
 
+const submitPoReclassify = () => {
+  if (!poReclassifySelected.value.length) return;
+  poReclassifyForm.po_numbers = poReclassifySelected.value;
+  poReclassifyForm.post(route('erp.accounting.utilities.reclassify-po-expense'), {
+    preserveScroll: true,
+    onSuccess: () => {
+      poReclassifySelected.value = [];
+      poSelectAll.value = false;
+    },
+  });
+};
+
+const submitBackfillUnitCosts = () => {
+  unitCostForm.post(route('erp.accounting.utilities.backfill-unit-costs'), { preserveScroll: true });
+};
+
+const submitBackfillCogs = () => {
+  cogsBackfillForm.post(route('erp.accounting.utilities.backfill-cogs'), { preserveScroll: true });
+};
+
+const submitMaterialUnitCosts = () => {
+  materialUnitCostForm.post(route('erp.accounting.utilities.backfill-material-unit-costs'), { preserveScroll: true });
+};
+
+const submitMaterialCogs = () => {
+  materialCogsForm.post(route('erp.accounting.utilities.backfill-material-cogs'), { preserveScroll: true });
+};
+
 const loadReassignPreview = () => {
   if (!reassignForm.from_account_id) {
     return;
@@ -308,6 +368,9 @@ const confirmCashAccountReassign = () => {
           <button type="button" class="tab tab-sm" :class="{ 'tab-active': activeTab === 'cash' }" @click="activeTab = 'cash'">Kas/Bank</button>
           <button type="button" class="tab tab-sm" :class="{ 'tab-active': activeTab === 'inventory' }" @click="activeTab = 'inventory'">Inventory</button>
           <button type="button" class="tab tab-sm" :class="{ 'tab-active': activeTab === 'pos' }" @click="activeTab = 'pos'">POS COA</button>
+          <button type="button" class="tab tab-sm" :class="{ 'tab-active': activeTab === 'po' }" @click="activeTab = 'po'">Reclassify PO</button>
+          <button type="button" class="tab tab-sm" :class="{ 'tab-active': activeTab === 'cogs' }" @click="activeTab = 'cogs'">COGS Backfill</button>
+          <button type="button" class="tab tab-sm" :class="{ 'tab-active': activeTab === 'material' }" @click="activeTab = 'material'">Material Proyek</button>
         </div>
       </div>
 
@@ -644,6 +707,257 @@ const confirmCashAccountReassign = () => {
           <p class="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-base-content/70">
             Gunakan hanya jika histori stock movement sudah lengkap. Utility ini menjadikan stock movement sebagai sumber kebenaran qty warehouse.
           </p>
+        </div>
+      </div>
+
+      <div v-show="activeTab === 'po'" class="ocn-panel">
+        <div class="ocn-panel__head flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 class="ocn-panel__title">Reclassify Purchase Order ke Expense</h2>
+            <p class="ocn-panel__desc mt-1">
+              Untuk PO lama (sebelum fitur kategori PO) yang seharusnya dicatat sebagai beban/biaya bukan inventory.
+              Akan membuat jurnal koreksi: Debit akun expense, Kredit akun inventory.
+            </p>
+          </div>
+        </div>
+        <div class="card-body pt-0">
+          <div v-if="poExpenseReclassifySummary.message" class="rounded-xl border border-warning/30 bg-warning/10 p-4 text-sm">
+            {{ poExpenseReclassifySummary.message }}
+          </div>
+
+          <div v-if="poExpenseReclassifySummary.can_reclassify" class="mt-4 grid gap-3 md:grid-cols-3">
+            <div class="rounded-lg border border-base-300 bg-base-100 p-3">
+              <p class="text-xs uppercase tracking-wide text-base-content/50">PO kandidat</p>
+              <p class="mt-1 text-lg font-bold">{{ poExpenseReclassifySummary.candidate_count ?? 0 }}</p>
+              <p class="text-xs text-base-content/60">PO dengan GRN terposting, kategori inventory</p>
+            </div>
+            <div class="rounded-lg border border-base-300 bg-base-100 p-3">
+              <p class="text-xs uppercase tracking-wide text-base-content/50">Akun expense tujuan</p>
+              <p class="mt-1 text-sm font-semibold">{{ poExpenseReclassifySummary.expense_account_label || '-' }}</p>
+            </div>
+            <div class="rounded-lg border border-base-300 bg-base-100 p-3">
+              <p class="text-xs uppercase tracking-wide text-base-content/50">Akun inventory asal</p>
+              <p class="mt-1 text-sm font-semibold">{{ poExpenseReclassifySummary.inventory_account_label || '-' }}</p>
+            </div>
+          </div>
+
+          <div v-if="poExpenseReclassifySummary.candidates?.length" class="mt-4">
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <p class="text-sm font-semibold">Kandidat PO (50 terakhir):</p>
+              <div class="flex items-center gap-3">
+                <label class="flex cursor-pointer items-center gap-1.5 text-xs">
+                  <input type="checkbox" class="checkbox checkbox-xs" v-model="poSelectAll" :indeterminate="poReclassifySelected.length > 0 && poReclassifySelected.length < (poExpenseReclassifySummary.candidates ?? []).length" />
+                  Pilih semua
+                </label>
+                <span class="text-xs text-base-content/60">{{ poReclassifySelected.length }} terpilih</span>
+                <button
+                  type="button"
+                  class="btn btn-warning btn-sm"
+                  :disabled="poReclassifySelected.length === 0 || poReclassifyForm.processing || !poExpenseReclassifySummary.can_reclassify"
+                  @click="submitPoReclassify"
+                >
+                  {{ poReclassifyForm.processing ? 'Memproses...' : `Reclassify ${poReclassifySelected.length} PO ke Expense` }}
+                </button>
+              </div>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="table table-zebra table-sm">
+                <thead>
+                  <tr>
+                    <th class="w-10"></th>
+                    <th>Nomor PO</th>
+                    <th>Tanggal</th>
+                    <th class="text-right">Nilai</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="po in poExpenseReclassifySummary.candidates" :key="po.number" :class="{ 'bg-primary/5': poReclassifySelected.includes(po.number) }">
+                    <td class="w-10">
+                      <input
+                        type="checkbox"
+                        class="checkbox checkbox-xs"
+                        :value="po.number"
+                        v-model="poReclassifySelected"
+                        @change="poSelectAll = poReclassifySelected.length === (poExpenseReclassifySummary.candidates ?? []).length"
+                      />
+                    </td>
+                    <td class="font-mono text-xs">{{ po.number }}</td>
+                    <td class="whitespace-nowrap">{{ po.order_date }}</td>
+                    <td class="text-right">{{ new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(po.amount) }}</td>
+                  </tr>
+                  <tr v-if="!poExpenseReclassifySummary.candidates.length">
+                    <td colspan="4" class="py-4 text-center text-base-content/50">Tidak ada PO kandidat.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="mt-3 text-xs text-base-content/50">
+              Centang PO yang akan direklasifikasi, lalu klik tombol "Reclassify N PO ke Expense".
+              Akan dibuat jurnal koreksi: Debit expense, Kredit inventory untuk setiap PO.
+            </p>
+          </div>
+          <div v-else-if="poExpenseReclassifySummary.can_reclassify" class="mt-4 rounded-xl border border-base-300 bg-base-100 p-6 text-center text-sm text-base-content/50">
+            Tidak ada PO kandidat yang perlu direklasifikasi.
+          </div>
+        </div>
+      </div>
+
+      <div v-show="activeTab === 'cogs'" class="ocn-panel">
+        <div class="ocn-panel__head flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 class="ocn-panel__title">Backfill COGS & Unit Cost</h2>
+            <p class="ocn-panel__desc mt-1">
+              Utility untuk data yang sudah diinput sebelum fitur COGS dan unit_cost ditambahkan.
+              Backfill jurnal HPP (debit 5009, credit 1201) untuk transaksi POS lama yang belum punya COGS.
+            </p>
+          </div>
+        </div>
+        <div class="card-body pt-0">
+          <div v-if="cogsBackfillSummary.message" class="rounded-xl border border-warning/30 bg-warning/10 p-4 text-sm">
+            {{ cogsBackfillSummary.message }}
+          </div>
+
+          <div class="grid gap-3 md:grid-cols-3">
+            <div class="rounded-lg border border-base-300 bg-base-100 p-3">
+              <p class="text-xs uppercase tracking-wide text-base-content/50">POS tanpa COGS</p>
+              <p class="mt-1 text-lg font-bold">{{ cogsBackfillSummary.sales_missing_cogs_count ?? 0 }}</p>
+              <p class="text-xs text-base-content/60">Transaksi POS yang belum punya jurnal HPP</p>
+            </div>
+            <div class="rounded-lg border border-base-300 bg-base-100 p-3">
+              <p class="text-xs uppercase tracking-wide text-base-content/50">Produk tanpa unit_cost</p>
+              <p class="mt-1 text-lg font-bold">{{ cogsBackfillSummary.products_without_cost_count ?? 0 }}</p>
+              <p class="text-xs text-base-content/60">Produk dengan unit_cost = 0 (non-service)</p>
+            </div>
+            <div class="rounded-lg border border-base-300 bg-base-100 p-3">
+              <p class="text-xs uppercase tracking-wide text-base-content/50">Akun COGS → Inventory</p>
+              <p class="mt-1 text-sm font-semibold">{{ cogsBackfillSummary.cogs_account_label || '-' }}</p>
+              <p class="mt-1 text-sm font-semibold">{{ cogsBackfillSummary.inventory_account_label || '-' }}</p>
+            </div>
+          </div>
+
+          <div v-if="cogsBackfillSummary.sales_missing_cogs?.length" class="mt-4">
+            <p class="mb-2 text-sm font-semibold">Transaksi tanpa COGS ({{ cogsBackfillSummary.sales_missing_cogs?.length ?? 0 }}):</p>
+            <div class="overflow-x-auto">
+              <table class="table table-zebra table-sm">
+                <thead>
+                  <tr><th>No. Transaksi</th><th>Tanggal</th><th class="text-right">Total</th><th class="text-right">Item</th></tr>
+                </thead>
+                <tbody>
+                  <tr v-for="sale in cogsBackfillSummary.sales_missing_cogs" :key="sale.number">
+                    <td class="font-mono text-xs">{{ sale.number }}</td>
+                    <td class="whitespace-nowrap">{{ sale.sold_at }}</td>
+                    <td class="text-right">{{ new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(sale.grand_total) }}</td>
+                    <td class="text-right">{{ sale.items_count }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="mt-6 flex flex-wrap items-center gap-4">
+            <div>
+              <p class="mb-1 text-xs font-semibold uppercase tracking-wide text-base-content/60">1. Estimasi unit_cost dari riwayat PO</p>
+              <button type="button" class="btn btn-primary btn-sm" :disabled="unitCostForm.processing" @click="submitBackfillUnitCosts">
+                {{ unitCostForm.processing ? 'Memproses...' : 'Backfill Unit Cost' }}
+              </button>
+              <p class="mt-1 text-xs text-base-content/50">Ambil harga beli terakhir dari PO untuk produk yang unit_cost-nya 0</p>
+            </div>
+            <div>
+              <p class="mb-1 text-xs font-semibold uppercase tracking-wide text-base-content/60">2. Buat jurnal COGS untuk POS lama</p>
+              <button
+                type="button"
+                class="btn btn-warning btn-sm"
+                :disabled="(cogsBackfillSummary.sales_missing_cogs_count ?? 0) === 0 || !cogsBackfillSummary.can_run || cogsBackfillForm.processing"
+                @click="submitBackfillCogs"
+              >
+                {{ cogsBackfillForm.processing ? 'Memproses...' : `Backfill ${cogsBackfillSummary.sales_missing_cogs_count ?? 0} COGS` }}
+              </button>
+              <p class="mt-1 text-xs text-base-content/50">Buat jurnal debit HPP (5009) / credit Persediaan (1201)</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-show="activeTab === 'material'" class="ocn-panel">
+        <div class="ocn-panel__head flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 class="ocn-panel__title">Backfill COGS Material Proyek</h2>
+            <p class="ocn-panel__desc mt-1">
+              Buat jurnal koreksi HPP untuk material proyek yang sudah dikeluarkan (issued_qty &gt; 0)
+              sebelum fitur COGS ditambahkan. Debit HPP (5009), credit Persediaan (1201).
+            </p>
+          </div>
+        </div>
+        <div class="card-body pt-0">
+          <div v-if="materialCogsBackfill.message" class="alert alert-warning shadow-sm mb-4">
+            <span>{{ materialCogsBackfill.message }}</span>
+          </div>
+
+          <div class="stats shadow-sm w-full">
+            <div class="stat">
+              <div class="stat-title">Material terpakai</div>
+              <div class="stat-value text-lg">{{ materialCogsBackfill.materials_count ?? 0 }}</div>
+              <div class="stat-desc">{{ materialCogsBackfill.projects_count ?? 0 }} proyek</div>
+            </div>
+            <div class="stat">
+              <div class="stat-title">Estimasi biaya</div>
+              <div class="stat-value text-lg">{{ new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(materialCogsBackfill.total_estimated_cost ?? 0) }}</div>
+              <div class="stat-desc">{{ materialCogsBackfill.total_issued_qty ?? 0 }} unit terjual</div>
+            </div>
+            <div class="stat">
+              <div class="stat-title">Akun</div>
+              <div class="stat-value text-sm font-semibold">{{ materialCogsBackfill.cogs_account_label || '-' }}</div>
+              <div class="stat-desc">{{ materialCogsBackfill.inventory_account_label || '-' }}</div>
+            </div>
+          </div>
+
+          <div v-if="materialCogsBackfill.materials?.length" class="mt-4">
+            <div class="overflow-x-auto">
+              <table class="table table-zebra table-sm">
+                <thead>
+                  <tr><th>Proyek</th><th>Produk</th><th class="text-right">Qty</th><th class="text-right">Unit Cost</th><th class="text-right">Estimasi</th></tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(mat, idx) in materialCogsBackfill.materials" :key="idx">
+                    <td class="max-w-40 truncate">{{ mat.project_name }}</td>
+                    <td class="max-w-40 truncate">{{ mat.product_name }}</td>
+                    <td class="text-right">{{ mat.issued_qty }}</td>
+                    <td class="text-right">{{ new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(mat.unit_cost) }}</td>
+                    <td class="text-right font-medium">{{ new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(mat.estimated_cost) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="mt-6 flex flex-wrap items-center gap-4">
+            <div class="card bg-base-200 w-72 shadow-sm">
+              <div class="card-body p-4">
+                <h3 class="card-title text-sm">1. Estimasi unit_cost</h3>
+                <p class="text-xs text-base-content/60">Ambil harga beli terakhir dari PO untuk produk yang dipakai proyek</p>
+                <div class="card-actions justify-end mt-2">
+                  <button class="btn btn-primary btn-sm" :disabled="materialUnitCostForm.processing" @click="submitMaterialUnitCosts">
+                    {{ materialUnitCostForm.processing ? 'Memproses...' : 'Backfill Unit Cost' }}
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="card bg-base-200 w-72 shadow-sm">
+              <div class="card-body p-4">
+                <h3 class="card-title text-sm">2. Buat jurnal COGS</h3>
+                <p class="text-xs text-base-content/60">Debit HPP (5009), credit Persediaan (1201) per proyek</p>
+                <div class="card-actions justify-end mt-2">
+                  <button
+                    class="btn btn-warning btn-sm"
+                    :disabled="(materialCogsBackfill.materials_count ?? 0) === 0 || !materialCogsBackfill.can_run || materialCogsForm.processing"
+                    @click="submitMaterialCogs"
+                  >
+                    {{ materialCogsForm.processing ? 'Memproses...' : `Backfill ${materialCogsBackfill.projects_count ?? 0} Proyek` }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -3,14 +3,22 @@
 namespace App\Http\Controllers;
 
 use App\ERP\Accounting\Models\Account;
+use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Accounting\Models\JournalLine;
 use App\ERP\Accounting\Services\CashAccountIdBackfillService;
 use App\ERP\Accounting\Services\CashAccountReassignmentService;
 use App\ERP\Accounting\Services\CoaSettingService;
+use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Accounting\Services\JournalEntrySideReversalService;
 use App\ERP\Accounting\Services\SupplierPaymentCompanySyncService;
-use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Core\Models\Company;
+use App\ERP\Core\Services\ErpCompanyResolver;
+use App\ERP\Purchasing\Models\GoodsReceipt;
+use App\ERP\Purchasing\Models\PurchaseOrder;
+use App\ERP\Shared\Enums\DocumentStatus;
+use App\Models\CategoryCoaMapping;
+use App\Services\CogsBackfillService;
+use App\Services\ProjectMaterialBackfillService;
 use App\Services\ProjectMaterialReservationService;
 use App\Services\WarehouseStockRebuildService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -106,6 +114,9 @@ class ERPAccountingUtilityController extends Controller
             'cashAccountReassignment' => $this->cashAccountReassignmentPreview($request),
             'inventoryReservationSync' => $this->inventoryReservationSyncSummary(),
             'inventoryStockRebuild' => $this->inventoryStockRebuildSummary(),
+            'poExpenseReclassify' => $this->poExpenseReclassifySummary(),
+            'cogsBackfill' => app(CogsBackfillService::class)->summarize(),
+            'materialCogsBackfill' => app(ProjectMaterialBackfillService::class)->summarize(),
         ]);
     }
 
@@ -483,5 +494,187 @@ class ERPAccountingUtilityController extends Controller
             $request->filled('date_from') ? $request->string('date_from')->toString() : null,
             $request->filled('date_to') ? $request->string('date_to')->toString() : null,
         );
+    }
+
+    private function poExpenseReclassifySummary(): array
+    {
+        $inventoryAccount = Account::query()->where('code', '1201')->first();
+        $expenseMapping = CategoryCoaMapping::query()
+            ->where('domain', 'purchase_order')
+            ->where('category', 'expense')
+            ->with('account:id,code,name')
+            ->first();
+
+        $candidates = PurchaseOrder::query()
+            ->whereIn('po_category', ['inventory', null])
+            ->whereHas('receipts', fn ($q) => $q->where('status', DocumentStatus::Posted->value))
+            ->orderByDesc('order_date')
+            ->limit(50)
+            ->get(['id', 'number', 'total_amount', 'order_date', 'po_category'])
+            ->map(fn (PurchaseOrder $po) => [
+                'number' => $po->number,
+                'amount' => (float) $po->total_amount,
+                'order_date' => $po->order_date?->toDateString(),
+            ])
+            ->values();
+
+        return [
+            'can_reclassify' => $inventoryAccount !== null && $expenseMapping?->account_id !== null,
+            'expense_account_label' => $expenseMapping?->account?->code.' - '.$expenseMapping?->account?->name,
+            'inventory_account_label' => $inventoryAccount?->code.' - '.$inventoryAccount?->name,
+            'candidate_count' => $candidates->count(),
+            'candidates' => $candidates,
+            'message' => $expenseMapping?->account_id === null
+                ? 'Mapping akun expense untuk purchase_order belum dikonfigurasi. Buka CoA Settings untuk mengatur.'
+                : null,
+        ];
+    }
+
+    public function reclassifyPoExpense(Request $request, GlPostingService $glPostingService): RedirectResponse
+    {
+        $validated = $request->validate([
+            'po_numbers' => ['required', 'array', 'min:1', 'max:50'],
+            'po_numbers.*' => ['required', 'string', 'exists:purchase_orders,number'],
+        ]);
+
+        $inventoryAccount = Account::query()->where('code', '1201')->firstOrFail();
+        $expenseMapping = CategoryCoaMapping::query()
+            ->where('domain', 'purchase_order')
+            ->where('category', 'expense')
+            ->value('account_id');
+
+        if (! $expenseMapping) {
+            return back()->with('flash', ['type' => 'error', 'message' => 'Mapping akun expense untuk purchase_order belum dikonfigurasi. Buka CoA Settings untuk mengatur.']);
+        }
+
+        $poNumbers = collect($validated['po_numbers']);
+        $succeeded = [];
+        $skipped = [];
+
+        foreach ($poNumbers as $poNumber) {
+            $po = PurchaseOrder::query()
+                ->with('receipts')
+                ->where('number', $poNumber)
+                ->first();
+
+            if (! $po || $po->isExpense()) {
+                $skipped[] = "{$poNumber} (sudah expense)";
+
+                continue;
+            }
+
+            $postedReceipt = $po->receipts
+                ->firstWhere('status', DocumentStatus::Posted->value);
+
+            if (! $postedReceipt) {
+                $skipped[] = "{$poNumber} (belum ada GRN terposting)";
+
+                continue;
+            }
+
+            $amount = (float) $po->total_amount;
+            $entryDate = $postedReceipt->received_date?->toDateString() ?? now()->toDateString();
+
+            try {
+                DB::transaction(function () use ($po, $glPostingService, $expenseMapping, $inventoryAccount, $amount, $entryDate): void {
+                    $glPostingService->post(
+                        ErpCompanyResolver::resolveForGlPosting(request()),
+                        sourceModule: 'purchasing_reclassify',
+                        sourceReference: $po->number,
+                        description: 'Reclassifikasi biaya PO '.$po->number.' dari inventory ke expense',
+                        entryDate: $entryDate,
+                        lines: [
+                            ['account_id' => (int) $expenseMapping, 'debit' => $amount, 'credit' => 0],
+                            ['account_id' => $inventoryAccount->id, 'debit' => 0, 'credit' => $amount],
+                        ]
+                    );
+
+                    $po->update(['po_category' => 'expense']);
+                });
+                $succeeded[] = $po->number;
+            } catch (\Throwable $e) {
+                $skipped[] = "{$po->number} (error: {$e->getMessage()})";
+            }
+        }
+
+        $parts = [];
+        if ($succeeded !== []) {
+            $totalAmount = PurchaseOrder::query()->whereIn('number', $succeeded)->sum('total_amount');
+            $parts[] = count($succeeded).' PO berhasil direklasifikasi (total Rp '.number_format((float) $totalAmount, 0, ',', '.').')';
+        }
+        if ($skipped !== []) {
+            $parts[] = count($skipped).' dilewati: '.implode('; ', array_slice($skipped, 0, 5));
+        }
+
+        return back()->with('flash', [
+            'type' => $succeeded !== [] ? 'success' : 'warning',
+            'message' => implode('. ', $parts),
+        ]);
+    }
+
+    public function backfillUnitCosts(): RedirectResponse
+    {
+        $result = app(CogsBackfillService::class)->backfillUnitCosts();
+
+        return back()->with('flash', [
+            'type' => $result['products_updated'] > 0 ? 'success' : 'info',
+            'message' => $result['products_updated'] > 0
+                ? "Unit cost diperbarui: {$result['products_updated']} dari {$result['products_checked']} produk."
+                : 'Tidak ada produk yang perlu diperbarui. Semua unit cost sudah terisi.',
+        ]);
+    }
+
+    public function backfillCogs(): RedirectResponse
+    {
+        $result = app(CogsBackfillService::class)->backfillCogs();
+
+        $parts = [];
+        if ($result['succeeded'] > 0) {
+            $parts[] = "{$result['succeeded']} COGS berhasil dibuat (total Rp ".number_format($result['total_cogs_amount'], 0, ',', '.').')';
+        }
+        if ($result['skipped'] > 0) {
+            $parts[] = "{$result['skipped']} dilewati";
+        }
+        if ($result['errors'] !== []) {
+            $parts[] = 'Error: '.implode('; ', array_slice($result['errors'], 0, 3));
+        }
+
+        return back()->with('flash', [
+            'type' => $result['succeeded'] > 0 ? 'success' : 'warning',
+            'message' => $parts !== [] ? implode('. ', $parts) : 'Tidak ada POS sale yang perlu diperbaiki.',
+        ]);
+    }
+
+    public function estimateMaterialUnitCosts(): RedirectResponse
+    {
+        $result = app(ProjectMaterialBackfillService::class)->estimateUnitCosts();
+
+        return back()->with('flash', [
+            'type' => $result['products_updated'] > 0 ? 'success' : 'info',
+            'message' => $result['products_updated'] > 0
+                ? "Unit cost material diperbarui: {$result['products_updated']} dari {$result['products_checked']} produk."
+                : 'Tidak ada produk material yang perlu diperbarui.',
+        ]);
+    }
+
+    public function backfillMaterialCogs(): RedirectResponse
+    {
+        $result = app(ProjectMaterialBackfillService::class)->backfill();
+
+        $parts = [];
+        if ($result['succeeded'] > 0) {
+            $parts[] = "{$result['succeeded']} proyek berhasil (total Rp ".number_format($result['total_cost'], 0, ',', '.').')';
+        }
+        if ($result['skipped'] > 0) {
+            $parts[] = "{$result['skipped']} dilewati";
+        }
+        if ($result['errors'] !== []) {
+            $parts[] = 'Error: '.implode('; ', array_slice($result['errors'], 0, 3));
+        }
+
+        return back()->with('flash', [
+            'type' => $result['succeeded'] > 0 ? 'success' : 'warning',
+            'message' => $parts !== [] ? implode('. ', $parts) : 'Tidak ada material proyek yang perlu diperbaiki.',
+        ]);
     }
 }

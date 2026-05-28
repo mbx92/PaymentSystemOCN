@@ -39,7 +39,7 @@ class ERPReportingController extends Controller
             $query->where('journal_entries.company_id', $companyId);
         }
 
-        $this->applyJournalSourceFilter($query, $source);
+        $this->applyJournalSourceFilter($query, $source, $dateFrom->toDateString(), $dateTo->toDateString());
 
         $rows = $query
             ->groupBy('journal_entries.company_id', 'companies.name')
@@ -71,7 +71,7 @@ class ERPReportingController extends Controller
             $sourcePivotQuery->where('journal_entries.company_id', $companyId);
         }
 
-        $this->applyJournalSourceFilter($sourcePivotQuery, $source);
+        $this->applyJournalSourceFilter($sourcePivotQuery, $source, $dateFrom->toDateString(), $dateTo->toDateString());
 
         $sourcePivot = $sourcePivotQuery
             ->groupBy('journal_entries.company_id', 'companies.name', 'journal_entries.source_module')
@@ -102,7 +102,7 @@ class ERPReportingController extends Controller
             $accountBreakdownQuery->where('journal_entries.company_id', $companyId);
         }
 
-        $this->applyJournalSourceFilter($accountBreakdownQuery, $source);
+        $this->applyJournalSourceFilter($accountBreakdownQuery, $source, $dateFrom->toDateString(), $dateTo->toDateString());
 
         $accountBreakdown = $accountBreakdownQuery
             ->groupBy('companies.name', 'accounts.code', 'accounts.name')
@@ -163,7 +163,7 @@ class ERPReportingController extends Controller
             $query->where('journal_entries.company_id', $companyId);
         }
 
-        $this->applyJournalSourceFilter($query, $source);
+        $this->applyJournalSourceFilter($query, $source, $dateFrom->toDateString(), $dateTo->toDateString());
 
         $rows = $query
             ->groupBy('journal_entries.company_id', 'companies.name')
@@ -321,7 +321,7 @@ class ERPReportingController extends Controller
         }
 
         if ($source !== '') {
-            $this->applyJournalSourceFilter($query, $source);
+            $this->applyJournalSourceFilter($query, $source, $request->date_from, $request->date_to);
         }
 
         if ($accountId > 0) {
@@ -349,7 +349,7 @@ class ERPReportingController extends Controller
             });
 
         if ($source !== '') {
-            $this->applyJournalSourceFilter($totalsQuery, $source);
+            $this->applyJournalSourceFilter($totalsQuery, $source, $request->date_from, $request->date_to);
         }
 
         if ($accountId > 0) {
@@ -382,7 +382,7 @@ class ERPReportingController extends Controller
             ->when($accountId > 0, fn ($q) => $q->where('journal_lines.account_id', $accountId));
 
         if ($source !== '') {
-            $this->applyJournalSourceFilter($sourcePivotQuery, $source);
+            $this->applyJournalSourceFilter($sourcePivotQuery, $source, $request->date_from, $request->date_to);
         }
 
         $sourcePivot = $sourcePivotQuery
@@ -417,7 +417,7 @@ class ERPReportingController extends Controller
             });
 
         if ($source !== '') {
-            $this->applyJournalSourceFilter($accountPivot, $source);
+            $this->applyJournalSourceFilter($accountPivot, $source, $request->date_from, $request->date_to);
         }
 
         if ($accountId > 0) {
@@ -502,7 +502,7 @@ class ERPReportingController extends Controller
             });
         }
 
-        $this->applyJournalSourceFilter($query, $source);
+        $this->applyJournalSourceFilter($query, $source, $request->date_from, $request->date_to);
 
         $balances = $query
             ->groupBy('accounts.id', 'accounts.code', 'accounts.name', 'accounts.type')
@@ -575,7 +575,7 @@ class ERPReportingController extends Controller
         ]);
     }
 
-    private function applyJournalSourceFilter($query, string $source): void
+    private function applyJournalSourceFilter($query, string $source, ?string $dateFrom = null, ?string $dateTo = null): void
     {
         if ($source === '') {
             return;
@@ -598,6 +598,8 @@ class ERPReportingController extends Controller
         $cashInIds = CashIn::query()
             ->when($source === 'project', fn ($q) => $q->whereNotNull('project_id'))
             ->when($source === 'manual', fn ($q) => $q->whereNull('project_id'))
+            ->when($dateFrom, fn ($q) => $q->whereDate('date', '>=', $dateFrom))
+            ->when($dateTo, fn ($q) => $q->whereDate('date', '<=', $dateTo))
             ->pluck('id')
             ->map(fn ($id) => (string) $id)
             ->all();
@@ -605,6 +607,8 @@ class ERPReportingController extends Controller
         $cashOutIds = CashOut::query()
             ->when($source === 'project', fn ($q) => $q->whereNotNull('project_id'))
             ->when($source === 'manual', fn ($q) => $q->whereNull('project_id'))
+            ->when($dateFrom, fn ($q) => $q->whereDate('date', '>=', $dateFrom))
+            ->when($dateTo, fn ($q) => $q->whereDate('date', '<=', $dateTo))
             ->pluck('id')
             ->map(fn ($id) => (string) $id)
             ->all();

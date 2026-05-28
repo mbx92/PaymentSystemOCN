@@ -62,6 +62,14 @@ class ERPAccountingCoaSettingsController extends Controller
                 'source_module' => 'pos_sale',
             ],
             [
+                'key' => 'pos_sale_cogs_account',
+                'label' => 'POS - Akun HPP / COGS',
+                'description' => 'Debit Harga Pokok Penjualan (credit ke akun persediaan) saat transaksi POS diposting.',
+                'amount_source' => 'MasterProduct.unit_cost * qty (average cost)',
+                'default_account_code' => '5009',
+                'source_module' => 'pos_sale_cogs',
+            ],
+            [
                 'key' => 'project_invoice_cash_account',
                 'label' => 'Invoice Project - Akun Kas/Bank',
                 'description' => 'Debit saat pembayaran invoice project atau termin project dicatat sebagai kas masuk.',

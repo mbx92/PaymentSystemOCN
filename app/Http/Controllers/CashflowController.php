@@ -12,6 +12,7 @@ use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Core\Services\ErpCompanyResolver;
 use App\ERP\Core\Services\FiscalPeriodService;
 use App\ERP\Shared\Enums\DocumentStatus;
+use App\ERP\Shared\Services\DocumentNumberService;
 use App\Models\AccountingInventoryRecord;
 use App\Models\CashCategory;
 use App\Models\CashIn;
@@ -116,9 +117,9 @@ class CashflowController extends Controller
         $this->fiscalPeriodService->ensureDateIsOpen($validated['date'], $companyId, 'date', 'Perubahan kas masuk');
 
         DB::transaction(function () use ($cashIn, $validated, $revenueAccountId, $companyId): void {
-            // Reverse jurnal lama sebelum buat jurnal baru (reverse-and-repost)
+            // Reversal jurnal lama via entry baru (audit trail utuh), lalu repost
             if ($cashIn->journal_entry_id) {
-                $this->reverseJournalEntryLines($cashIn->journal_entry_id);
+                $this->createReversalJournalEntry($cashIn->journal_entry_id, $companyId);
             }
 
             $cashIn->update($validated);
@@ -164,9 +165,9 @@ class CashflowController extends Controller
         $this->fiscalPeriodService->ensureDateIsOpen($validated['date'], $companyId, 'date', 'Perubahan kas keluar');
 
         DB::transaction(function () use ($cashOut, $validated, $expenseAccountId, $companyId): void {
-            // Reverse jurnal lama sebelum buat jurnal baru (reverse-and-repost)
+            // Reversal jurnal lama via entry baru (audit trail utuh), lalu repost
             if ($cashOut->journal_entry_id) {
-                $this->reverseJournalEntryLines($cashOut->journal_entry_id);
+                $this->createReversalJournalEntry($cashOut->journal_entry_id, $companyId);
             }
 
             $cashOut->update($validated);
@@ -198,9 +199,9 @@ class CashflowController extends Controller
         $companyId = $this->resolvedCashInCompanyId($cashIn);
         $this->fiscalPeriodService->ensureDateIsOpen($cashIn->date ?? now(), $companyId, 'date', 'Penghapusan kas masuk');
 
-        DB::transaction(function () use ($cashIn): void {
+        DB::transaction(function () use ($cashIn, $companyId): void {
             if ($cashIn->journal_entry_id) {
-                $this->reverseJournalEntryLines($cashIn->journal_entry_id);
+                $this->createReversalJournalEntry($cashIn->journal_entry_id, $companyId);
             }
             $cashIn->delete();
         });
@@ -214,9 +215,9 @@ class CashflowController extends Controller
         $companyId = $this->resolvedCashOutCompanyId($cashOut);
         $this->fiscalPeriodService->ensureDateIsOpen($cashOut->date ?? now(), $companyId, 'date', 'Penghapusan kas keluar');
 
-        DB::transaction(function () use ($cashOut): void {
+        DB::transaction(function () use ($cashOut, $companyId): void {
             if ($cashOut->journal_entry_id) {
-                $this->reverseJournalEntryLines($cashOut->journal_entry_id);
+                $this->createReversalJournalEntry($cashOut->journal_entry_id, $companyId);
             }
             $cashOut->delete();
         });
@@ -225,24 +226,43 @@ class CashflowController extends Controller
     }
 
     /**
-     * Reverse (balik debit <-> credit) semua lines pada journal entry yang diberikan.
-     * Digunakan sebelum update (reverse-and-repost) dan sebelum delete.
+     * Buat reversal journal entry baru (tidak mengubah jurnal asli).
+     * Jurnal baru memiliki debit/credit terbalik dan mereferensi jurnal asli via reversed_entry_id.
+     * Dipanggil sebelum update (reverse-and-repost) dan sebelum delete.
      */
-    private function reverseJournalEntryLines(int $journalEntryId): void
+    private function createReversalJournalEntry(int $originalEntryId, ?int $companyId = null): void
     {
-        $entry = JournalEntry::query()->with('lines')->find($journalEntryId);
+        $original = JournalEntry::query()->with('lines')->find($originalEntryId);
 
-        if (! $entry) {
+        if (! $original) {
             return;
         }
 
-        foreach ($entry->lines as $line) {
-            $debit  = round((float) $line->debit, 2);
-            $credit = round((float) $line->credit, 2);
+        $entryNo = app(DocumentNumberService::class)->next('accounting', 'journal_entry_reversal', [
+            'prefix' => 'REV',
+            'padding_length' => 6,
+        ]);
 
-            $line->update([
-                'debit'  => number_format($credit, 2, '.', ''),
-                'credit' => number_format($debit, 2, '.', ''),
+        $reversal = JournalEntry::query()->create([
+            'company_id' => $companyId ?? $original->company_id,
+            'entry_no' => $entryNo,
+            'entry_date' => now()->toDateString(),
+            'description' => 'Reversal: '.$original->description,
+            'status' => DocumentStatus::Posted,
+            'source_module' => 'reversal',
+            'source_reference' => $original->entry_no,
+            'posted_at' => now(),
+            'posted_by' => Auth::id(),
+            'reversed_entry_id' => $original->id,
+        ]);
+
+        foreach ($original->lines as $line) {
+            JournalLine::query()->create([
+                'journal_entry_id' => $reversal->id,
+                'account_id' => $line->account_id,
+                'description' => $line->description,
+                'debit' => $line->credit,
+                'credit' => $line->debit,
             ]);
         }
     }

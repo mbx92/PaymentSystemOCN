@@ -49,6 +49,7 @@ const addForm = useForm({
   vendor_code: '',
   order_date: new Date().toISOString().slice(0, 10),
   eta_date: '',
+  po_category: 'inventory',
   notes: '',
 });
 
@@ -153,17 +154,22 @@ const submitAdd = () => {
         </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra">
-            <thead><tr><th>Nomor PO</th><th>Supplier</th><th>ETA</th><th>Nilai</th><th>Status</th></tr></thead>
+            <thead><tr><th>Nomor PO</th><th>Supplier</th><th>ETA</th><th>Nilai</th><th>Kategori</th><th>Status</th></tr></thead>
             <tbody>
               <tr v-for="po in (purchaseOrders?.data || [])" :key="po.number" :class="rowClass()" tabindex="0" role="button" @click="openRow(po.number)" @keydown.enter.prevent="openRow(po.number)">
                 <td class="font-mono text-xs font-semibold">{{ po.number }}</td>
                 <td>{{ po.supplier }}</td>
                 <td class="whitespace-nowrap">{{ formatDate(po.eta) }}</td>
                 <td>{{ formatIdr(po.amount) }}</td>
+                <td>
+                  <span class="badge badge-xs" :class="po.po_category === 'expense' ? 'badge-warning' : 'badge-info'">
+                    {{ po.po_category === 'expense' ? 'Beban' : 'Inventory' }}
+                  </span>
+                </td>
                 <td @click.stop><StatusBadge :status="po.status" /></td>
               </tr>
               <tr v-if="!(purchaseOrders?.data || []).length">
-                <td colspan="5" class="py-8 text-center text-base-content/50">Tidak ada purchase order.</td>
+                <td colspan="6" class="py-8 text-center text-base-content/50">Tidak ada purchase order.</td>
               </tr>
             </tbody>
           </table>
@@ -198,6 +204,13 @@ const submitAdd = () => {
             <div>
               <label class="label"><span class="label-text">ETA</span></label>
               <input v-model="addForm.eta_date" type="date" class="input input-bordered w-full" />
+            </div>
+            <div>
+              <label class="label"><span class="label-text">Kategori PO</span></label>
+              <select v-model="addForm.po_category" class="select select-bordered w-full">
+                <option value="inventory">Inventory (barang)</option>
+                <option value="expense">Beban/biaya (non-inventaris)</option>
+              </select>
             </div>
             <div class="md:col-span-2">
               <label class="label"><span class="label-text">Catatan</span></label>

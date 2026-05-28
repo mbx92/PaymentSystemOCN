@@ -14,6 +14,7 @@ use App\ERP\Purchasing\Models\Vendor;
 use App\ERP\Shared\Enums\DocumentStatus;
 use App\ERP\Shared\Services\DocumentNumberService;
 use App\ERP\Shared\Services\ErpSystemLogger;
+use App\Models\CategoryCoaMapping;
 use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
 use App\Models\ProductStockMovement;
@@ -164,6 +165,7 @@ class ERPPurchasingController extends Controller
                 'supplier_code' => $po->vendor?->code,
                 'eta' => $po->eta_date?->toDateString(),
                 'amount' => (float) $po->total_amount,
+                'po_category' => $po->po_category ?? 'inventory',
                 'status' => $po->status->value,
             ]);
 
@@ -186,6 +188,7 @@ class ERPPurchasingController extends Controller
             'vendor_code' => 'required|string|exists:vendors,code',
             'eta_date' => 'nullable|date',
             'order_date' => 'required|date',
+            'po_category' => 'nullable|in:inventory,expense',
             'notes' => 'nullable|string',
         ]);
         $validatedLines = $this->validatePurchaseOrderLines($request, linesRequired: false);
@@ -205,6 +208,7 @@ class ERPPurchasingController extends Controller
                 'order_date' => $baseValidated['order_date'],
                 'eta_date' => $baseValidated['eta_date'] ?? null,
                 'total_amount' => $totalAmount,
+                'po_category' => $baseValidated['po_category'] ?? 'inventory',
                 'status' => DocumentStatus::Draft,
                 'notes' => $baseValidated['notes'] ?? null,
             ]);
@@ -231,6 +235,7 @@ class ERPPurchasingController extends Controller
                 'supplier_name' => $purchaseOrder->vendor?->name,
                 'eta' => $purchaseOrder->eta_date?->toDateString(),
                 'amount' => (float) $purchaseOrder->total_amount,
+                'po_category' => $purchaseOrder->po_category ?? 'inventory',
                 'status' => $purchaseOrder->status->value,
                 'created_at' => $purchaseOrder->order_date?->toDateString(),
                 'notes' => $purchaseOrder->notes,
@@ -265,6 +270,7 @@ class ERPPurchasingController extends Controller
             'vendor_code' => 'required|string|exists:vendors,code',
             'eta_date' => 'nullable|date',
             'order_date' => 'required|date',
+            'po_category' => 'nullable|in:inventory,expense',
             'notes' => 'nullable|string',
         ]);
 
@@ -281,6 +287,7 @@ class ERPPurchasingController extends Controller
                 'order_date' => $baseValidated['order_date'],
                 'eta_date' => $baseValidated['eta_date'] ?? null,
                 'total_amount' => $totalAmount,
+                'po_category' => $baseValidated['po_category'] ?? $purchaseOrder->po_category,
                 'notes' => $baseValidated['notes'] ?? null,
             ]);
 
@@ -730,6 +737,8 @@ class ERPPurchasingController extends Controller
                     'posted_by' => Auth::id(),
                 ]);
 
+                $isExpensePo = $receipt->purchaseOrder->isExpense();
+
                 foreach ($receipt->lines as $line) {
                     $product = $line->product;
                     if (! $product) {
@@ -767,6 +776,17 @@ class ERPPurchasingController extends Controller
                     $product->increment('stock', (float) $line->qty_received);
                     $poLine?->increment('received_qty', (float) $line->qty_received);
 
+                    if (! $isExpensePo && $poLine) {
+                        $unitPrice = (float) $poLine->unit_price;
+                        $newQty = (float) $line->qty_received;
+                        $oldStock = max((float) $product->stock - $newQty, 0);
+                        $oldCost = (float) ($product->unit_cost ?? 0);
+                        $newAvgCost = $oldStock > 0
+                            ? (($oldStock * $oldCost) + ($newQty * $unitPrice)) / ($oldStock + $newQty)
+                            : $unitPrice;
+                        $product->update(['unit_cost' => $newAvgCost]);
+                    }
+
                     ProductStockMovement::query()->create([
                         'master_product_id' => $product->id,
                         'warehouse_id' => $warehouseId,
@@ -782,14 +802,31 @@ class ERPPurchasingController extends Controller
 
                 $amount = (float) $receipt->purchaseOrder->total_amount;
 
+                if ($isExpensePo) {
+                    $expenseMapping = CategoryCoaMapping::query()
+                        ->where('domain', 'purchase_order')
+                        ->where('category', 'expense')
+                        ->value('account_id');
+
+                    $debitAccountId = $expenseMapping
+                        ? (int) $expenseMapping
+                        : $inventoryAccount->id;
+                } else {
+                    $debitAccountId = $inventoryAccount->id;
+                }
+
+                $description = $isExpensePo
+                    ? 'Posting biaya pembelian '.$receipt->number
+                    : 'Posting penerimaan barang '.$receipt->number;
+
                 $entry = $this->glPostingService->post(
                     ErpCompanyResolver::resolveForGlPosting($request),
                     sourceModule: 'purchasing',
                     sourceReference: $receipt->number,
-                    description: 'Posting penerimaan barang '.$receipt->number,
+                    description: $description,
                     entryDate: $receipt->received_date->toDateString(),
                     lines: [
-                        ['account_id' => $inventoryAccount->id, 'debit' => $amount, 'credit' => 0],
+                        ['account_id' => $debitAccountId, 'debit' => $amount, 'credit' => 0],
                         ['account_id' => $payableAccount->id, 'debit' => 0, 'credit' => $amount],
                     ]
                 );
@@ -893,24 +930,20 @@ class ERPPurchasingController extends Controller
                 ->all();
         }
 
-        $sums = MasterProductWarehouseStock::query()
+        $warehouseData = MasterProductWarehouseStock::query()
             ->whereIn('master_product_id', $ids)
             ->select('master_product_id')
             ->selectRaw('SUM(CASE WHEN qty > reserved_qty THEN qty - reserved_qty ELSE 0 END) as available')
+            ->selectRaw('COUNT(*) as has_rows')
             ->groupBy('master_product_id')
-            ->pluck('available', 'master_product_id');
-
-        $withWarehouseRow = MasterProductWarehouseStock::query()
-            ->whereIn('master_product_id', $ids)
-            ->distinct()
-            ->pluck('master_product_id')
-            ->flip();
+            ->get()
+            ->keyBy('master_product_id');
 
         $out = [];
         foreach ($products as $item) {
             $id = $item->id;
-            $out[$id] = $withWarehouseRow->has($id)
-                ? (float) ($sums[$id] ?? 0.0)
+            $out[$id] = $warehouseData->has($id)
+                ? (float) $warehouseData[$id]->available
                 : (float) $item->stock;
         }
 

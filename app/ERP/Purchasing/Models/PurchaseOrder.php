@@ -18,6 +18,7 @@ class PurchaseOrder extends Model
         'order_date',
         'eta_date',
         'total_amount',
+        'po_category',
         'status',
         'notes',
         'approved_at',
@@ -32,10 +33,21 @@ class PurchaseOrder extends Model
             'order_date' => 'date',
             'eta_date' => 'date',
             'total_amount' => 'decimal:2',
+            'po_category' => 'string',
             'approved_at' => 'datetime',
             'posted_at' => 'datetime',
             'status' => DocumentStatus::class,
         ];
+    }
+
+    public function isExpense(): bool
+    {
+        return $this->po_category === 'expense';
+    }
+
+    public function isInventory(): bool
+    {
+        return $this->po_category !== 'expense';
     }
 
     public function vendor(): BelongsTo

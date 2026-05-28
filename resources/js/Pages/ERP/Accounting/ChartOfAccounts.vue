@@ -175,7 +175,6 @@ const executeDeleteCoa = () => {
             </div>
           </div>
         </div>
-        <DataTablePagination :paginator="accounts" @update:per-page="(n) => { filters.per_page = n; }" />
       </div>
 
       <div class="ocn-panel">
@@ -259,6 +258,7 @@ const executeDeleteCoa = () => {
             </tbody>
           </table>
         </div>
+        <DataTablePagination :paginator="accounts" @update:per-page="(n) => { filters.per_page = n; }" />
       </div>
     </div>
 

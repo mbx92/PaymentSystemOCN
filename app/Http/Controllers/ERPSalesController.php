@@ -224,6 +224,7 @@ class ERPSalesController extends Controller
         DB::transaction(function () use ($posSale): void {
             $posSale->load('items');
             $posWarehouseId = $this->resolvePosWarehouseId();
+            $totalRefundCogs = 0.0;
             foreach ($posSale->items as $item) {
                 if (! $item->master_product_id) {
                     continue;
@@ -232,8 +233,11 @@ class ERPSalesController extends Controller
                 if (! $product) {
                     continue;
                 }
-                $product->increment('stock', (int) $item->base_qty_used);
-                $product->decrement('total_sold', min((int) $item->base_qty_used, (int) $product->total_sold));
+                $baseQty = (int) $item->base_qty_used;
+                $product->increment('stock', $baseQty);
+                $product->decrement('total_sold', min($baseQty, (int) $product->total_sold));
+
+                $totalRefundCogs += (float) ($product->unit_cost ?? 0) * $baseQty;
 
                 if ($posWarehouseId) {
                     $warehouseRow = MasterProductWarehouseStock::query()->firstOrCreate(
@@ -290,6 +294,22 @@ class ERPSalesController extends Controller
                 entryDate: now()->toDateString(),
                 lines: $lines,
             );
+
+            if ($totalRefundCogs > 0) {
+                $cogsAccount = $coa->resolveAccountByKey('pos_sale_cogs_account', '5009');
+                $inventoryAccount = Account::query()->where('code', '1201')->firstOrFail();
+                $this->glPostingService->post(
+                    ErpCompanyResolver::resolveForGlPosting(request()),
+                    sourceModule: 'pos_sale_refund_cogs',
+                    sourceReference: $posSale->number,
+                    description: 'Pembalikan HPP refund POS '.$posSale->number,
+                    entryDate: now()->toDateString(),
+                    lines: [
+                        ['account_id' => $inventoryAccount->id, 'debit' => $totalRefundCogs, 'credit' => 0],
+                        ['account_id' => $cogsAccount->id, 'debit' => 0, 'credit' => $totalRefundCogs],
+                    ]
+                );
+            }
         });
 
         return back()->with('flash', ['type' => 'warning', 'message' => 'Transaksi berhasil di-refund dan stok dikembalikan.']);
@@ -491,6 +511,7 @@ class ERPSalesController extends Controller
 
             $saleItemsPayload = [];
             $posWarehouseId = $this->resolvePosWarehouseId();
+            $totalCogs = 0.0;
             foreach ($items as $item) {
                 $product = MasterProduct::query()->lockForUpdate()->findOrFail((int) $item['master_product_id']);
                 $multiplier = max((float) ($item['multiplier'] ?? 1), 0.0001);
@@ -513,6 +534,8 @@ class ERPSalesController extends Controller
 
                 $product->decrement('stock', $requiredBaseQty);
                 $product->increment('total_sold', $requiredBaseQty);
+
+                $totalCogs += (float) ($product->unit_cost ?? 0) * $requiredBaseQty;
 
                 if ($posWarehouseId) {
                     $warehouseRow = MasterProductWarehouseStock::query()->firstOrCreate(
@@ -586,6 +609,22 @@ class ERPSalesController extends Controller
                 entryDate: now()->toDateString(),
                 lines: $lines,
             );
+
+            if ($totalCogs > 0) {
+                $cogsAccount = $coa->resolveAccountByKey('pos_sale_cogs_account', '5009');
+                $inventoryAccount = Account::query()->where('code', '1201')->firstOrFail();
+                $this->glPostingService->post(
+                    ErpCompanyResolver::resolveForGlPosting($request),
+                    sourceModule: 'pos_sale_cogs',
+                    sourceReference: $transactionNumber,
+                    description: 'HPP POS '.$transactionNumber,
+                    entryDate: now()->toDateString(),
+                    lines: [
+                        ['account_id' => $cogsAccount->id, 'debit' => $totalCogs, 'credit' => 0],
+                        ['account_id' => $inventoryAccount->id, 'debit' => 0, 'credit' => $totalCogs],
+                    ]
+                );
+            }
 
             return [
                 'sale_id' => $sale->id,
