@@ -15,12 +15,11 @@ use App\Models\ProjectMaterial;
 use App\Models\ProjectPayment;
 use App\Models\ProjectTask;
 use App\Models\ProjectType;
-use App\Services\ProjectMaterialReservationService;
 use App\Models\TeamDistribution;
 use App\Models\TeamRole;
 use App\Models\User;
+use App\Services\ProjectMaterialReservationService;
 use App\Support\LegalVaultPath;
-use Illuminate\Support\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -36,85 +35,98 @@ class ProjectController extends Controller
     {
         $selectedYear = (int) $request->integer('year', now()->year);
 
-        $projects = Project::query()
-            ->with([
-                'cashIns:id,project_id,amount,date',
-                'cashOuts:id,project_id,amount,date,category',
-                'tasks:id,project_id,status',
-                'materials:id,project_id,planned_qty,reserved_qty,issued_qty,unit_cost,unit_price,status',
-                'projectTypeDefinition:key,label,badge_color',
-            ])
-            ->latest()
-            ->get();
+        $projectCount = Project::count();
+        $statusSummary = Project::query()
+            ->selectRaw("SUM(CASE WHEN status = 'negosiasi' THEN 1 ELSE 0 END) as negosiasi")
+            ->selectRaw("SUM(CASE WHEN status = 'berjalan' THEN 1 ELSE 0 END) as berjalan")
+            ->selectRaw("SUM(CASE WHEN status = 'selesai' THEN 1 ELSE 0 END) as selesai")
+            ->selectRaw("SUM(CASE WHEN status = 'dibatalkan' THEN 1 ELSE 0 END) as dibatalkan")
+            ->first()
+            ->toArray();
 
-        $projectCount = $projects->count();
-        $totalContractValue = (float) $projects->sum(fn (Project $project) => $project->resolveListTotalValue());
-        $totalCollected = (float) $projects->sum(fn (Project $project) => (float) $project->cashIns->sum('amount'));
-        $totalSpent = (float) $projects->sum(fn (Project $project) => (float) $project->cashOuts->sum('amount'));
-        $statusSummary = [
-            'negosiasi' => $projects->where('status', 'negosiasi')->count(),
-            'berjalan' => $projects->where('status', 'berjalan')->count(),
-            'selesai' => $projects->where('status', 'selesai')->count(),
-            'dibatalkan' => $projects->where('status', 'dibatalkan')->count(),
-        ];
+        $totalContractValue = (float) Project::sum('total_value');
+        $totalCollected = (float) DB::table('cash_in')->whereNotNull('project_id')->sum('amount');
+        $totalSpent = (float) DB::table('cash_out')->whereNotNull('project_id')->sum('amount');
 
-        $tasks = $projects->flatMap->tasks->values();
-        $taskSummary = [
-            'total' => $tasks->count(),
-            'todo' => $tasks->where('status', 'todo')->count(),
-            'in_progress' => $tasks->where('status', 'in_progress')->count(),
-            'done' => $tasks->where('status', 'done')->count(),
-        ];
+        $taskSummary = DB::table('project_tasks')
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw("SUM(CASE WHEN status = 'todo' THEN 1 ELSE 0 END) as todo")
+            ->selectRaw("SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress")
+            ->selectRaw("SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) as done")
+            ->first();
 
-        $materials = $projects->flatMap->materials->values();
+        $materialAgg = DB::table('project_materials')
+            ->selectRaw('COUNT(*) as lines')
+            ->selectRaw('COALESCE(SUM(planned_qty), 0) as planned_qty')
+            ->selectRaw('COALESCE(SUM(reserved_qty), 0) as reserved_qty')
+            ->selectRaw('COALESCE(SUM(issued_qty), 0) as issued_qty')
+            ->selectRaw('COALESCE(SUM(planned_qty * unit_cost), 0) as cost_value')
+            ->selectRaw('COALESCE(SUM(planned_qty * unit_price), 0) as sell_value')
+            ->selectRaw("SUM(CASE WHEN status = 'planned' THEN 1 ELSE 0 END) as planned")
+            ->selectRaw("SUM(CASE WHEN status = 'partial' THEN 1 ELSE 0 END) as partial")
+            ->selectRaw("SUM(CASE WHEN status = 'ready' THEN 1 ELSE 0 END) as ready")
+            ->selectRaw("SUM(CASE WHEN status = 'issued' THEN 1 ELSE 0 END) as issued")
+            ->first();
+
         $materialSummary = [
-            'lines' => $materials->count(),
-            'planned_qty' => (float) $materials->sum('planned_qty'),
-            'reserved_qty' => (float) $materials->sum('reserved_qty'),
-            'issued_qty' => (float) $materials->sum('issued_qty'),
-            'cost_value' => (float) $materials->sum(fn ($material) => (float) $material->planned_qty * (float) $material->unit_cost),
-            'sell_value' => (float) $materials->sum(fn ($material) => (float) $material->planned_qty * (float) $material->unit_price),
-            'planned' => $materials->where('status', 'planned')->count(),
-            'partial' => $materials->where('status', 'partial')->count(),
-            'ready' => $materials->where('status', 'ready')->count(),
-            'issued' => $materials->where('status', 'issued')->count(),
+            'lines' => (int) $materialAgg->lines,
+            'planned_qty' => (float) $materialAgg->planned_qty,
+            'reserved_qty' => (float) $materialAgg->reserved_qty,
+            'issued_qty' => (float) $materialAgg->issued_qty,
+            'cost_value' => (float) $materialAgg->cost_value,
+            'sell_value' => (float) $materialAgg->sell_value,
+            'planned' => (int) $materialAgg->planned,
+            'partial' => (int) $materialAgg->partial,
+            'ready' => (int) $materialAgg->ready,
+            'issued' => (int) $materialAgg->issued,
         ];
 
         $collectionRate = $totalContractValue > 0
             ? round(($totalCollected / $totalContractValue) * 100, 1)
             : 0.0;
-        $taskCompletionRate = $taskSummary['total'] > 0
-            ? round(($taskSummary['done'] / $taskSummary['total']) * 100, 1)
+        $taskCompletionRate = ($taskSummary->total ?? 0) > 0
+            ? round((($taskSummary->done ?? 0) / max($taskSummary->total, 1)) * 100, 1)
             : 0.0;
         $materialReadinessRate = $materialSummary['planned_qty'] > 0
             ? round(($materialSummary['reserved_qty'] / $materialSummary['planned_qty']) * 100, 1)
             : 0.0;
 
-        $typeSummary = $projects
-            ->groupBy(fn (Project $project) => $project->project_type ?: 'lainnya')
-            ->map(function ($group, $key): array {
-                /** @var Project $sample */
-                $sample = $group->first();
+        $typeSummary = Project::query()
+            ->select('project_type')
+            ->selectRaw('COUNT(*) as count')
+            ->selectRaw('COALESCE(SUM(total_value), 0) as value')
+            ->whereNotNull('project_type')
+            ->groupBy('project_type')
+            ->get()
+            ->map(function ($row): array {
+                $typeDef = ProjectType::find($row->project_type);
 
                 return [
-                    'key' => (string) $key,
-                    'label' => $sample?->projectTypeDefinition?->label ?: (string) $key,
-                    'badge_color' => $sample?->projectTypeDefinition?->badge_color,
-                    'count' => $group->count(),
-                    'value' => (float) $group->sum(fn (Project $project) => $project->resolveListTotalValue()),
+                    'key' => (string) $row->project_type,
+                    'label' => $typeDef?->label ?: (string) $row->project_type,
+                    'badge_color' => $typeDef?->badge_color,
+                    'count' => (int) $row->count,
+                    'value' => (float) $row->value,
                 ];
             })
             ->sortByDesc('value')
             ->values();
 
-        $recentProjects = $projects
+        $recentProjects = Project::query()
+            ->withSum('cashIns as paid_amount', 'amount')
+            ->withSum('cashOuts as expense_amount', 'amount')
+            ->withCount('tasks as task_total')
+            ->withCount(['tasks as task_done' => fn ($q) => $q->where('status', 'done')])
+            ->with('projectTypeDefinition:key,label,badge_color')
+            ->latest()
             ->take(8)
+            ->get()
             ->map(function (Project $project): array {
                 $totalValue = $project->resolveListTotalValue();
-                $paidAmount = (float) $project->cashIns->sum('amount');
-                $expenseAmount = (float) $project->cashOuts->sum('amount');
-                $taskTotal = $project->tasks->count();
-                $taskDone = $project->tasks->where('status', 'done')->count();
+                $paidAmount = (float) ($project->paid_amount ?? 0);
+                $expenseAmount = (float) ($project->expense_amount ?? 0);
+                $taskTotal = (int) ($project->task_total ?? 0);
+                $taskDone = (int) ($project->task_done ?? 0);
 
                 return [
                     'id' => $project->id,
@@ -132,21 +144,17 @@ class ProjectController extends Controller
             })
             ->values();
 
-        $monthlyData = collect(range(1, 12))->map(function (int $month) use ($projects, $selectedYear): array {
-            $income = (float) $projects->sum(function (Project $project) use ($selectedYear, $month) {
-                return $project->cashIns
-                    ->filter(fn ($cashIn) => $cashIn->date instanceof Carbon
-                        && (int) $cashIn->date->year === $selectedYear
-                        && (int) $cashIn->date->month === $month)
-                    ->sum('amount');
-            });
-            $expense = (float) $projects->sum(function (Project $project) use ($selectedYear, $month) {
-                return $project->cashOuts
-                    ->filter(fn ($cashOut) => $cashOut->date instanceof Carbon
-                        && (int) $cashOut->date->year === $selectedYear
-                        && (int) $cashOut->date->month === $month)
-                    ->sum('amount');
-            });
+        $monthlyData = collect(range(1, 12))->map(function (int $month) use ($selectedYear): array {
+            $income = (float) DB::table('cash_in')
+                ->whereNotNull('project_id')
+                ->whereYear('date', $selectedYear)
+                ->whereMonth('date', $month)
+                ->sum('amount');
+            $expense = (float) DB::table('cash_out')
+                ->whereNotNull('project_id')
+                ->whereYear('date', $selectedYear)
+                ->whereMonth('date', $month)
+                ->sum('amount');
 
             return [
                 'month' => $month,

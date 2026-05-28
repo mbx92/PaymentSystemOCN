@@ -6,13 +6,13 @@ use Illuminate\Http\Request;
 
 abstract class Controller
 {
-    /** Allowed page sizes (multiples of 25, max 250). */
+    private const ALLOWED_PER_PAGE = [25, 50, 75, 100, 125, 150, 175, 200, 225, 250];
+
     protected function resolvedPerPage(Request $request): int
     {
         $perPage = (int) $request->query('per_page', 25);
-        $allowed = [25, 50, 75, 100, 125, 150, 175, 200, 225, 250];
 
-        return in_array($perPage, $allowed, true) ? $perPage : 25;
+        return in_array($perPage, self::ALLOWED_PER_PAGE, true) ? $perPage : 25;
     }
 
     /**

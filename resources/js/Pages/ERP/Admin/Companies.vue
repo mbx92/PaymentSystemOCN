@@ -84,15 +84,7 @@ const submitEdit = () => {
 };
 
 const toggleActive = (row) => {
-  router.patch(route('erp.admin.companies.update', row.id), {
-    name: row.name,
-    legal_name: row.legal_name || '',
-    tax_id: row.tax_id || '',
-    email: row.email || '',
-    phone: row.phone || '',
-    address: row.address || '',
-    is_active: !row.is_active,
-  }, { preserveScroll: true });
+  router.patch(route('erp.admin.companies.toggle-active', row.id), {}, { preserveScroll: true });
 };
 </script>
 

@@ -240,6 +240,7 @@ class ERPPurchasingController extends Controller
                 'created_at' => $purchaseOrder->order_date?->toDateString(),
                 'notes' => $purchaseOrder->notes,
                 'lines' => $purchaseOrder->lines->map(fn ($line) => [
+                    'id' => $line->id,
                     'product_id' => $line->master_product_id,
                     'sku' => $line->product?->sku,
                     'name' => $line->product?->name,
@@ -291,9 +292,15 @@ class ERPPurchasingController extends Controller
                 'notes' => $baseValidated['notes'] ?? null,
             ]);
 
-            $purchaseOrder->lines()->delete();
+            $existingLineIds = $purchaseOrder->lines()->pluck('id');
+            $incomingLineIds = $lines->pluck('id')->filter();
+            $purchaseOrder->lines()->whereNotIn('id', $incomingLineIds)->delete();
             foreach ($lines as $line) {
-                $purchaseOrder->lines()->create($line);
+                if (isset($line['id']) && $existingLineIds->contains($line['id'])) {
+                    $purchaseOrder->lines()->where('id', $line['id'])->update($line);
+                } else {
+                    $purchaseOrder->lines()->create($line);
+                }
             }
         });
 
@@ -306,6 +313,7 @@ class ERPPurchasingController extends Controller
 
         return $request->validate([
             'lines' => $linesRule,
+            'lines.*.id' => 'nullable|integer|exists:purchase_order_lines,id',
             'lines.*.product_id' => [
                 'required',
                 'integer',

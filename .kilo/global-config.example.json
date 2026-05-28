@@ -1,0 +1,10 @@
+{
+  "$schema": "https://app.kilo.ai/config.json",
+  "mcp": {
+    "daisyui": {
+      "type": "local",
+      "command": ["python", "PATH_TO_DAISYUI_MCP/mcp_server.py"],
+      "enabled": true
+    }
+  }
+}

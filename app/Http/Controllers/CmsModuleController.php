@@ -7,9 +7,8 @@ use App\Models\CmsAccessLog;
 use App\Models\CmsMedia;
 use App\Models\LandingSite;
 use App\Models\LandingSitePage;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -69,18 +68,13 @@ class CmsModuleController extends Controller
             ->values()
             ->all();
 
-        $landingLogs = CmsAccessLog::query()
-            ->where('kind', CmsAccessLog::KIND_LANDING_PUBLIC)
-            ->where('created_at', '>=', $since)
-            ->get(['created_at', 'ip_address']);
+        $landingSeries = $this->aggregateHitsByDayAggregated(
+            CmsAccessLog::KIND_LANDING_PUBLIC, $since, $labelDates
+        );
 
-        $adminLogs = CmsAccessLog::query()
-            ->where('kind', CmsAccessLog::KIND_CMS_ADMIN)
-            ->where('created_at', '>=', $since)
-            ->get(['created_at', 'ip_address']);
-
-        $landingSeries = $this->aggregateHitsByDay($landingLogs, $labelDates);
-        $adminSeries = $this->aggregateHitsByDay($adminLogs, $labelDates);
+        $adminSeries = $this->aggregateHitsByDayAggregated(
+            CmsAccessLog::KIND_CMS_ADMIN, $since, $labelDates
+        );
 
         $chartLabels = collect($labelDates)
             ->map(fn (string $d) => Carbon::parse($d)->format('d/m'))
@@ -248,27 +242,28 @@ class CmsModuleController extends Controller
     }
 
     /**
-     * @param  Collection<int, CmsAccessLog>  $rows
      * @param  list<string>  $labelDates  Y-m-d keys in order
      * @return array{hits: list<int>, unique_ips: list<int>}
      */
-    private function aggregateHitsByDay(SupportCollection $rows, array $labelDates): array
+    private function aggregateHitsByDayAggregated(string $kind, Carbon $since, array $labelDates): array
     {
-        $hits = array_fill_keys($labelDates, 0);
-        $uniqueBuckets = array_fill_keys($labelDates, []);
+        $hitsQuery = CmsAccessLog::query()
+            ->where('kind', $kind)
+            ->where('created_at', '>=', $since)
+            ->selectRaw('DATE(created_at) as day, COUNT(*) as cnt')
+            ->groupByRaw('DATE(created_at)')
+            ->pluck('cnt', 'day');
 
-        foreach ($rows as $row) {
-            $d = $row->created_at?->toDateString();
-            if ($d === null || ! array_key_exists($d, $hits)) {
-                continue;
-            }
-            $hits[$d]++;
-            $uniqueBuckets[$d][$row->ip_address] = true;
-        }
+        $uniqueQuery = CmsAccessLog::query()
+            ->where('kind', $kind)
+            ->where('created_at', '>=', $since)
+            ->selectRaw('DATE(created_at) as day, COUNT(DISTINCT ip_address) as cnt')
+            ->groupByRaw('DATE(created_at)')
+            ->pluck('cnt', 'day');
 
         return [
-            'hits' => array_values(array_map(fn (string $d) => $hits[$d], $labelDates)),
-            'unique_ips' => array_values(array_map(fn (string $d) => count($uniqueBuckets[$d]), $labelDates)),
+            'hits' => array_map(fn (string $d) => (int) ($hitsQuery[$d] ?? 0), $labelDates),
+            'unique_ips' => array_map(fn (string $d) => (int) ($uniqueQuery[$d] ?? 0), $labelDates),
         ];
     }
 }

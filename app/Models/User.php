@@ -19,7 +19,7 @@ class User extends Authenticatable
      *
      * @var list<string>
      */
-    public const ASSIGNABLE_ROLE_NAMES = ['admin', 'manajer', 'anggota'];
+    public const ASSIGNABLE_ROLE_NAMES = ['admin', 'manajer', 'anggota', 'finance'];
 
     protected $fillable = [
         'company_id',

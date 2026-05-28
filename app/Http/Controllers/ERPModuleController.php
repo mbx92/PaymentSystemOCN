@@ -13,11 +13,6 @@ class ERPModuleController extends Controller
         return $this->renderRegistryModule('accounting');
     }
 
-    public function payments(): Response
-    {
-        return Inertia::render('ERP/Accounting/Payments');
-    }
-
     public function sales(): Response
     {
         return $this->renderRegistryModule('sales');

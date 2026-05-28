@@ -26,6 +26,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -44,64 +45,39 @@ class ERPSalesController extends Controller
 
     public function pos(Request $request): Response
     {
-        $products = MasterProduct::query()
+        $query = MasterProduct::query()
             ->where('status', 'active')
             ->whereIn('sales_channel', ['pos', 'both'])
             ->with([
                 'channelPrices' => fn ($q) => $q->where('status', 'active'),
                 'uomMappings' => fn ($q) => $q->where('status', 'active'),
-            ])
+            ]);
+
+        if ($request->filled('q')) {
+            $term = $request->string('q')->toString();
+            $query->where(function ($q) use ($term): void {
+                $q->where('name', 'like', '%'.$term.'%')
+                    ->orWhere('sku', 'like', '%'.$term.'%')
+                    ->orWhere('barcode', 'like', '%'.$term.'%');
+            });
+        }
+
+        $productPaginator = $query
             ->orderBy('name')
-            ->get(['id', 'sku', 'barcode', 'name', 'uom', 'selling_price', 'stock'])
-            ->flatMap(function (MasterProduct $product) {
-                $baseChannelPrices = $this->productChannelPrices($product);
-                $base = [[
-                    'id' => 'base-'.$product->id,
-                    'master_product_id' => $product->id,
-                    'sku' => $product->sku,
-                    'barcode' => $product->barcode,
-                    'name' => $product->name,
-                    'uom' => $product->uom,
-                    'variant_label' => $product->uom,
-                    'price' => (float) $product->selling_price,
-                    'channel_prices' => $baseChannelPrices,
-                    'stock' => $product->stock,
-                    'multiplier' => 1,
-                ]];
+            ->paginate(50)
+            ->withQueryString();
 
-                $mapped = $product->uomMappings->map(function ($mapping) use ($product, $baseChannelPrices) {
-                    $operation = $mapping->price_operation ?: 'multiply';
-                    $mappedPrice = (float) ($mapping->use_auto_price
-                        ? $this->computeMappedPrice((float) $product->selling_price, (float) $mapping->multiplier, $operation)
-                        : $mapping->selling_price);
-
-                    return [
-                        'id' => 'map-'.$mapping->id,
-                        'master_product_id' => $product->id,
-                        'sku' => $product->sku.'-'.$mapping->uom_code,
-                        'barcode' => $product->barcode,
-                        'name' => $product->name,
-                        'uom' => $mapping->uom_code,
-                        'variant_label' => $mapping->uom_code,
-                        'price_operation' => $operation,
-                        'price' => $mappedPrice,
-                        'channel_prices' => $this->mappedChannelPrices(
-                            $baseChannelPrices,
-                            $mappedPrice,
-                            (float) $mapping->multiplier,
-                            $operation,
-                            (bool) $mapping->use_auto_price
-                        ),
-                        'stock' => (int) (($operation === 'divide')
-                            ? floor((float) $product->stock * (float) $mapping->multiplier)
-                            : floor((float) $product->stock / max((float) $mapping->multiplier, 0.0001))),
-                        'multiplier' => (float) $mapping->multiplier,
-                    ];
-                });
-
-                return collect($base)->concat($mapped);
-            })
+        $variants = collect($productPaginator->items())
+            ->flatMap(fn (MasterProduct $product) => $this->expandPosProductVariants($product))
             ->values();
+
+        $products = new LengthAwarePaginator(
+            $variants,
+            $productPaginator->total(),
+            $productPaginator->perPage(),
+            $productPaginator->currentPage(),
+            ['path' => $productPaginator->path(), 'query' => $request->query()]
+        );
 
         return Inertia::render('ERP/Sales/POS', [
             'products' => $products,
@@ -109,6 +85,56 @@ class ERPSalesController extends Controller
             'fullscreen' => $request->boolean('fullscreen'),
             'payment_methods' => $this->posPaymentMethodsPayload(),
         ]);
+    }
+
+    private function expandPosProductVariants(MasterProduct $product): array
+    {
+        $baseChannelPrices = $this->productChannelPrices($product);
+        $base = [[
+            'id' => 'base-'.$product->id,
+            'master_product_id' => $product->id,
+            'sku' => $product->sku,
+            'barcode' => $product->barcode,
+            'name' => $product->name,
+            'uom' => $product->uom,
+            'variant_label' => $product->uom,
+            'price' => (float) $product->selling_price,
+            'channel_prices' => $baseChannelPrices,
+            'stock' => $product->stock,
+            'multiplier' => 1,
+        ]];
+
+        $mapped = $product->uomMappings->map(function ($mapping) use ($product, $baseChannelPrices) {
+            $operation = $mapping->price_operation ?: 'multiply';
+            $mappedPrice = (float) ($mapping->use_auto_price
+                ? $this->computeMappedPrice((float) $product->selling_price, (float) $mapping->multiplier, $operation)
+                : $mapping->selling_price);
+
+            return [
+                'id' => 'map-'.$mapping->id,
+                'master_product_id' => $product->id,
+                'sku' => $product->sku.'-'.$mapping->uom_code,
+                'barcode' => $product->barcode,
+                'name' => $product->name,
+                'uom' => $mapping->uom_code,
+                'variant_label' => $mapping->uom_code,
+                'price_operation' => $operation,
+                'price' => $mappedPrice,
+                'channel_prices' => $this->mappedChannelPrices(
+                    $baseChannelPrices,
+                    $mappedPrice,
+                    (float) $mapping->multiplier,
+                    $operation,
+                    (bool) $mapping->use_auto_price
+                ),
+                'stock' => (int) (($operation === 'divide')
+                    ? floor((float) $product->stock * (float) $mapping->multiplier)
+                    : floor((float) $product->stock / max((float) $mapping->multiplier, 0.0001))),
+                'multiplier' => (float) $mapping->multiplier,
+            ];
+        });
+
+        return collect($base)->concat($mapped)->all();
     }
 
     public function posTransactions(Request $request): Response
@@ -297,7 +323,7 @@ class ERPSalesController extends Controller
 
             if ($totalRefundCogs > 0) {
                 $cogsAccount = $coa->resolveAccountByKey('pos_sale_cogs_account', '5009');
-                $inventoryAccount = Account::query()->where('code', '1201')->firstOrFail();
+                $inventoryAccount = $coa->resolveAccountByKey('pos_sale_inventory_account', '1201');
                 $this->glPostingService->post(
                     ErpCompanyResolver::resolveForGlPosting(request()),
                     sourceModule: 'pos_sale_refund_cogs',
@@ -612,7 +638,7 @@ class ERPSalesController extends Controller
 
             if ($totalCogs > 0) {
                 $cogsAccount = $coa->resolveAccountByKey('pos_sale_cogs_account', '5009');
-                $inventoryAccount = Account::query()->where('code', '1201')->firstOrFail();
+                $inventoryAccount = $coa->resolveAccountByKey('pos_sale_inventory_account', '1201');
                 $this->glPostingService->post(
                     ErpCompanyResolver::resolveForGlPosting($request),
                     sourceModule: 'pos_sale_cogs',
@@ -1266,9 +1292,7 @@ class ERPSalesController extends Controller
         $logoDataUri = null;
 
         if ($setting?->app_logo_path && Storage::disk('public')->exists($setting->app_logo_path)) {
-            $path = Storage::disk('public')->path($setting->app_logo_path);
-            $mime = function_exists('mime_content_type') ? mime_content_type($path) : 'image/png';
-            $logoDataUri = 'data:'.$mime.';base64,'.base64_encode((string) file_get_contents($path));
+            $logoDataUri = 'data:image/png;base64,'.base64_encode((string) Storage::disk('public')->get($setting->app_logo_path));
         }
 
         return [

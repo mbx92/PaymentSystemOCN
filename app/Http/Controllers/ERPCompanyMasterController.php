@@ -3,8 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\ERP\Core\Models\Company;
+use App\Http\Requests\ERP\StoreCompanyRequest;
+use App\Http\Requests\ERP\UpdateCompanyRequest;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -44,41 +47,21 @@ class ERPCompanyMasterController extends Controller
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(StoreCompanyRequest $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'legal_name' => ['nullable', 'string', 'max:255'],
-            'tax_id' => ['nullable', 'string', 'max:64'],
-            'email' => ['nullable', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:64'],
-            'address' => ['nullable', 'string', 'max:2000'],
-        ]);
-
         Company::query()->create([
-            'name' => trim($validated['name']),
-            'legal_name' => $validated['legal_name'] ? trim($validated['legal_name']) : null,
-            'tax_id' => $validated['tax_id'] ? trim($validated['tax_id']) : null,
-            'email' => $validated['email'] ? trim($validated['email']) : null,
-            'phone' => $validated['phone'] ? trim($validated['phone']) : null,
-            'address' => $validated['address'] ? trim($validated['address']) : null,
+            ...$request->validated(),
             'is_active' => true,
         ]);
+
+        Cache::forget('active_companies');
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Perusahaan berhasil ditambahkan.']);
     }
 
-    public function update(Request $request, Company $company): RedirectResponse
+    public function update(UpdateCompanyRequest $request, Company $company): RedirectResponse
     {
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'legal_name' => ['nullable', 'string', 'max:255'],
-            'tax_id' => ['nullable', 'string', 'max:64'],
-            'email' => ['nullable', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:64'],
-            'address' => ['nullable', 'string', 'max:2000'],
-            'is_active' => ['sometimes', 'boolean'],
-        ]);
+        $validated = $request->validated();
 
         $isActive = array_key_exists('is_active', $validated)
             ? (bool) $validated['is_active']
@@ -97,15 +80,35 @@ class ERPCompanyMasterController extends Controller
         }
 
         $company->update([
-            'name' => trim($validated['name']),
-            'legal_name' => filled($validated['legal_name'] ?? null) ? trim((string) $validated['legal_name']) : null,
-            'tax_id' => filled($validated['tax_id'] ?? null) ? trim((string) $validated['tax_id']) : null,
-            'email' => filled($validated['email'] ?? null) ? trim((string) $validated['email']) : null,
-            'phone' => filled($validated['phone'] ?? null) ? trim((string) $validated['phone']) : null,
-            'address' => filled($validated['address'] ?? null) ? trim((string) $validated['address']) : null,
+            ...$validated,
             'is_active' => $isActive,
         ]);
 
+        Cache::forget('active_companies');
+
         return back()->with('flash', ['type' => 'success', 'message' => 'Data perusahaan berhasil diperbarui.']);
+    }
+
+    public function toggleActive(Company $company): RedirectResponse
+    {
+        $newStatus = ! $company->is_active;
+
+        if (! $newStatus) {
+            $others = Company::query()
+                ->where('is_active', true)
+                ->whereKeyNot($company->id)
+                ->exists();
+            if (! $others) {
+                return back()->with('flash', ['type' => 'warning', 'message' => 'Harus ada minimal satu perusahaan aktif.']);
+            }
+        }
+
+        $company->update(['is_active' => $newStatus]);
+
+        Cache::forget('active_companies');
+
+        $msg = $newStatus ? 'Perusahaan diaktifkan.' : 'Perusahaan dinonaktifkan.';
+
+        return back()->with('flash', ['type' => 'success', 'message' => $msg]);
     }
 }

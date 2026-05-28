@@ -3,12 +3,16 @@
 namespace App\ERP\HR\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Employee extends Model
 {
+    use SoftDeletes;
+
     protected $table = 'employees';
 
     protected $fillable = [
+        'company_id',
         'employee_no',
         'name',
         'email',
@@ -23,6 +27,7 @@ class Employee extends Model
         return [
             'base_salary' => 'decimal:2',
             'is_active' => 'bool',
+            'deleted_at' => 'datetime',
         ];
     }
 

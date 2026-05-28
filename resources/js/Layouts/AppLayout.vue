@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue';
 import { Link, router, usePage } from '@inertiajs/vue3';
+import DOMPurify from 'dompurify';
 import {
     HomeIcon, CodeBracketIcon, ArrowDownCircleIcon, ArrowUpCircleIcon, ChartBarIcon,
     UsersIcon, Bars3Icon, XMarkIcon, ArrowRightOnRectangleIcon, BuildingOffice2Icon, BellAlertIcon,
@@ -185,7 +186,7 @@ const renderMarkdown = (text) => {
         }
     }
     if (inList) out.push('</ul>');
-    return out.join('');
+    return DOMPurify.sanitize(out.join(''));
 };
 
 const chatbotIntentMeta = computed(() => {
@@ -521,11 +522,6 @@ const scrollChatToBottom = () => {
     container.scrollTop = container.scrollHeight;
 };
 
-const getCookieValue = (name) => {
-    const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
-    return match ? decodeURIComponent(match[1]) : '';
-};
-
 const sendChatMessage = async (overrideText = null) => {
     const message = (overrideText ?? chatInput.value).trim();
     if (!message || chatLoading.value) return;
@@ -537,40 +533,26 @@ const sendChatMessage = async (overrideText = null) => {
     chatLoading.value = true;
 
     try {
-        const response = await fetch(route('erp.chatbot.ask'), {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-XSRF-TOKEN': getCookieValue('XSRF-TOKEN'),
-            },
-            body: JSON.stringify({
-                message,
-                history: chatMessages.value
-                    .filter(m => m.role === 'user' || m.role === 'assistant')
-                    .slice(-10)
-                    .map(m => ({ role: m.role, text: m.text })),
-            }),
+        const response = await window.axios.post(route('erp.chatbot.ask'), {
+            message,
+            history: chatMessages.value
+                .filter(m => m.role === 'user' || m.role === 'assistant')
+                .slice(-10)
+                .map(m => ({ role: m.role, text: m.text })),
         });
 
-        if (!response.ok) {
-            const errPayload = await response.json().catch(() => ({}));
-            const errMsg = errPayload?.message || `Server error ${response.status}.`;
-            chatMessages.value.push({ role: 'assistant', text: `⚠️ ${errMsg}`, ts: Date.now() });
-        } else {
-            const payload = await response.json();
-            const answer = payload?.answer || 'Maaf, terjadi kendala saat memproses pertanyaan.';
-            chatMessages.value.push({
-                role: 'assistant',
-                text: answer,
-                intent: payload?.intent || null,
-                meta: assistantMetaFromIntent(payload?.intent || null),
-                ts: Date.now(),
-            });
-        }
-    } catch {
-        chatMessages.value.push({ role: 'assistant', text: '⚠️ Koneksi ke chatbot gagal. Coba lagi sebentar.', ts: Date.now() });
+        const payload = response.data;
+        const answer = payload?.answer || 'Maaf, terjadi kendala saat memproses pertanyaan.';
+        chatMessages.value.push({
+            role: 'assistant',
+            text: answer,
+            intent: payload?.intent || null,
+            meta: assistantMetaFromIntent(payload?.intent || null),
+            ts: Date.now(),
+        });
+    } catch (err) {
+        const errMsg = err?.response?.data?.message || `Server error ${err?.response?.status || 'network'}.`;
+        chatMessages.value.push({ role: 'assistant', text: `⚠️ ${errMsg}`, ts: Date.now() });
     } finally {
         chatLoading.value = false;
         saveHistory();

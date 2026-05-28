@@ -28,7 +28,7 @@ class TeamDistributionController extends Controller
         }
 
         $projectQuery = Project::query()
-            ->with(['cashIns', 'referrals', 'cashOuts', 'materials.product', 'convertedBudget.items', 'teamDistributions'])
+            ->with(['cashIns', 'referrals', 'cashOuts', 'materials.product', 'teamDistributions'])
             ->when($search !== '', function ($builder) use ($search): void {
                 $builder->where(function ($inner) use ($search): void {
                     $inner->where('name', 'like', '%'.$search.'%')
@@ -74,26 +74,26 @@ class TeamDistributionController extends Controller
                 ->where('project_id', $projectId)
                 ->get()
                 ->map(fn ($d) => [
-                    'id'              => $d->id,
-                    'user_id'         => $d->user_id,
-                    'user_name'       => $d->user->name,
+                    'id' => $d->id,
+                    'user_id' => $d->user_id,
+                    'user_name' => $d->user->name,
                     'role_in_project' => $d->role_in_project,
-                    'percentage'      => (float) $d->percentage,
-                    'base_pay'        => (float) $d->base_pay,
-                    'bonus'           => (float) $d->bonus,
-                    'total_pay'       => (float) $d->total_pay,
+                    'percentage' => (float) $d->percentage,
+                    'base_pay' => (float) $d->base_pay,
+                    'bonus' => (float) $d->bonus,
+                    'total_pay' => (float) $d->total_pay,
                 ])
                 ->values();
         }
 
         return Inertia::render('TeamDistribution/Calculator', [
-            'projects'              => $projectRows,
-            'members'               => $members,
-            'teamRoles'             => $teamRoles,
-            'selectedProject'       => $selectedProject,
+            'projects' => $projectRows,
+            'members' => $members,
+            'teamRoles' => $teamRoles,
+            'selectedProject' => $selectedProject,
             'existingDistributions' => $existingDistributions,
-            'selectedProjectId'     => filled($projectId) ? $projectId : null,
-            'filters'               => $this->filtersWithPerPage($request, ['q', 'status']),
+            'selectedProjectId' => filled($projectId) ? $projectId : null,
+            'filters' => $this->filtersWithPerPage($request, ['q', 'status']),
         ]);
     }
 
@@ -102,14 +102,14 @@ class TeamDistributionController extends Controller
         $roleNames = $this->activeTeamRoles()->pluck('name')->all();
 
         $validated = $request->validate([
-            'project_id'    => 'required|uuid|exists:projects,id',
+            'project_id' => 'required|uuid|exists:projects,id',
             'distribution_rate' => 'required|numeric|min:0|max:100',
             'distributions' => 'required|array|min:1',
-            'distributions.*.user_id'         => 'required|exists:users,id',
+            'distributions.*.user_id' => 'required|exists:users,id',
             'distributions.*.role_in_project' => ['required', 'string', 'max:20', Rule::in($roleNames)],
-            'distributions.*.percentage'      => 'required|numeric|min:0|max:100',
-            'distributions.*.base_pay'        => 'required|numeric|min:0',
-            'distributions.*.bonus'           => 'required|numeric|min:0',
+            'distributions.*.percentage' => 'required|numeric|min:0|max:100',
+            'distributions.*.base_pay' => 'required|numeric|min:0',
+            'distributions.*.bonus' => 'required|numeric|min:0',
         ]);
 
         $totalPercentage = collect($validated['distributions'])->sum('percentage');
@@ -145,20 +145,20 @@ class TeamDistributionController extends Controller
                     // pertahankan paid_at, cash_out_id agar payment link tidak hilang
                     $existing->update([
                         'role_in_project' => $dist['role_in_project'],
-                        'percentage'      => $dist['percentage'],
-                        'base_pay'        => $dist['base_pay'],
-                        'bonus'           => $dist['bonus'],
-                        'total_pay'       => $dist['base_pay'] + $dist['bonus'],
+                        'percentage' => $dist['percentage'],
+                        'base_pay' => $dist['base_pay'],
+                        'bonus' => $dist['bonus'],
+                        'total_pay' => $dist['base_pay'] + $dist['bonus'],
                     ]);
                 } else {
                     TeamDistribution::create([
-                        'project_id'      => $validated['project_id'],
-                        'user_id'         => $dist['user_id'],
+                        'project_id' => $validated['project_id'],
+                        'user_id' => $dist['user_id'],
                         'role_in_project' => $dist['role_in_project'],
-                        'percentage'      => $dist['percentage'],
-                        'base_pay'        => $dist['base_pay'],
-                        'bonus'           => $dist['bonus'],
-                        'total_pay'       => $dist['base_pay'] + $dist['bonus'],
+                        'percentage' => $dist['percentage'],
+                        'base_pay' => $dist['base_pay'],
+                        'bonus' => $dist['bonus'],
+                        'total_pay' => $dist['base_pay'] + $dist['bonus'],
                     ]);
                 }
             }
@@ -183,7 +183,7 @@ class TeamDistributionController extends Controller
 
     private function projectDistributionSnapshot(Project $project): array
     {
-        $project->loadMissing(['cashIns', 'referrals', 'cashOuts', 'materials.product', 'convertedBudget.items', 'teamDistributions']);
+        $project->loadMissing(['cashIns', 'referrals', 'cashOuts', 'materials.product', 'teamDistributions']);
 
         $cashInTotal = (float) $project->cashIns->sum('amount');
         $cashOutTotal = (float) $project->cashOuts->sum('amount');

@@ -61,14 +61,20 @@ class ERPInventoryController extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
-        $products = $paginator->through(function (MasterProduct $product) use ($selectedWarehouseId) {
+        $productIds = $paginator->pluck('id');
+        $stocksByProduct = $selectedWarehouseId && $productIds->isNotEmpty()
+            ? MasterProductWarehouseStock::query()
+                ->whereIn('master_product_id', $productIds)
+                ->where('warehouse_id', $selectedWarehouseId)
+                ->get()
+                ->keyBy('master_product_id')
+            : collect();
+
+        $products = $paginator->through(function (MasterProduct $product) use ($selectedWarehouseId, $stocksByProduct) {
             $qty = 0;
             $reservedQty = 0;
             if ($selectedWarehouseId) {
-                $stockRow = MasterProductWarehouseStock::query()
-                    ->where('master_product_id', $product->id)
-                    ->where('warehouse_id', $selectedWarehouseId)
-                    ->first();
+                $stockRow = $stocksByProduct->get($product->id);
 
                 $qty = (float) ($stockRow?->qty ?? 0);
                 $reservedQty = (float) ($stockRow?->reserved_qty ?? 0);

@@ -5,17 +5,19 @@ namespace App\Http\Controllers;
 use App\Services\InvoiceService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Barryvdh\DomPDF\PDF as DompdfWrapper;
+use Illuminate\Support\Facades\Gate;
 use Symfony\Component\HttpFoundation\Response;
 
 class InvoiceController extends Controller
 {
     public function __construct(
         private readonly InvoiceService $invoiceService,
-    ) {
-    }
+    ) {}
 
     public function show(string|int $id): Response
     {
+        Gate::allowIf(fn ($user) => $user->hasPermissionTo('erp.sales.manage'));
+
         $payload = $this->invoiceService->getInvoiceDocument($id);
         $invoice = $payload['invoice'];
 
@@ -25,6 +27,8 @@ class InvoiceController extends Controller
 
     public function download(string|int $id): Response
     {
+        Gate::allowIf(fn ($user) => $user->hasPermissionTo('erp.sales.manage'));
+
         $payload = $this->invoiceService->getInvoiceDocument($id);
         $invoice = $payload['invoice'];
 
@@ -34,6 +38,8 @@ class InvoiceController extends Controller
 
     public function showSalesNote(string|int $id): Response
     {
+        Gate::allowIf(fn ($user) => $user->hasPermissionTo('erp.sales.manage'));
+
         $payload = $this->invoiceService->getInvoiceDocument($id);
         $invoice = $payload['invoice'];
 
@@ -43,6 +49,8 @@ class InvoiceController extends Controller
 
     public function downloadSalesNote(string|int $id): Response
     {
+        Gate::allowIf(fn ($user) => $user->hasPermissionTo('erp.sales.manage'));
+
         $payload = $this->invoiceService->getInvoiceDocument($id);
         $invoice = $payload['invoice'];
 
@@ -58,7 +66,7 @@ class InvoiceController extends Controller
                 'dpi' => 150,
                 'defaultFont' => 'DejaVu Sans',
                 'isHtml5ParserEnabled' => true,
-                'isRemoteEnabled' => true,
+                'isRemoteEnabled' => false,
                 'chroot' => public_path(),
             ]);
     }

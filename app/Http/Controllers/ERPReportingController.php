@@ -10,6 +10,7 @@ use App\ERP\Core\Services\ErpCompanyResolver;
 use App\Models\CashIn;
 use App\Models\CashOut;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -27,21 +28,9 @@ class ERPReportingController extends Controller
         $companyId = ErpCompanyResolver::resolveForReporting($request);
         $source = $this->sourceFilter($request);
 
-        $query = JournalLine::query()
-            ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
-            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
-            ->leftJoin('companies', 'companies.id', '=', 'journal_entries.company_id')
-            ->where('accounts.type', 'revenue')
-            ->whereDate('journal_entries.entry_date', '>=', $dateFrom->toDateString())
-            ->whereDate('journal_entries.entry_date', '<=', $dateTo->toDateString());
+        $baseQuery = $this->buildRevenueJournalLineQuery($dateFrom, $dateTo, $companyId, $source);
 
-        if ($companyId) {
-            $query->where('journal_entries.company_id', $companyId);
-        }
-
-        $this->applyJournalSourceFilter($query, $source, $dateFrom->toDateString(), $dateTo->toDateString());
-
-        $rows = $query
+        $rows = (clone $baseQuery)
             ->groupBy('journal_entries.company_id', 'companies.name')
             ->selectRaw('journal_entries.company_id as company_id')
             ->selectRaw("COALESCE(companies.name, 'Belum ditentukan') as company_name")
@@ -59,21 +48,7 @@ class ERPReportingController extends Controller
             ])
             ->values();
 
-        $sourcePivotQuery = JournalLine::query()
-            ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
-            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
-            ->leftJoin('companies', 'companies.id', '=', 'journal_entries.company_id')
-            ->where('accounts.type', 'revenue')
-            ->whereDate('journal_entries.entry_date', '>=', $dateFrom->toDateString())
-            ->whereDate('journal_entries.entry_date', '<=', $dateTo->toDateString());
-
-        if ($companyId) {
-            $sourcePivotQuery->where('journal_entries.company_id', $companyId);
-        }
-
-        $this->applyJournalSourceFilter($sourcePivotQuery, $source, $dateFrom->toDateString(), $dateTo->toDateString());
-
-        $sourcePivot = $sourcePivotQuery
+        $sourcePivot = (clone $baseQuery)
             ->groupBy('journal_entries.company_id', 'companies.name', 'journal_entries.source_module')
             ->selectRaw("COALESCE(companies.name, 'Belum ditentukan') as company_name")
             ->selectRaw('journal_entries.source_module as source_module')
@@ -90,21 +65,7 @@ class ERPReportingController extends Controller
             ])
             ->values();
 
-        $accountBreakdownQuery = JournalLine::query()
-            ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
-            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
-            ->leftJoin('companies', 'companies.id', '=', 'journal_entries.company_id')
-            ->where('accounts.type', 'revenue')
-            ->whereDate('journal_entries.entry_date', '>=', $dateFrom->toDateString())
-            ->whereDate('journal_entries.entry_date', '<=', $dateTo->toDateString());
-
-        if ($companyId) {
-            $accountBreakdownQuery->where('journal_entries.company_id', $companyId);
-        }
-
-        $this->applyJournalSourceFilter($accountBreakdownQuery, $source, $dateFrom->toDateString(), $dateTo->toDateString());
-
-        $accountBreakdown = $accountBreakdownQuery
+        $accountBreakdown = (clone $baseQuery)
             ->groupBy('companies.name', 'accounts.code', 'accounts.name')
             ->selectRaw("COALESCE(companies.name, 'Belum ditentukan') as company_name")
             ->selectRaw('accounts.code as account_code')
@@ -573,6 +534,25 @@ class ERPReportingController extends Controller
                 'types' => $typePivot,
             ],
         ]);
+    }
+
+    private function buildRevenueJournalLineQuery(Carbon $dateFrom, Carbon $dateTo, int|string|null $companyId, string $source): Builder
+    {
+        $query = JournalLine::query()
+            ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->leftJoin('companies', 'companies.id', '=', 'journal_entries.company_id')
+            ->where('accounts.type', 'revenue')
+            ->whereDate('journal_entries.entry_date', '>=', $dateFrom->toDateString())
+            ->whereDate('journal_entries.entry_date', '<=', $dateTo->toDateString());
+
+        if ($companyId) {
+            $query->where('journal_entries.company_id', $companyId);
+        }
+
+        $this->applyJournalSourceFilter($query, $source, $dateFrom->toDateString(), $dateTo->toDateString());
+
+        return $query;
     }
 
     private function applyJournalSourceFilter($query, string $source, ?string $dateFrom = null, ?string $dateTo = null): void

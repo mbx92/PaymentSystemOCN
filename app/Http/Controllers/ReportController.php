@@ -4,14 +4,15 @@ namespace App\Http\Controllers;
 
 use App\ERP\Core\Models\Company;
 use App\ERP\Core\Services\ErpCompanyResolver;
+use App\Exports\ProjectProfitExport;
+use App\Jobs\ExportExcelJob;
+use App\Models\CashIn;
+use App\Models\CashOut;
+use App\Models\PaymentMethod;
 use App\Models\Project;
 use App\Services\CashflowReportService;
 use App\Services\PosReportService;
 use App\Services\ProjectReportService;
-use App\Models\CashIn;
-use App\Models\CashOut;
-use App\Models\PaymentMethod;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Maatwebsite\Excel\Facades\Excel;
@@ -22,8 +23,7 @@ class ReportController extends Controller
         private readonly CashflowReportService $cashflowReportService,
         private readonly ProjectReportService $projectReportService,
         private readonly PosReportService $posReportService,
-    ) {
-    }
+    ) {}
 
     public function cashflow(Request $request)
     {
@@ -75,33 +75,33 @@ class ReportController extends Controller
             ->when($request->search, fn ($q) => $q->where('name', 'ilike', "%{$request->search}%"))
             ->get()
             ->map(function ($p) {
-                $cashIn      = (float) $p->cashIns->sum('amount');
-                $cashOut     = (float) $p->cashOuts->sum('amount');
-                $profit      = $cashIn - $cashOut;
-                $margin      = $cashIn > 0 ? round($profit / $cashIn * 100, 1) : 0;
-                $referral    = (float) $p->referrals->sum('commission_amount');
+                $cashIn = (float) $p->cashIns->sum('amount');
+                $cashOut = (float) $p->cashOuts->sum('amount');
+                $profit = $cashIn - $cashOut;
+                $margin = $cashIn > 0 ? round($profit / $cashIn * 100, 1) : 0;
+                $referral = (float) $p->referrals->sum('commission_amount');
                 $operational = (float) $p->cashOuts->where('category', 'operasional')->sum('amount');
-                $teamCost    = (float) $p->cashOuts->where('category', 'biaya_tim')->sum('amount');
+                $teamCost = (float) $p->cashOuts->where('category', 'biaya_tim')->sum('amount');
 
                 return [
-                    'id'          => $p->id,
-                    'name'        => $p->name,
+                    'id' => $p->id,
+                    'name' => $p->name,
                     'client_name' => $p->client_name,
-                    'status'      => $p->status,
+                    'status' => $p->status,
                     'total_value' => (float) $p->total_value,
-                    'cash_in'     => $cashIn,
-                    'referral'    => $referral,
-                    'team_cost'   => $teamCost,
+                    'cash_in' => $cashIn,
+                    'referral' => $referral,
+                    'team_cost' => $teamCost,
                     'operational' => $operational,
-                    'cash_out'    => $cashOut,
-                    'profit'      => $profit,
-                    'margin'      => $margin,
+                    'cash_out' => $cashOut,
+                    'profit' => $profit,
+                    'margin' => $margin,
                 ];
             });
 
         return Inertia::render('Reports/ProjectProfit', [
             'projects' => $projects,
-            'filters'  => $request->only(['search']),
+            'filters' => $request->only(['search']),
         ]);
     }
 
@@ -176,7 +176,7 @@ class ReportController extends Controller
     public function monthly(Request $request)
     {
         $month = $request->get('month', now()->month);
-        $year  = $request->get('year', now()->year);
+        $year = $request->get('year', now()->year);
         $companyId = ErpCompanyResolver::resolveForReporting($request);
 
         $cashInsQuery = CashIn::with(['project', 'creator'])
@@ -192,7 +192,7 @@ class ReportController extends Controller
         $cashIns = $cashInsQuery->get();
         $cashOuts = $cashOutsQuery->get();
 
-        $totalIn  = (float) $cashIns->sum('amount');
+        $totalIn = (float) $cashIns->sum('amount');
         $totalOut = (float) $cashOuts->sum('amount');
 
         // Breakdown per category
@@ -248,41 +248,41 @@ class ReportController extends Controller
         })->all();
 
         return Inertia::render('Reports/Monthly', [
-            'totalIn'            => $totalIn,
-            'totalOut'           => $totalOut,
-            'netProfit'          => $totalIn - $totalOut,
-            'expenseByCategory'  => $expenseByCategory,
-            'incomeByCategory'   => $incomeByCategory,
-            'projectBreakdown'   => $projectBreakdown,
-            'expenseBreakdown'   => $expenseBreakdown,
-            'trendData'          => $trendData,
+            'totalIn' => $totalIn,
+            'totalOut' => $totalOut,
+            'netProfit' => $totalIn - $totalOut,
+            'expenseByCategory' => $expenseByCategory,
+            'incomeByCategory' => $incomeByCategory,
+            'projectBreakdown' => $projectBreakdown,
+            'expenseBreakdown' => $expenseBreakdown,
+            'trendData' => $trendData,
             'cashIns' => $cashInsQuery
                 ->latest('date')
                 ->paginate($this->resolvedPerPage($request), ['*'], 'cash_in_page')
                 ->withQueryString()
                 ->through(fn ($c) => [
                     'project_name' => $c->project?->name ?? 'Manual / Umum',
-                    'category'     => $c->category,
-                    'amount'       => (float) $c->amount,
-                    'date'         => $c->date->format('Y-m-d'),
-                    'note'         => $c->note,
+                    'category' => $c->category,
+                    'amount' => (float) $c->amount,
+                    'date' => $c->date->format('Y-m-d'),
+                    'note' => $c->note,
                 ]),
             'cashOuts' => $cashOutsQuery
                 ->latest('date')
                 ->paginate($this->resolvedPerPage($request), ['*'], 'cash_out_page')
                 ->withQueryString()
                 ->through(fn ($c) => [
-                    'project_name'   => $c->project?->name ?? 'Operasional Umum',
-                    'category'       => $c->category,
-                    'amount'         => (float) $c->amount,
-                    'date'           => $c->date->format('Y-m-d'),
-                    'note'           => $c->note,
+                    'project_name' => $c->project?->name ?? 'Operasional Umum',
+                    'category' => $c->category,
+                    'amount' => (float) $c->amount,
+                    'date' => $c->date->format('Y-m-d'),
+                    'note' => $c->note,
                     'recipient_name' => $c->recipient_name,
                 ]),
             'selectedMonth' => (int) $month,
-            'selectedYear'  => (int) $year,
-            'years'         => range(now()->year, now()->year - 4),
-            'filters'       => $this->filtersWithPerPage($request, ['month', 'year', 'company_id']),
+            'selectedYear' => (int) $year,
+            'years' => range(now()->year, now()->year - 4),
+            'filters' => $this->filtersWithPerPage($request, ['month', 'year', 'company_id']),
             'companyOptions' => Company::query()
                 ->where('is_active', true)
                 ->orderBy('name')
@@ -299,24 +299,30 @@ class ReportController extends Controller
     public function exportProjectProfitExcel(Request $request)
     {
         return Excel::download(
-            new \App\Exports\ProjectProfitExport($request->only(['search'])),
-            'laporan-project-' . now()->format('Y-m-d') . '.xlsx'
+            new ProjectProfitExport($request->only(['search'])),
+            'laporan-project-'.now()->format('Y-m-d').'.xlsx'
         );
     }
 
     public function exportMonthlyExcel(Request $request)
     {
-        return Excel::download(
-            new \App\Exports\MonthlyReportExport($request->get('month', now()->month), $request->get('year', now()->year)),
-            'laporan-bulanan-' . $request->get('year', now()->year) . '-' . str_pad($request->get('month', now()->month), 2, '0', STR_PAD_LEFT) . '.xlsx'
+        ExportExcelJob::dispatch(
+            $request->only(['month', 'year']),
+            $request->user(),
+            'monthly',
         );
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Export sedang diproses. Notifikasi akan muncul setelah selesai.']);
     }
 
     public function exportMemberPaymentsExcel(Request $request)
     {
-        return Excel::download(
-            new \App\Exports\MemberPaymentsExport($request->only(['user_id', 'year'])),
-            'laporan-anggota-' . now()->format('Y-m-d') . '.xlsx'
+        ExportExcelJob::dispatch(
+            $request->only(['user_id', 'year']),
+            $request->user(),
+            'member_payments',
         );
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Export sedang diproses. Notifikasi akan muncul setelah selesai.']);
     }
 }

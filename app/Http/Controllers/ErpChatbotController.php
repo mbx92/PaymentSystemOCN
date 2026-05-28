@@ -42,11 +42,11 @@ class ErpChatbotController extends Controller
         ]);
 
         $message = trim($validated['message']);
-        $message = strip_tags($message);
+        $message = htmlspecialchars(strip_tags($message), ENT_QUOTES, 'UTF-8');
         $history = $validated['history'] ?? [];
         $history = collect($history)->map(fn ($item) => [
             'role' => $item['role'],
-            'text' => strip_tags((string) ($item['text'] ?? '')),
+            'text' => htmlspecialchars(strip_tags((string) ($item['text'] ?? '')), ENT_QUOTES, 'UTF-8'),
         ])->toArray();
         $parsed = $parser->parse($message);
 
@@ -82,28 +82,28 @@ class ErpChatbotController extends Controller
         }
 
         $answer = match ($intent) {
-            'greeting'             => $this->answerGreeting(),
-            'stock_lookup'         => $this->answerStockLookup($message),
+            'greeting' => $this->answerGreeting(),
+            'stock_lookup' => $this->answerStockLookup($message),
             'product_price_lookup' => $this->answerPriceLookup($message),
-            'product_detail'       => $this->answerProductDetail($message),
-            'invoice_unpaid_list'  => $this->answerUnpaidInvoiceList(),
-            'invoice_due_list'     => $this->answerInvoiceDueList(),
-            'pos_sales_today'      => $this->answerPosSalesToday(),
-            'pos_sales_yesterday'  => $this->answerPosSalesYesterday(),
-            'pos_sales_month'      => $this->answerPosSalesMonth(),
+            'product_detail' => $this->answerProductDetail($message),
+            'invoice_unpaid_list' => $this->answerUnpaidInvoiceList(),
+            'invoice_due_list' => $this->answerInvoiceDueList(),
+            'pos_sales_today' => $this->answerPosSalesToday(),
+            'pos_sales_yesterday' => $this->answerPosSalesYesterday(),
+            'pos_sales_month' => $this->answerPosSalesMonth(),
             'pos_sales_last_month' => $this->answerPosSalesLastMonth(),
-            'cashflow_today'       => $this->answerCashflowToday(),
-            'cashflow_yesterday'   => $this->answerCashflowYesterday(),
-            'cashflow_month'       => $this->answerCashflowMonth(),
-            'cashflow_last_month'  => $this->answerCashflowLastMonth(),
-            'project_active_list'  => $this->answerProjectActiveList(),
-            'low_stock_alert'      => $this->answerLowStockAlert(),
-            'operational_summary'  => $this->answerOperationalSummary(),
+            'cashflow_today' => $this->answerCashflowToday(),
+            'cashflow_yesterday' => $this->answerCashflowYesterday(),
+            'cashflow_month' => $this->answerCashflowMonth(),
+            'cashflow_last_month' => $this->answerCashflowLastMonth(),
+            'project_active_list' => $this->answerProjectActiveList(),
+            'low_stock_alert' => $this->answerLowStockAlert(),
+            'operational_summary' => $this->answerOperationalSummary(),
             'top_selling_products' => $this->answerTopSellingProducts(),
-            'send_invoice'         => $this->answerSendInvoice($message),
-            'invoice_sent_list'    => $this->answerInvoiceSentList(),
-            'help'                 => $this->answerHelp(),
-            default                => 'Fitur yang Anda minta sedang dalam pengembangan. Coba ketik **bantuan** untuk melihat fitur yang tersedia.',
+            'send_invoice' => $this->answerSendInvoice($message),
+            'invoice_sent_list' => $this->answerInvoiceSentList(),
+            'help' => $this->answerHelp(),
+            default => 'Fitur yang Anda minta sedang dalam pengembangan. Coba ketik **bantuan** untuk melihat fitur yang tersedia.',
         };
 
         return response()->json([
@@ -442,10 +442,10 @@ class ErpChatbotController extends Controller
     {
         $hour = (int) now()->format('H');
         $greeting = match (true) {
-            $hour < 11  => 'Selamat pagi',
-            $hour < 15  => 'Selamat siang',
-            $hour < 18  => 'Selamat sore',
-            default     => 'Selamat malam',
+            $hour < 11 => 'Selamat pagi',
+            $hour < 15 => 'Selamat siang',
+            $hour < 18 => 'Selamat sore',
+            default => 'Selamat malam',
         };
 
         $user = Auth::user()?->name ?? 'Kak';

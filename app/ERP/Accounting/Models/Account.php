@@ -2,8 +2,11 @@
 
 namespace App\ERP\Accounting\Models;
 
+use App\ERP\Accounting\Services\CoaSettingService;
+use App\ERP\Core\Models\Company;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Validation\Rule;
 
@@ -44,7 +47,7 @@ class Account extends Model
 
     public static function defaultCashBankAccount(): ?self
     {
-        $coa = app(\App\ERP\Accounting\Services\CoaSettingService::class);
+        $coa = app(CoaSettingService::class);
 
         try {
             return $coa->resolveAccountByKey('project_invoice_cash_account');
@@ -111,6 +114,7 @@ class Account extends Model
     }
 
     protected $fillable = [
+        'company_id',
         'code',
         'name',
         'type',
@@ -130,5 +134,10 @@ class Account extends Model
     public function journalLines(): HasMany
     {
         return $this->hasMany(JournalLine::class);
+    }
+
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class);
     }
 }

@@ -28,15 +28,26 @@ class PersonalFinanceController extends Controller
             ->orderBy('name')
             ->get();
 
-        $walletRows = $wallets->map(function (PersonalWallet $w) {
-            $in = (float) PersonalTransaction::query()->where('wallet_id', $w->id)->where('type', 'income')->sum('amount');
-            $out = (float) PersonalTransaction::query()->where('wallet_id', $w->id)->where('type', 'expense')->sum('amount');
+        $walletIds = $wallets->pluck('id');
+        $walletBalances = PersonalTransaction::query()
+            ->whereIn('wallet_id', $walletIds)
+            ->selectRaw('wallet_id, type, SUM(amount) as total')
+            ->groupBy('wallet_id', 'type')
+            ->get()
+            ->groupBy('wallet_id')
+            ->map(fn ($rows) => [
+                'income' => (float) ($rows->firstWhere('type', 'income')?->total ?? 0),
+                'expense' => (float) ($rows->firstWhere('type', 'expense')?->total ?? 0),
+            ]);
+
+        $walletRows = $wallets->map(function (PersonalWallet $w) use ($walletBalances) {
+            $balance = $walletBalances[$w->id] ?? ['income' => 0, 'expense' => 0];
 
             return [
                 'id' => $w->id,
                 'name' => $w->name,
                 'currency' => $w->currency,
-                'balance' => round($in - $out, 2),
+                'balance' => round($balance['income'] - $balance['expense'], 2),
             ];
         });
 
@@ -59,21 +70,22 @@ class PersonalFinanceController extends Controller
         $chartLabels = [];
         $chartIncome = [];
         $chartExpense = [];
+        $sixMonthsAgo = now()->subMonths(5)->startOfMonth();
+        $chartTransactions = PersonalTransaction::query()
+            ->where('user_id', $userId)
+            ->where('occurred_on', '>=', $sixMonthsAgo)
+            ->get(['occurred_on', 'type', 'amount']);
+        $chartLookup = [];
+        foreach ($chartTransactions as $t) {
+            $monthKey = $t->occurred_on->format('Y-m');
+            $chartLookup[$monthKey][$t->type] = ($chartLookup[$monthKey][$t->type] ?? 0) + (float) $t->amount;
+        }
         for ($i = 5; $i >= 0; $i--) {
             $d = now()->subMonths($i);
+            $monthKey = $d->format('Y-m');
             $chartLabels[] = $d->translatedFormat('M Y');
-            $chartIncome[] = round((float) PersonalTransaction::query()
-                ->where('user_id', $userId)
-                ->where('type', 'income')
-                ->whereYear('occurred_on', $d->year)
-                ->whereMonth('occurred_on', $d->month)
-                ->sum('amount'), 2);
-            $chartExpense[] = round((float) PersonalTransaction::query()
-                ->where('user_id', $userId)
-                ->where('type', 'expense')
-                ->whereYear('occurred_on', $d->year)
-                ->whereMonth('occurred_on', $d->month)
-                ->sum('amount'), 2);
+            $chartIncome[] = round($chartLookup[$monthKey]['income'] ?? 0, 2);
+            $chartExpense[] = round($chartLookup[$monthKey]['expense'] ?? 0, 2);
         }
 
         $assetTypeLabels = [
@@ -507,14 +519,18 @@ class PersonalFinanceController extends Controller
             ->get()
             ->keyBy('category_id');
 
-        $rows = $expenseCategories->map(function (PersonalCategory $c) use ($budgets, $userId, $start, $end) {
+        $spentByCategory = PersonalTransaction::query()
+            ->where('user_id', $userId)
+            ->where('type', 'expense')
+            ->whereBetween('occurred_on', [$start, $end])
+            ->whereIn('category_id', $expenseCategories->pluck('id'))
+            ->selectRaw('category_id, SUM(amount) as total')
+            ->groupBy('category_id')
+            ->pluck('total', 'category_id');
+
+        $rows = $expenseCategories->map(function (PersonalCategory $c) use ($budgets, $spentByCategory) {
             $b = $budgets->get($c->id);
-            $spent = (float) PersonalTransaction::query()
-                ->where('user_id', $userId)
-                ->where('category_id', $c->id)
-                ->where('type', 'expense')
-                ->whereBetween('occurred_on', [$start, $end])
-                ->sum('amount');
+            $spent = (float) ($spentByCategory[$c->id] ?? 0);
             $limit = $b ? (float) $b->amount_limit : null;
 
             return [
@@ -792,9 +808,10 @@ class PersonalFinanceController extends Controller
      */
     private function mapWalletRow(PersonalWallet $w): array
     {
-        $in = (float) PersonalTransaction::query()->where('wallet_id', $w->id)->where('type', 'income')->sum('amount');
-        $out = (float) PersonalTransaction::query()->where('wallet_id', $w->id)->where('type', 'expense')->sum('amount');
-        $txCount = PersonalTransaction::query()->where('wallet_id', $w->id)->count();
+        $summary = PersonalTransaction::query()
+            ->where('wallet_id', $w->id)
+            ->selectRaw("COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END), 0) as income_total, COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0) as expense_total, COUNT(*) as tx_count")
+            ->first();
 
         return [
             'id' => $w->id,
@@ -802,9 +819,9 @@ class PersonalFinanceController extends Controller
             'currency' => $w->currency,
             'sort_order' => $w->sort_order,
             'is_default' => (bool) $w->is_default,
-            'balance' => round($in - $out, 2),
-            'transaction_count' => $txCount,
-            'can_delete' => $txCount === 0,
+            'balance' => round((float) ($summary?->income_total ?? 0) - (float) ($summary?->expense_total ?? 0), 2),
+            'transaction_count' => (int) ($summary?->tx_count ?? 0),
+            'can_delete' => ((int) ($summary?->tx_count ?? 0)) === 0,
         ];
     }
 }

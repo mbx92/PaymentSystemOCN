@@ -10,8 +10,8 @@ use App\ERP\Core\Services\ErpCompanyResolver;
 use App\ERP\Shared\Enums\DocumentStatus;
 use App\Models\CashCategory;
 use App\Models\CashOut;
-use App\Models\ProcurementImportStaging;
 use App\Models\CategoryCoaMapping;
+use App\Models\ProcurementImportStaging;
 use App\Models\TeamDistribution;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
@@ -31,13 +31,25 @@ class ERPAccountingPaymentController extends Controller
         $searchOperator = DB::getDriverName() === 'pgsql' ? 'ilike' : 'like';
         $paidHistorySearch = trim((string) $request->string('paid_history_q'));
         $paidHistoryPerPage = $this->resolvedPaidSupplierBillHistoryPerPage($request);
+        $payablesPerPage = $this->resolvedPayablesPerPage($request);
 
-        $payables = Payable::query()
+        $payablesQuery = Payable::query()
             ->with(['vendor:id,code,name', 'purchaseOrder:id,number,notes', 'goodsReceipt:id,number', 'payments.cashAccount:id,code,name'])
+            ->whereRaw('amount > paid_amount')
             ->orderByRaw('(amount - paid_amount) desc')
-            ->orderBy('due_date')
-            ->get()
-            ->map(function (Payable $payable): array {
+            ->orderBy('due_date');
+
+        $summary = [
+            'payables_total' => (float) (clone $payablesQuery)->sum('amount'),
+            'paid_total' => (float) (clone $payablesQuery)->sum('paid_amount'),
+            'open_count' => (clone $payablesQuery)->count(),
+        ];
+        $summary['outstanding_total'] = $summary['payables_total'] - $summary['paid_total'];
+
+        $payables = $payablesQuery
+            ->paginate($payablesPerPage)
+            ->withQueryString()
+            ->through(function (Payable $payable): array {
                 $amount = (float) $payable->amount;
                 $paid = (float) $payable->paid_amount;
                 $legacyProcurementDate = $this->resolvedLegacySupplierPaymentDate($payable);
@@ -115,18 +127,22 @@ class ERPAccountingPaymentController extends Controller
         return Inertia::render('ERP/Accounting/Payments', [
             'payables' => $payables,
             'paidPayables' => $paidPayables,
-            'summary' => [
-                'payables_total' => (float) $payables->sum('amount'),
-                'paid_total' => (float) $payables->sum('paid_amount'),
-                'outstanding_total' => (float) $payables->sum('outstanding_amount'),
-                'open_count' => $payables->filter(fn (array $row) => $row['outstanding_amount'] > 0)->count(),
-            ],
+            'summary' => $summary,
             'filters' => [
                 'paid_history_q' => $paidHistorySearch,
                 'paid_history_per_page' => $paidHistoryPerPage,
+                'per_page' => $payablesPerPage,
             ],
             'cashAccounts' => Account::cashBankOptions(),
         ]);
+    }
+
+    private function resolvedPayablesPerPage(Request $request): int
+    {
+        $perPage = (int) $request->query('per_page', 25);
+        $allowed = [25, 50, 75, 100, 125, 150, 175, 200, 225, 250];
+
+        return in_array($perPage, $allowed, true) ? $perPage : 25;
     }
 
     private function resolvedPaidSupplierBillHistoryPerPage(Request $request): int

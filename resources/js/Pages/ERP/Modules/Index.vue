@@ -81,38 +81,11 @@ const localOrder = ref([]);
 
 const defaultOrder = computed(() => (props.menus ?? []).map((menu) => menu.key));
 const savedOrder = computed(() => page.props.uiPreferences?.module_menu_orders?.[props.moduleKey] ?? []);
-const pinnedFirstKey = computed(() => (props.moduleKey === 'accounting' ? 'overview-accounting' : null));
-
-const pinFirst = (source) => {
-  const pinnedKey = pinnedFirstKey.value;
-
-  if (!pinnedKey || !Array.isArray(source) || !source.includes(pinnedKey)) {
-    return source;
-  }
-
-  return [pinnedKey, ...source.filter((key) => key !== pinnedKey)];
-};
-
-const normalizedOrder = (source) => {
-  const defaultKeys = defaultOrder.value;
-  const filtered = [];
-
-  for (const key of source ?? []) {
-    if (!defaultKeys.includes(key) || filtered.includes(key)) continue;
-    filtered.push(key);
-  }
-
-  for (const key of defaultKeys) {
-    if (!filtered.includes(key)) filtered.push(key);
-  }
-
-  return pinFirst(filtered);
-};
 
 watch(
   () => [props.moduleKey, props.menus, savedOrder.value],
   () => {
-    localOrder.value = normalizedOrder(savedOrder.value);
+    localOrder.value = savedOrder.value.length > 0 ? savedOrder.value : defaultOrder.value;
   },
   { immediate: true, deep: true },
 );
@@ -121,18 +94,18 @@ const workspaceMenus = computed(() => {
   const keyedMenus = new Map(
     (props.menus ?? []).map((menu) => [menu.key, {
       ...menu,
-      href: menu.url ?? route(menu.route),
+      href: menu.url,
       iconComponent: iconFor(menu),
     }]),
   );
 
-  return normalizedOrder(localOrder.value).map((key) => keyedMenus.get(key)).filter(Boolean);
+  return localOrder.value.map((key) => keyedMenus.get(key)).filter(Boolean);
 });
 
 const hasCustomOrder = computed(() => JSON.stringify(localOrder.value) !== JSON.stringify(defaultOrder.value));
 
 const saveModuleMenuOrder = async (order) => {
-  localOrder.value = normalizedOrder(order);
+  localOrder.value = order;
   await window.axios.patch(route('ui.preferences.update'), {
     module_menu_order: {
       module: props.moduleKey,

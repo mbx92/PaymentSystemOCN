@@ -148,7 +148,14 @@ final class ModuleWorkspaceRegistry
      */
     public static function menusFor(string $moduleKey): array
     {
-        return self::definitions()[$moduleKey]['menus'] ?? [];
+        $menus = self::definitions()[$moduleKey]['menus'] ?? [];
+
+        return array_map(function (array $menu): array {
+            if (! isset($menu['url'])) {
+                $menu['url'] = route($menu['route']);
+            }
+            return $menu;
+        }, $menus);
     }
 
     /**

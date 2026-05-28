@@ -1,10 +1,6 @@
 {
   "$schema": "https://app.kilo.ai/config.json",
-  "mcp": {
-    "daisyui": {
-      "type": "local",
-      "command": ["G:/mcp/daisyui-mcp/venv/Scripts/python.exe", "G:/mcp/daisyui-mcp/mcp_server.py"],
-      "enabled": true
-    }
-  }
+  "model": "deepseek-v4/deepseek-v4-flash",
+  "small_model": "deepseek-v4/deepseek-v4-flash",
+  "instructions": ["AGENTS.md"]
 }

@@ -13,8 +13,8 @@ use App\Http\Controllers\CrmLeadController;
 use App\Http\Controllers\CrmPipelineController;
 use App\Http\Controllers\ERPAccountingCoaSettingsController;
 use App\Http\Controllers\ERPAccountingFiscalPeriodController;
-use App\Http\Controllers\ERPAccountingOverviewController;
 use App\Http\Controllers\ERPAccountingOpeningBalanceController;
+use App\Http\Controllers\ERPAccountingOverviewController;
 use App\Http\Controllers\ERPAccountingPaymentController;
 use App\Http\Controllers\ERPAccountingUtilityController;
 use App\Http\Controllers\ERPAdministrationMasterDataController;
@@ -35,8 +35,8 @@ use App\Http\Controllers\HREmployeeController;
 use App\Http\Controllers\HRLegalController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\LabelProfileController;
-use App\Http\Controllers\OperationalController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\OperationalController;
 use App\Http\Controllers\PersonalFinanceController;
 use App\Http\Controllers\PersonalModuleController;
 use App\Http\Controllers\ProfileController;
@@ -68,7 +68,13 @@ Route::get('/storage/{path}', function (string $path) {
         abort(404);
     }
 
-    return response()->file($disk->path($path));
+    $fullPath = $disk->path($path);
+    $realRoot = realpath($disk->path(''));
+    $realPath = realpath($fullPath);
+
+    abort_if($realPath === false || ! str_starts_with($realPath, $realRoot), 403);
+
+    return response()->file($fullPath);
 })->where('path', '.*')->name('storage.serve');
 
 Route::get('/', [PublicHomeController::class, 'index'])
@@ -78,7 +84,7 @@ Route::post('/landing/track', [PublicHomeController::class, 'track'])
     ->middleware('throttle:landing-track')
     ->name('landing.track');
 
-Route::middleware('auth')->group(function () {
+Route::middleware(['auth', 'throttle:120,1'])->group(function () {
     // Profile (Breeze default)
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
@@ -405,6 +411,7 @@ Route::middleware('auth')->group(function () {
         Route::get('erp/admin/companies', [ERPCompanyMasterController::class, 'index'])->name('erp.admin.companies');
         Route::post('erp/admin/companies', [ERPCompanyMasterController::class, 'store'])->name('erp.admin.companies.store');
         Route::patch('erp/admin/companies/{company}', [ERPCompanyMasterController::class, 'update'])->name('erp.admin.companies.update');
+        Route::patch('erp/admin/companies/{company}/toggle-active', [ERPCompanyMasterController::class, 'toggleActive'])->name('erp.admin.companies.toggle-active');
         Route::get('erp/admin/landing-sites', [ERPAdministrationMasterDataController::class, 'landingSites'])->name('erp.admin.landing-sites');
         Route::get('erp/admin/landing-sites/domain-check', [ERPAdministrationMasterDataController::class, 'checkLandingSiteDomain'])->name('erp.admin.landing-sites.domain-check');
         Route::post('erp/admin/landing-sites', [ERPAdministrationMasterDataController::class, 'storeLandingSite'])->name('erp.admin.landing-sites.store');

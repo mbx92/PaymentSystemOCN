@@ -2,8 +2,10 @@
 
 namespace App\Providers;
 
+use App\ERP\Core\Models\Company;
 use App\ERP\HR\Models\Employee;
 use App\Models\User;
+use App\Policies\CompanyPolicy;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
@@ -46,5 +48,7 @@ class AppServiceProvider extends ServiceProvider
         Route::bind('employee', fn (string $value) => Employee::whereKey($value)->firstOrFail());
 
         Gate::define('manage-rnd', fn (User $user): bool => $user->hasRole('admin') || $user->hasPermissionTo('manage-rnd'));
+
+        Gate::policy(Company::class, CompanyPolicy::class);
     }
 }
