@@ -42,13 +42,23 @@ class ErpChatbotController extends Controller
         ]);
 
         $message = trim($validated['message']);
+        $message = strip_tags($message);
         $history = $validated['history'] ?? [];
+        $history = collect($history)->map(fn ($item) => [
+            'role' => $item['role'],
+            'text' => strip_tags((string) ($item['text'] ?? '')),
+        ])->toArray();
         $parsed = $parser->parse($message);
 
         if (! $parsed['matched']) {
             $followUp = $this->tryFollowUp($message, $history);
             if ($followUp !== null) {
                 return response()->json(['ok' => true, 'intent' => 'follow_up', 'answer' => $followUp]);
+            }
+
+            $projectFollowUp = $this->tryFollowUpFromProjectContext($message, $history);
+            if ($projectFollowUp !== null) {
+                return response()->json(['ok' => true, 'intent' => 'follow_up_project', 'answer' => $projectFollowUp]);
             }
 
             return response()->json([
@@ -93,7 +103,7 @@ class ErpChatbotController extends Controller
             'send_invoice'         => $this->answerSendInvoice($message),
             'invoice_sent_list'    => $this->answerInvoiceSentList(),
             'help'                 => $this->answerHelp(),
-            default                => 'Intent dikenali tapi handler belum tersedia untuk: '.$intent,
+            default                => 'Fitur yang Anda minta sedang dalam pengembangan. Coba ketik **bantuan** untuk melihat fitur yang tersedia.',
         };
 
         return response()->json([
@@ -170,6 +180,60 @@ class ErpChatbotController extends Controller
         }
 
         return $this->tryFollowUpFromHistory($lower, $history, $stockTriggers, $priceTriggers, $detailTriggers);
+    }
+
+    private function tryFollowUpFromProjectContext(string $message, array $history): ?string
+    {
+        $lower = Str::of($message)->lower()->squish()->toString();
+
+        $invoiceTriggers = ['kirim invoice', 'send invoice', 'email invoice', 'kirim tagihan'];
+        $valueTriggers = ['nilai kontrak', 'nilai proyek', 'nilai project', 'total nilai', 'berapa nilainya', 'nilainya', 'totalnya'];
+        $detailTriggers = ['detail project', 'detail proyek', 'info project', 'info proyek', 'detailnya', 'infonya'];
+
+        $ctx = $this->getContext();
+
+        if (! ($ctx['project_id'] ?? null)) {
+            return null;
+        }
+
+        if (collect($invoiceTriggers)->some(fn ($t) => Str::contains($lower, $t))) {
+            $project = Project::query()->find((int) $ctx['project_id']);
+            if (! $project) {
+                return null;
+            }
+
+            return $this->answerSendInvoice("kirim invoice {$project->invoice_number}");
+        }
+
+        if (collect($valueTriggers)->some(fn ($t) => Str::contains($lower, $t))) {
+            $project = Project::query()
+                ->with(['convertedBudget.items', 'materials.product'])
+                ->find((int) $ctx['project_id']);
+            if (! $project) {
+                return null;
+            }
+
+            $value = number_format($project->resolveListTotalValue(), 0, ',', '.');
+
+            return "**{$project->name}**\nNilai kontrak: Rp {$value}";
+        }
+
+        if (collect($detailTriggers)->some(fn ($t) => Str::contains($lower, $t))) {
+            $project = Project::query()
+                ->with(['convertedBudget.items', 'materials.product'])
+                ->find((int) $ctx['project_id']);
+            if (! $project) {
+                return null;
+            }
+
+            $value = number_format($project->resolveListTotalValue(), 0, ',', '.');
+            $client = $project->client_name ? "\nKlien: {$project->client_name}" : '';
+            $inv = $project->invoice_number ? "\nInvoice: {$project->invoice_number}" : '';
+
+            return "**{$project->name}**{$client}{$inv}\nNilai kontrak: Rp {$value}";
+        }
+
+        return null;
     }
 
     private function tryFollowUpFromProduct(string $lower, array $ctx, array $stockTriggers, array $priceTriggers, array $detailTriggers): ?string
@@ -626,17 +690,19 @@ class ErpChatbotController extends Controller
             return 'Tidak ada project yang sedang berjalan saat ini.';
         }
 
-        $totalValue = $projects->sum(fn ($p) => (float) $p->total_value);
+        $totalValue = $projects->sum(fn ($p) => $p->resolveListTotalValue());
         $totalFmt = number_format($totalValue, 0, ',', '.');
 
+        $projects->each(fn (Project $p) => $this->rememberProject($p));
+
         $lines = $projects->map(function (Project $p): string {
-            $value = number_format((float) $p->total_value, 0, ',', '.');
+            $value = number_format($p->resolveListTotalValue(), 0, ',', '.');
             $client = $p->client_name ? " ({$p->client_name})" : '';
 
             return "- {$p->name}{$client} | Rp {$value}";
         })->implode("\n");
 
-        return "**Project aktif** ({$projects->count()}):\n{$lines}\n\n**Total nilai: Rp {$totalFmt}**";
+        return "**Project aktif** ({$projects->count()}):\n{$lines}\n\n**Total nilai: Rp {$totalFmt}**\n\n💡 Tanya lagi: \"detail project [nama]\" untuk info lebih lanjut.";
     }
 
     private function answerLowStockAlert(): string
@@ -734,10 +800,10 @@ class ErpChatbotController extends Controller
             return "Format belum lengkap.\nGunakan:\n- kirim invoice INV-PRJ-000123 ke client@mail.com\n- lalu: konfirmasi kirim invoice INV-PRJ-000123 ke client@mail.com";
         }
 
-        $project = $this->projectQueries->findCompletedProjectByInvoiceNumber($invoiceNo);
+        $project = $this->projectQueries->findProjectByInvoiceNumber($invoiceNo);
 
         if (! $project) {
-            return "Invoice **{$invoiceNo}** tidak ditemukan pada project selesai.";
+            return "Invoice **{$invoiceNo}** tidak ditemukan. Pastikan nomor invoice benar.";
         }
 
         $recipientEmail = $forcedEmail;
@@ -812,7 +878,15 @@ class ErpChatbotController extends Controller
                 'sent_at' => now(),
             ]);
 
-            return '❌ Gagal mengirim invoice. Cek konfigurasi mail (MAIL_MAILER/SMTP) dan alamat email tujuan.';
+            $reason = match (true) {
+                str_contains($e->getMessage(), 'Failed to authenticate') => 'autentikasi SMTP gagal. Cek MAIL_USERNAME/MAIL_PASSWORD.',
+                str_contains($e->getMessage(), 'Connection refused') => 'koneksi SMTP ditolak. Cek MAIL_HOST/MAIL_PORT.',
+                str_contains($e->getMessage(), 'timed out') => 'koneksi SMTP timeout. Cek jaringan atau MAIL_HOST.',
+                str_contains($e->getMessage(), 'Invalid address') => 'alamat email tidak valid: '.$recipientEmail,
+                default => 'cek konfigurasi mail (MAIL_MAILER/SMTP) dan alamat email tujuan.',
+            };
+
+            return '❌ Gagal mengirim invoice. '.$reason;
         }
     }
 
@@ -880,8 +954,13 @@ class ErpChatbotController extends Controller
         $isConfirmed = Str::contains($normalized, 'konfirmasi');
 
         $invoiceNo = null;
-        if (preg_match('/(inv[\w\-\/]+)/i', $message, $m) === 1) {
+        if (preg_match('/\b(inv[\w\-\/]+\d[\w\-\/]*)/i', $message, $m) === 1) {
             $invoiceNo = strtoupper(trim((string) $m[1]));
+        } elseif (preg_match('/(inv[\w\-\/]+)/i', $message, $m) === 1) {
+            $candidate = strtoupper(trim((string) $m[1]));
+            if ($candidate !== 'INVOICE' && $candidate !== 'INVOICENYA' && $candidate !== 'INV') {
+                $invoiceNo = $candidate;
+            }
         }
 
         $email = null;

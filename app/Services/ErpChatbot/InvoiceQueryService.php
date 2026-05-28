@@ -13,7 +13,7 @@ class InvoiceQueryService
         return ProjectPayment::query()
             ->with('project:id,name,invoice_number')
             ->whereNull('paid_at')
-            ->orderByDesc('id')
+            ->orderByDesc('amount')
             ->limit($limit)
             ->get();
     }
@@ -23,8 +23,12 @@ class InvoiceQueryService
         return ProjectPayment::query()
             ->with('project:id,name,invoice_number')
             ->whereNull('paid_at')
-            ->whereNotNull('due_date')
-            ->where('due_date', '<=', now()->addDays($days)->toDateString())
+            ->where(function ($query) use ($days): void {
+                $query
+                    ->whereNull('due_date')
+                    ->orWhere('due_date', '<=', now()->addDays($days)->toDateString());
+            })
+            ->orderByRaw('CASE WHEN due_date IS NULL THEN 1 ELSE 0 END')
             ->orderBy('due_date')
             ->limit($limit)
             ->get();

@@ -4,6 +4,7 @@ namespace App\ERP\Core\Services;
 
 use App\Models\ErpChatParserRule;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class RuleBasedErpChatParser
@@ -228,28 +229,30 @@ class RuleBasedErpChatParser
 
     public function activeRules(): Collection
     {
-        $databaseRules = ErpChatParserRule::query()
-            ->where('is_active', true)
-            ->orderBy('priority')
-            ->orderBy('id')
-            ->get();
+        return Cache::remember('erp_chat_parser_rules', 300, function () {
+            $databaseRules = ErpChatParserRule::query()
+                ->where('is_active', true)
+                ->orderBy('priority')
+                ->orderBy('id')
+                ->get();
 
-        if ($databaseRules->isNotEmpty()) {
-            return $databaseRules;
-        }
+            if ($databaseRules->isNotEmpty()) {
+                return $databaseRules;
+            }
 
-        return collect(self::BUILT_IN_RULES)->map(function (array $rule, int $index): object {
-            return (object) [
-                'id' => 'builtin-'.($index + 1),
-                'name' => $rule['name'],
-                'intent_key' => $rule['intent_key'],
-                'keywords' => $rule['keywords'],
-                'match_mode' => $rule['match_mode'],
-                'priority' => $rule['priority'],
-                'response_text' => $rule['response_text'],
-                'is_active' => true,
-            ];
-        })->sortBy('priority')->values();
+            return collect(self::BUILT_IN_RULES)->map(function (array $rule, int $index): object {
+                return (object) [
+                    'id' => 'builtin-'.($index + 1),
+                    'name' => $rule['name'],
+                    'intent_key' => $rule['intent_key'],
+                    'keywords' => $rule['keywords'],
+                    'match_mode' => $rule['match_mode'],
+                    'priority' => $rule['priority'],
+                    'response_text' => $rule['response_text'],
+                    'is_active' => true,
+                ];
+            })->sortBy('priority')->values();
+        });
     }
 
     /**
@@ -330,18 +333,21 @@ class RuleBasedErpChatParser
      */
     private function fuzzyContains(string $haystack, string $needle): bool
     {
-        // For multi-word keywords, try exact containment only (already handled by synonyms)
         if (str_contains($needle, ' ')) {
-            return Str::contains($haystack, $needle);
+            return $this->fuzzyContainsMultiWord($haystack, $needle);
         }
 
+        return $this->fuzzyContainsSingleWord($haystack, $needle);
+    }
+
+    private function fuzzyContainsSingleWord(string $haystack, string $needle): bool
+    {
         $haystackWords = preg_split('/\s+/', $haystack) ?: [];
 
         if (in_array($needle, $haystackWords, true)) {
             return true;
         }
 
-        // Single-word: check known typos
         foreach ($this->typoMap as $canonical => $typos) {
             if ($needle === $canonical) {
                 foreach ($typos as $typo) {
@@ -352,7 +358,6 @@ class RuleBasedErpChatParser
             }
         }
 
-        // Levenshtein on each word in haystack
         foreach ($haystackWords as $word) {
             if (strlen($word) < 4 || strlen($needle) < 4) {
                 continue;
@@ -365,5 +370,29 @@ class RuleBasedErpChatParser
         }
 
         return false;
+    }
+
+    private function fuzzyContainsMultiWord(string $haystack, string $needle): bool
+    {
+        if (Str::contains($haystack, $needle)) {
+            return true;
+        }
+
+        $needleWords = preg_split('/\s+/', $needle) ?: [];
+        $haystackWords = preg_split('/\s+/', $haystack) ?: [];
+
+        foreach ($needleWords as $nw) {
+            if (strlen($nw) < 2) {
+                continue;
+            }
+
+            $matched = $this->fuzzyContainsSingleWord(implode(' ', $haystackWords), $nw);
+
+            if (! $matched) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

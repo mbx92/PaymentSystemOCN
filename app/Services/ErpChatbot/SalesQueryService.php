@@ -11,6 +11,7 @@ class SalesQueryService
     public function summarizePeriod(string $startDate, string $endDate): array
     {
         $query = PosSale::query()
+            ->where('status', '!=', 'refunded')
             ->whereBetween('sold_at', [$startDate.' 00:00:00', $endDate.' 23:59:59']);
 
         $count = (clone $query)->count();
@@ -27,6 +28,7 @@ class SalesQueryService
     {
         return PosSaleItem::query()
             ->join('pos_sales', 'pos_sales.id', '=', 'pos_sale_items.pos_sale_id')
+            ->where('pos_sales.status', '!=', 'refunded')
             ->whereBetween('pos_sales.sold_at', [$startDate.' 00:00:00', $endDate.' 23:59:59'])
             ->selectRaw('pos_sale_items.product_name, SUM(pos_sale_items.qty) as total_qty, SUM(pos_sale_items.line_total) as total_revenue')
             ->groupBy('pos_sale_items.product_name')

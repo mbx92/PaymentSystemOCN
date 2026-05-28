@@ -83,7 +83,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
-    Route::post('erp/chatbot/ask', [ErpChatbotController::class, 'ask'])->name('erp.chatbot.ask');
+    Route::post('erp/chatbot/ask', [ErpChatbotController::class, 'ask'])
+        ->middleware('throttle:30,1')
+        ->name('erp.chatbot.ask');
     Route::post('erp/context/company', [ErpCompanyContextController::class, 'update'])->name('erp.context.company');
     Route::patch('ui/preferences', [UiPreferenceController::class, 'update'])->name('ui.preferences.update');
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');

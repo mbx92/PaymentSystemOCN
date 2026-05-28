@@ -12,16 +12,19 @@ class ProjectQueryService
     {
         return Project::query()
             ->where('status', 'berjalan')
+            ->with(['convertedBudget.items', 'materials.product'])
             ->orderByDesc('created_at')
             ->limit($limit)
             ->get(['id', 'name', 'client_name', 'total_value', 'started_at']);
     }
 
-    public function findCompletedProjectByInvoiceNumber(string $invoiceNumber): ?Project
+    public function findProjectByInvoiceNumber(string $invoiceNumber): ?Project
     {
+        $invoiceLower = Str::lower($invoiceNumber);
+
         $project = Project::query()
-            ->where('status', 'selesai')
-            ->whereRaw('LOWER(invoice_number) = ?', [Str::lower($invoiceNumber)])
+            ->whereIn('status', ['selesai', 'berjalan'])
+            ->whereRaw('LOWER(invoice_number) = ?', [$invoiceLower])
             ->first();
 
         if ($project) {
@@ -29,12 +32,12 @@ class ProjectQueryService
         }
 
         return Project::query()
-            ->where('status', 'selesai')
+            ->whereIn('status', ['selesai', 'berjalan'])
             ->latest('finished_at')
             ->limit(200)
             ->get()
-            ->first(function (Project $candidate) use ($invoiceNumber): bool {
-                return Str::lower($this->invoiceNumber($candidate)) === Str::lower($invoiceNumber);
+            ->first(function (Project $candidate) use ($invoiceLower): bool {
+                return Str::lower($this->invoiceNumber($candidate)) === $invoiceLower;
             });
     }
 
