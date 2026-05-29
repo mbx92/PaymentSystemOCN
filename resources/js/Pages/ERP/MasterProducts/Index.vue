@@ -1,7 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
-import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { computed, reactive, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
@@ -30,8 +30,6 @@ const paginationSummary = computed(() => {
   return `Total ${p.total} produk`;
 });
 const { parse, formatInput } = useCurrency();
-const page = usePage();
-const isAdmin = computed(() => page.props.auth?.user?.role === 'admin');
 
 const filters = reactive({
   q: props.filters?.q ?? '',
@@ -158,7 +156,7 @@ const goToDetail = (id) => {
 <template>
   <Head title="ERP - Master Produk" />
   <AppLayout>
-    <div class="space-y-6">
+    <div class="space-y-3">
       <div class="ocn-panel">
         <div class="ocn-panel__head">
           <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -181,58 +179,48 @@ const goToDetail = (id) => {
         <div class="ocn-panel__head">
           <h2 class="ocn-panel__title">Filter produk</h2>
         </div>
-        <div class="card-body">
-          <div class="overflow-x-auto">
-            <div class="flex min-w-max items-center gap-3">
-              <input v-model="filters.q" type="text" placeholder="Cari SKU / nama produk" class="input input-bordered input-sm w-80" />
-              <select v-model="filters.sales_channel" class="select select-bordered select-sm w-44">
-              <option value="">Semua Channel</option>
-              <option value="pos">POS</option>
-              <option value="project">Project</option>
-              <option value="both">POS + Project</option>
-              </select>
-              <select v-model="filters.product_type" class="select select-bordered select-sm w-48">
-              <option value="">Semua Tipe</option>
-              <option value="finished_goods">Barang Jual</option>
-              <option value="project_material">Material Project</option>
-              <option value="service">Jasa / Non Stok</option>
-              </select>
-              <select v-model="filters.warehouse_id" class="select select-bordered select-sm w-48">
-              <option value="">Semua Warehouse</option>
-              <option v-for="wh in warehouses" :key="wh.id" :value="wh.id">{{ wh.code }} — {{ wh.name }}</option>
-              </select>
-              <div class="ml-auto flex flex-wrap items-center gap-2">
-                <Link
-                  v-if="isAdmin"
-                  :href="route('erp.admin.data-import', { tab: 'products' })"
-                  class="btn btn-outline btn-sm whitespace-nowrap"
-                >
-                  Impor Data
-                </Link>
-                <button class="btn btn-primary btn-sm whitespace-nowrap" onclick="document.getElementById('modal-add-product').showModal()">
-                  + Add Product
-                </button>
-              </div>
+        <div class="card-body py-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <input v-model="filters.q" type="text" placeholder="Cari SKU / nama produk" class="input input-bordered input-xs w-56" />
+            <select v-model="filters.sales_channel" class="select select-bordered select-xs w-36">
+            <option value="">Semua Channel</option>
+            <option value="pos">POS</option>
+            <option value="project">Project</option>
+            <option value="both">POS + Project</option>
+            </select>
+            <select v-model="filters.product_type" class="select select-bordered select-xs w-40">
+            <option value="">Semua Tipe</option>
+            <option value="finished_goods">Barang Jual</option>
+            <option value="project_material">Material Project</option>
+            <option value="service">Jasa / Non Stok</option>
+            </select>
+            <select v-model="filters.warehouse_id" class="select select-bordered select-xs w-40">
+            <option value="">Semua Warehouse</option>
+            <option v-for="wh in warehouses" :key="wh.id" :value="wh.id">{{ wh.code }} — {{ wh.name }}</option>
+            </select>
+            <div class="ml-auto flex items-center gap-2">
+              <button class="btn btn-primary btn-xs" onclick="document.getElementById('modal-add-product').showModal()">
+                + Add Product
+              </button>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="ocn-panel">
-        <div class="ocn-panel__head flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 class="ocn-panel__title">Daftar master produk</h2>
-          <div class="flex flex-wrap items-center gap-2">
-            <label class="flex items-center gap-2 text-sm text-base-content/70">
-              <span class="whitespace-nowrap">Per halaman</span>
-              <select v-model.number="filters.per_page" class="select select-bordered select-sm w-min min-w-[7.5rem]">
+      <div class="rounded-2xl border border-base-200 bg-base-100 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-base-200 px-4 py-2">
+          <div class="flex items-center gap-2">
+            <label class="flex items-center gap-1.5 text-xs text-base-content/70">
+              <span>Per halaman</span>
+              <select v-model.number="filters.per_page" class="select select-bordered select-xs w-20">
                 <option v-for="n in perPageOptions" :key="n" :value="n">{{ n }}</option>
               </select>
             </label>
-            <p class="text-sm text-base-content/60">{{ paginationSummary }}</p>
+            <p class="text-xs text-base-content/50">{{ paginationSummary }}</p>
           </div>
         </div>
         <div class="overflow-x-auto">
-          <table class="table table-zebra">
+          <table class="table table-xs table-zebra">
             <thead>
               <tr>
                 <th>SKU</th>
@@ -240,7 +228,7 @@ const goToDetail = (id) => {
                 <th>Produk</th>
                 <th>Kategori</th>
                 <th>UoM</th>
-                <th>Warehouse Asal</th>
+                <th>Warehouse</th>
                 <th>Channel</th>
                 <th>Tipe</th>
                 <th>Status</th>
@@ -253,40 +241,40 @@ const goToDetail = (id) => {
                 class="cursor-pointer hover"
                 @click="goToDetail(product.id)"
               >
-                <td class="font-mono text-xs">{{ product.sku }}</td>
-                <td class="font-mono text-xs">{{ product.barcode || '-' }}</td>
-                <td class="font-semibold">{{ product.name }}</td>
-                <td>{{ product.category }}</td>
-                <td class="uppercase">{{ product.uom }}</td>
-                <td class="text-sm text-base-content/70">{{ product.warehouse?.code ? `${product.warehouse.code} - ${product.warehouse.name}` : '-' }}</td>
+                <td class="font-mono">{{ product.sku }}</td>
+                <td class="font-mono text-base-content/60">{{ product.barcode || '-' }}</td>
+                <td class="font-medium">{{ product.name }}</td>
+                <td class="text-base-content/70">{{ product.category }}</td>
+                <td class="uppercase text-base-content/70">{{ product.uom }}</td>
+                <td class="text-xs text-base-content/60">{{ product.warehouse?.code ?? '-' }}</td>
                 <td>
-                  <span class="badge badge-sm badge-info">{{ channelLabel(product.sales_channel) }}</span>
+                  <span class="badge badge-xs badge-info">{{ channelLabel(product.sales_channel) }}</span>
                 </td>
                 <td>
-                  <span class="badge badge-sm badge-ghost">{{ typeLabel(product.product_type) }}</span>
+                  <span class="badge badge-xs badge-ghost">{{ typeLabel(product.product_type) }}</span>
                 </td>
                 <td><StatusBadge :status="product.status" /></td>
               </tr>
               <tr v-if="productRows.length === 0">
-                <td colspan="9" class="py-10 text-center text-base-content/50">Tidak ada produk sesuai filter.</td>
+                <td colspan="9" class="py-8 text-center text-xs text-base-content/50">Tidak ada produk sesuai filter.</td>
               </tr>
             </tbody>
           </table>
         </div>
-        <div v-if="(products?.last_page ?? 1) > 1" class="flex flex-wrap justify-center gap-2 p-4">
+        <div v-if="(products?.last_page ?? 1) > 1" class="flex flex-wrap justify-center gap-1 border-t border-base-200 px-4 py-2.5">
           <template v-for="link in products.links" :key="link.label">
             <Link
               v-if="link.url"
               :href="link.url"
               preserve-scroll
-              class="btn btn-sm min-h-9 min-w-9 px-2"
+              class="btn btn-xs min-w-7 px-1.5"
               :class="link.active ? 'btn-primary' : 'btn-ghost'"
             >
               <span v-html="link.label" />
             </Link>
             <span
               v-else
-              class="btn btn-sm btn-disabled pointer-events-none min-h-9 min-w-9 px-2"
+              class="btn btn-xs btn-disabled pointer-events-none min-w-7 px-1.5"
               v-html="link.label"
             />
           </template>

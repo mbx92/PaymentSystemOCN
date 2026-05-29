@@ -101,6 +101,12 @@ ENV RUN_MIGRATIONS=true
 ENV RUN_INITIAL_ADMIN_SEED=true
 ENV DB_WAIT_TIMEOUT=120
 
+# Release version untuk Sentry/GlitchTip.
+# Coolify: set build arg SENTRY_RELEASE={{GIT_COMMIT_SHA}}
+# atau isi langsung di sini: ARG SENTRY_RELEASE=abc1234
+ARG SENTRY_RELEASE=
+ENV SENTRY_RELEASE=${SENTRY_RELEASE}
+
 EXPOSE 8081
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
