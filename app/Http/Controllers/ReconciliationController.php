@@ -22,13 +22,13 @@ class ReconciliationController extends Controller
         $cashInRows = CashIn::query()
             ->selectRaw("{$periodSql} as bucket, cash_account_id, sum(amount) as total_in")
             ->when($companyId, fn ($q) => $q->whereHas('journalEntry', fn ($jq) => $jq->where('company_id', $companyId)))
-            ->groupByRaw("bucket, cash_account_id")
+            ->groupByRaw('bucket, cash_account_id')
             ->get();
 
         $cashOutRows = CashOut::query()
             ->selectRaw("{$periodSql} as bucket, cash_account_id, sum(amount) as total_out")
             ->when($companyId, fn ($q) => $q->whereHas('journalEntry', fn ($jq) => $jq->where('company_id', $companyId)))
-            ->groupByRaw("bucket, cash_account_id")
+            ->groupByRaw('bucket, cash_account_id')
             ->get();
 
         $accounts = Account::query()->pluck('name', 'id');

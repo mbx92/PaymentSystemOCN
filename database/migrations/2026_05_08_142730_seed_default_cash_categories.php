@@ -40,4 +40,3 @@ return new class extends Migration
         DB::table('cash_categories')->whereIn('domain', ['cash_out', 'cash_in'])->delete();
     }
 };
-

@@ -10,6 +10,7 @@ use Illuminate\Validation\ValidationException;
 class ErpCompanyResolver
 {
     public const SESSION_KEY = 'erp_company_id';
+
     public const ALL_COMPANIES = 'all';
 
     public static function isActiveCompany(int $id): bool

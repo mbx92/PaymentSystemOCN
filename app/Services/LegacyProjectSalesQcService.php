@@ -312,6 +312,7 @@ class LegacyProjectSalesQcService
 
                 if ($paymentDate === null) {
                     $projectErrors[] = 'Ada payment tanpa paymentDate.';
+
                     continue;
                 }
 

@@ -2,11 +2,11 @@
 
 namespace App\Services\ErpChatbot;
 
+use App\ERP\Accounting\Models\PayablePayment;
 use App\Models\AccountingInventoryRecord;
 use App\Models\CashIn;
 use App\Models\CashOut;
 use App\Models\PosSale;
-use App\ERP\Accounting\Models\PayablePayment;
 use Carbon\CarbonInterface;
 
 class CashflowQueryService

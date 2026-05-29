@@ -552,14 +552,32 @@ class ERPInventoryController extends Controller
         ]);
     }
 
-    public function stockTransfer(): Response
+    public function stockTransfer(Request $request): Response
     {
         $warehouses = Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']);
 
-        $products = MasterProduct::query()
-            ->where('status', 'active')
-            ->orderBy('name')
-            ->get(['id', 'sku', 'name', 'uom']);
+        $query = MasterProduct::query()->where('status', 'active');
+
+        if ($request->filled('q')) {
+            $q = $request->q;
+            $op = DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
+            $query->where(function ($qry) use ($q, $op) {
+                $qry->where('sku', $op, "%{$q}%")
+                    ->orWhere('name', $op, "%{$q}%")
+                    ->orWhere('category', $op, "%{$q}%");
+            });
+        }
+
+        $products = $query->orderBy('name')
+            ->paginate($this->resolvedPerPage($request))
+            ->withQueryString()
+            ->through(fn ($p) => [
+                'id' => $p->id,
+                'sku' => $p->sku,
+                'name' => $p->name,
+                'category' => $p->category,
+                'uom' => $p->uom,
+            ]);
 
         $warehouseStocks = MasterProductWarehouseStock::query()
             ->get(['master_product_id', 'warehouse_id', 'qty', 'reserved_qty'])
@@ -574,6 +592,7 @@ class ERPInventoryController extends Controller
             'warehouses' => $warehouses,
             'products' => $products,
             'warehouseStocks' => $warehouseStocks,
+            'filters' => $this->filtersWithPerPage($request, ['q', 'warehouse_id']),
         ]);
     }
 

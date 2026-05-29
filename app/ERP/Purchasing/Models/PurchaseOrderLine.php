@@ -37,4 +37,3 @@ class PurchaseOrderLine extends Model
         return $this->belongsTo(MasterProduct::class, 'master_product_id');
     }
 }
-

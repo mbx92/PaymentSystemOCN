@@ -5,7 +5,7 @@ import ConfirmModal from '@/Components/ConfirmModal.vue';
 import DataTablePagination from '@/Components/DataTablePagination.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
 import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
-import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
+import { ArrowLeftIcon, PencilSquareIcon, TrashIcon } from '@heroicons/vue/24/outline';
 import { computed, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 import { showGlobalAlert } from '@/utils/globalAlert';
@@ -427,27 +427,66 @@ const confirmDestroyEntry = () => {
     </dialog>
 
     <dialog id="modal-cashflow-detail" class="modal">
-      <div class="modal-box max-w-2xl">
-        <h3 class="font-bold text-lg">Detail Cashflow Accounting</h3>
-        <div v-if="selectedEntry" class="mt-4 grid grid-cols-2 gap-3 text-sm">
-          <div class="text-base-content/60">Tanggal</div><div>{{ formatDate(selectedEntry.date) }}</div>
-          <div class="text-base-content/60">Jenis</div><div>{{ typeLabel(selectedEntry.type) }}</div>
-          <div class="text-base-content/60">Peruntukan</div><div>{{ selectedEntry.source_name || '-' }}</div>
-          <div class="text-base-content/60">Referensi</div><div class="font-mono text-xs">{{ selectedEntry.reference_no || '-' }}</div>
-          <div class="text-base-content/60">Project</div><div>{{ selectedEntry.project_name }}</div>
-          <div class="text-base-content/60">Kategori</div><div>{{ categoryLabelMap[selectedEntry.category] ?? selectedEntry.category }}</div>
-          <div class="text-base-content/60">Sumber Dana</div><div>{{ selectedEntry.cash_account_name || '-' }}</div>
-          <div class="text-base-content/60">Metode/Penerima</div><div>{{ selectedEntry.type === 'in' ? (selectedEntry.payment_method_name || '-') : (selectedEntry.recipient_name || '-') }}</div>
-          <div class="text-base-content/60">Jumlah</div><div :class="selectedEntry.type === 'in' ? 'text-success font-semibold' : 'text-error font-semibold'">{{ format(selectedEntry.amount) }}</div>
-          <div class="text-base-content/60">Status</div><div><StatusBadge :status="selectedEntry.document_status" size="" /></div>
-          <div class="text-base-content/60">Jurnal</div><div class="font-mono text-xs">{{ selectedEntry.journal_entry_id || '-' }}</div>
-          <div class="text-base-content/60">Keterangan</div><div>{{ selectedEntry.note || '-' }}</div>
-          <div class="text-base-content/60">Dicatat Oleh</div><div>{{ selectedEntry.creator_name }}</div>
+      <div class="modal-box max-w-lg p-0 overflow-hidden">
+        <div v-if="selectedEntry" class="bg-base-200 px-6 py-4 border-b border-base-300 flex items-start justify-between gap-4">
+          <div>
+            <p class="text-[10px] font-semibold uppercase tracking-[0.2em] text-base-content/40">
+              {{ selectedEntry.type === 'in' ? 'Bukti Kas Masuk' : 'Bukti Kas Keluar' }}
+            </p>
+            <h3 class="text-lg font-bold mt-0.5">
+              {{ selectedEntry.type === 'in' ? 'Voucher Penerimaan' : 'Voucher Pengeluaran' }}
+            </h3>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button v-if="canMutate && selectedEntry?.mutable !== false" class="btn btn-ghost btn-xs btn-square" title="Edit" @click="selectedEntry && (openEditModal(selectedEntry), document.getElementById('modal-cashflow-detail')?.close())">
+              <PencilSquareIcon class="h-4 w-4" />
+            </button>
+            <button v-if="canMutate && selectedEntry?.mutable !== false" class="btn btn-ghost btn-xs btn-square text-error" title="Hapus" @click="document.getElementById('modal-cashflow-detail')?.close(); selectedEntry && destroyEntry(selectedEntry)">
+              <TrashIcon class="h-4 w-4" />
+            </button>
+            <StatusBadge :status="selectedEntry.document_status" />
+          </div>
         </div>
-        <div class="modal-action">
-          <button v-if="canMutate && selectedEntry?.mutable !== false" class="btn btn-outline" @click="selectedEntry && openEditModal(selectedEntry)">Edit</button>
-          <button v-if="canMutate && selectedEntry?.mutable !== false" class="btn btn-error" @click="selectedEntry && destroyEntry(selectedEntry)">Hapus</button>
-          <form method="dialog"><button class="btn btn-ghost">Tutup</button></form>
+        <div v-if="selectedEntry" class="px-6 pt-5 pb-3 space-y-5">
+          <div class="grid grid-cols-[9rem_1fr] gap-x-4 gap-y-2.5 text-sm">
+            <span class="text-base-content/50">Tanggal</span>
+            <span class="font-medium">{{ formatDate(selectedEntry.date) }}</span>
+            <span class="text-base-content/50">Jenis</span>
+            <span><span class="badge badge-xs" :class="selectedEntry.type === 'in' ? 'badge-success' : 'badge-error'">{{ typeLabel(selectedEntry.type) }}</span></span>
+            <span class="text-base-content/50">Peruntukan</span>
+            <span class="font-medium">{{ selectedEntry.source_name || '-' }}</span>
+            <span class="text-base-content/50">Referensi</span>
+            <span class="font-mono text-xs">{{ selectedEntry.reference_no || '-' }}</span>
+            <span class="text-base-content/50">Project</span>
+            <span class="font-medium">{{ selectedEntry.project_name }}</span>
+            <span class="text-base-content/50">Kategori</span>
+            <span><span class="badge badge-ghost badge-sm">{{ categoryLabelMap[selectedEntry.category] ?? selectedEntry.category }}</span></span>
+            <span class="text-base-content/50">Sumber Dana</span>
+            <span>{{ selectedEntry.cash_account_name || '-' }}</span>
+            <span class="text-base-content/50">Metode / Penerima</span>
+            <span>{{ selectedEntry.type === 'in' ? (selectedEntry.payment_method_name || '-') : (selectedEntry.recipient_name || '-') }}</span>
+            <span class="text-base-content/50">Status</span>
+            <span><StatusBadge :status="selectedEntry.document_status" /></span>
+            <span class="text-base-content/50">Jurnal</span>
+            <span class="font-mono text-xs">{{ selectedEntry.journal_entry_id || '-' }}</span>
+          </div>
+          <div class="divider my-0" />
+          <div>
+            <p class="text-xs text-base-content/40 mb-1">Keterangan</p>
+            <p class="text-sm">{{ selectedEntry.note || '-' }}</p>
+          </div>
+          <div class="divider my-0" />
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-base-content/40">Total</span>
+            <span :class="['text-2xl font-bold tabular-nums', selectedEntry.type === 'in' ? 'text-success' : 'text-error']">{{ format(selectedEntry.amount) }}</span>
+          </div>
+          <div class="divider my-0" />
+          <div class="flex items-center justify-between text-xs text-base-content/40">
+            <span>Dicatat oleh: <span class="font-medium text-base-content/60">{{ selectedEntry.creator_name }}</span></span>
+          </div>
+        </div>
+        <div class="px-6 py-4 bg-base-200 border-t border-base-300 flex justify-end gap-2">
+          <form method="dialog"><button class="btn btn-ghost btn-sm">Tutup</button></form>
         </div>
       </div>
     </dialog>

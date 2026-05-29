@@ -3,12 +3,15 @@
 namespace Tests\Feature;
 
 use App\ERP\Inventory\Models\Warehouse;
+use App\Http\Middleware\ErpMaintenanceMode;
+use App\Http\Middleware\LogErpActivity;
 use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
 use App\Models\Project;
 use App\Models\ProjectMaterial;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Middleware\RoleMiddleware;
 use Tests\TestCase;
 
 class ProjectInvoiceMaterialItemsTest extends TestCase
@@ -18,9 +21,9 @@ class ProjectInvoiceMaterialItemsTest extends TestCase
     public function test_direct_project_materials_appear_on_sales_note_and_invoice_amount(): void
     {
         $this->withoutMiddleware([
-            \App\Http\Middleware\ErpMaintenanceMode::class,
-            \App\Http\Middleware\LogErpActivity::class,
-            \Spatie\Permission\Middleware\RoleMiddleware::class,
+            ErpMaintenanceMode::class,
+            LogErpActivity::class,
+            RoleMiddleware::class,
         ]);
 
         $user = User::factory()->create();

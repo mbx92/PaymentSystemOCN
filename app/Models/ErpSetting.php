@@ -8,13 +8,21 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class ErpSetting extends Model
 {
     public const MODULE_MENU_LAYOUT_GRID = 'grid';
+
     public const MODULE_MENU_LAYOUT_LIST = 'list';
+
     public const SCREEN_MODE_AUTO = 'auto';
+
     public const SCREEN_MODE_DESKTOP = 'desktop';
+
     public const SCREEN_MODE_TABLET = 'tablet';
+
     public const SCREEN_MODE_IPAD_9_2021 = 'ipad_9_2021';
+
     public const SCREEN_MODE_MOBILE = 'mobile';
+
     public const SCREEN_DENSITY_COMFORTABLE = 'comfortable';
+
     public const SCREEN_DENSITY_COMPACT = 'compact';
 
     protected $fillable = [

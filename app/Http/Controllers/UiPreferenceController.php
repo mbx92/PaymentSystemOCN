@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Support\ModuleWorkspaceRegistry;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class UiPreferenceController extends Controller

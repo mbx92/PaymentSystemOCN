@@ -22,18 +22,18 @@ use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
 use App\Models\PaymentMethod;
 use App\Models\PosSaleItem;
-use App\Models\ProductStockMovement;
 use App\Models\ProcurementImportStaging;
+use App\Models\ProductStockMovement;
 use App\Models\ProjectMaterial;
-use App\Services\ProjectMaterialReservationService;
+use App\Services\DatabaseBackupService;
 use App\Services\LanEscPosPrinter;
 use App\Services\LanTsplPrinter;
-use App\Services\DatabaseBackupService;
 use App\Services\LegacyProjectImportService;
 use App\Services\LegacyProjectSalesQcService;
 use App\Services\LegacySupplierImportService;
 use App\Services\ProcurementImportStagingService;
 use App\Services\ProductionErpSyncService;
+use App\Services\ProjectMaterialReservationService;
 use App\Services\ServerMetricsService;
 use App\Services\ThermalPosReceiptData;
 use App\Services\ThermalPosReceiptRenderer;
@@ -42,6 +42,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -1172,8 +1173,7 @@ class ERPAdministrationMasterDataController extends Controller
         string $legacyProjectId,
         LegacyProjectSalesQcService $legacyProjectSalesQcService,
         LegacyProjectImportService $legacyProjectImportService,
-    ): Response|RedirectResponse
-    {
+    ): Response|RedirectResponse {
         try {
             $report = $legacyProjectSalesQcService->buildReport();
             $project = collect($report['projects'] ?? [])
@@ -1733,6 +1733,7 @@ class ERPAdministrationMasterDataController extends Controller
                                 $product->forceFill(['warehouse_id' => null])->save();
                                 $clearedCount++;
                             }
+
                             continue;
                         }
 
@@ -1865,6 +1866,7 @@ class ERPAdministrationMasterDataController extends Controller
 
                     $sourceRow->delete();
                     $mergedCount++;
+
                     continue;
                 }
 
@@ -2303,10 +2305,10 @@ class ERPAdministrationMasterDataController extends Controller
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, ProcurementImportStaging>  $stagings
+     * @param  Collection<int, ProcurementImportStaging>  $stagings
      * @return array<int, array<string, mixed>>
      */
-    private function procurementImportStagingPayload(\Illuminate\Support\Collection $stagings): array
+    private function procurementImportStagingPayload(Collection $stagings): array
     {
         return $stagings
             ->map(fn (ProcurementImportStaging $staging) => [
@@ -2354,7 +2356,7 @@ class ERPAdministrationMasterDataController extends Controller
         return in_array($perPage, parent::ALLOWED_PER_PAGE, true) ? $perPage : 25;
     }
 
-    private function paginateCollectionForRequest(\Illuminate\Support\Collection $rows, int $perPage, Request $request, string $pageName = 'page'): LengthAwarePaginator
+    private function paginateCollectionForRequest(Collection $rows, int $perPage, Request $request, string $pageName = 'page'): LengthAwarePaginator
     {
         $currentPage = LengthAwarePaginator::resolveCurrentPage($pageName);
 

@@ -9,6 +9,7 @@ use App\Http\Middleware\LogErpActivity;
 use App\Models\MasterProduct;
 use App\Models\MasterProductChannelPrice;
 use App\Models\PaymentMethod;
+use App\Models\PosSale;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -177,7 +178,7 @@ class PosSalesChannelPriceTest extends TestCase
             'grand_total' => 25000,
         ]);
 
-        $saleId = \App\Models\PosSale::query()
+        $saleId = PosSale::query()
             ->where('marketplace_order_code', 'MP-TRACK-20260516-001')
             ->value('id');
 

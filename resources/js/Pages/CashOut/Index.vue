@@ -62,38 +62,57 @@ const doDelete = () => {
 <template>
     <AppLayout>
         <div class="space-y-5">
-            <div class="flex items-center justify-between">
-                <h1 class="text-2xl font-bold">Expenses Tim / Project</h1>
-                <div class="flex flex-wrap items-center gap-2">
-                    <button class="btn btn-error btn-sm" onclick="document.getElementById('modal-add-cash-out').showModal()">+ Input Expense</button>
-                    <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.accounting.cashflow')">
-                        <ArrowLeftIcon class="h-4 w-4" />
-                        Back
-                    </Link>
+            <div class="ocn-panel">
+                <div class="ocn-panel__head">
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Cashflow</p>
+                            <h1 class="ocn-panel__title mt-1">Expenses Tim / Project</h1>
+                            <p class="ocn-panel__desc mt-1">Biaya tim, operasional, referral, dan pengeluaran project.</p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2 shrink-0">
+                            <button class="btn btn-error btn-sm" onclick="document.getElementById('modal-add-cash-out').showModal()">+ Input Expense</button>
+                            <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.accounting.cashflow')">
+                                <ArrowLeftIcon class="h-4 w-4" />
+                                Back
+                            </Link>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="flex flex-wrap gap-3">
-                <select v-model="filters.project_id" class="select select-bordered select-sm">
-                    <option value="">Semua Project</option>
-                    <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
-                </select>
-                <select v-model="filters.category" class="select select-bordered select-sm">
-                    <option value="">Semua Kategori</option>
-                    <option v-for="category in categoryOptions" :key="category.value" :value="category.value">{{ category.label }}</option>
-                </select>
-                <input v-model="filters.date_from" type="date" class="input input-bordered input-sm" />
-                <input v-model="filters.date_to" type="date" class="input input-bordered input-sm" />
-            </div>
-            <div class="stats shadow">
-                <div class="stat py-3">
-                    <div class="stat-title text-sm">Total (filter aktif)</div>
-                    <div class="stat-value text-xl text-error">{{ format(total) }}</div>
+
+            <div class="ocn-panel">
+                <div class="ocn-panel__head">
+                    <h2 class="ocn-panel__title">Filter</h2>
+                </div>
+                <div class="card-body">
+                    <div class="grid gap-3 md:grid-cols-4">
+                        <select v-model="filters.project_id" class="select select-bordered select-sm w-full">
+                            <option value="">Semua Project</option>
+                            <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
+                        </select>
+                        <select v-model="filters.category" class="select select-bordered select-sm w-full">
+                            <option value="">Semua Kategori</option>
+                            <option v-for="category in categoryOptions" :key="category.value" :value="category.value">{{ category.label }}</option>
+                        </select>
+                        <input v-model="filters.date_from" type="date" class="input input-bordered input-sm w-full" />
+                        <input v-model="filters.date_to" type="date" class="input input-bordered input-sm w-full" />
+                    </div>
                 </div>
             </div>
+
+            <div class="ocn-panel">
+                <div class="ocn-panel__head">
+                    <h2 class="ocn-panel__title">Total Pengeluaran</h2>
+                </div>
+                <div class="card-body">
+                    <p class="text-2xl font-bold text-error">{{ format(total) }}</p>
+                </div>
+            </div>
+
             <div class="ocn-panel">
                 <div class="ocn-panel__head">
                     <h2 class="ocn-panel__title">Daftar expenses</h2>
-                    <p class="ocn-panel__desc">Biaya tim, operasional, referral, dan pengeluaran project sesuai filter.</p>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="table table-xs table-zebra">

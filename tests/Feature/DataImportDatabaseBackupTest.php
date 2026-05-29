@@ -2,10 +2,13 @@
 
 namespace Tests\Feature;
 
-use App\Services\DatabaseBackupService;
+use App\Http\Middleware\ErpMaintenanceMode;
+use App\Http\Middleware\LogErpActivity;
 use App\Models\User;
+use App\Services\DatabaseBackupService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
+use Spatie\Permission\Middleware\RoleMiddleware;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Tests\TestCase;
 
@@ -16,9 +19,9 @@ class DataImportDatabaseBackupTest extends TestCase
     public function test_admin_data_import_backup_downloads_pg_dump_file(): void
     {
         $this->withoutMiddleware([
-            \App\Http\Middleware\ErpMaintenanceMode::class,
-            \App\Http\Middleware\LogErpActivity::class,
-            \Spatie\Permission\Middleware\RoleMiddleware::class,
+            ErpMaintenanceMode::class,
+            LogErpActivity::class,
+            RoleMiddleware::class,
         ]);
 
         $user = User::factory()->create();
@@ -51,9 +54,9 @@ class DataImportDatabaseBackupTest extends TestCase
     public function test_admin_data_import_backup_failure_shows_underlying_reason(): void
     {
         $this->withoutMiddleware([
-            \App\Http\Middleware\ErpMaintenanceMode::class,
-            \App\Http\Middleware\LogErpActivity::class,
-            \Spatie\Permission\Middleware\RoleMiddleware::class,
+            ErpMaintenanceMode::class,
+            LogErpActivity::class,
+            RoleMiddleware::class,
         ]);
 
         $user = User::factory()->create();

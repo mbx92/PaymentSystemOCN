@@ -5,10 +5,15 @@ namespace Tests\Feature;
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Accounting\Models\JournalLine;
+use App\Http\Middleware\ErpMaintenanceMode;
+use App\Http\Middleware\LogErpActivity;
 use App\Models\AccountingInventoryRecord;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia;
 use Inertia\Testing\AssertableInertia as Assert;
+use Spatie\Permission\Middleware\RoleMiddleware;
+use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
 use Tests\TestCase;
 
 class AccountingInventoryTest extends TestCase
@@ -89,7 +94,7 @@ class AccountingInventoryTest extends TestCase
             ->actingAs($user)
             ->get(route('erp.accounting.cashflow', ['source' => 'inventaris']))
             ->assertOk()
-            ->assertInertia(fn (\Inertia\Testing\AssertableInertia $page) => $page
+            ->assertInertia(fn (AssertableInertia $page) => $page
                 ->component('ERP/Accounting/Cashflow')
                 ->where('totals.cash_out', 2500000)
                 ->has('entries.data', 1)
@@ -122,10 +127,10 @@ class AccountingInventoryTest extends TestCase
     private function disableErpMiddleware(): void
     {
         $this->withoutMiddleware([
-            \App\Http\Middleware\ErpMaintenanceMode::class,
-            \App\Http\Middleware\LogErpActivity::class,
-            \Spatie\Permission\Middleware\RoleMiddleware::class,
-            \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
+            ErpMaintenanceMode::class,
+            LogErpActivity::class,
+            RoleMiddleware::class,
+            RoleOrPermissionMiddleware::class,
         ]);
     }
 

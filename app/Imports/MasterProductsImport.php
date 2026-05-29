@@ -56,7 +56,7 @@ class MasterProductsImport implements ToCollection, WithHeadingRow
             if (! ProductCategory::query()->where('name', $category)->exists()) {
                 ProductCategory::query()->create([
                     'name' => $category,
-                    'description' => "Auto-created from import",
+                    'description' => 'Auto-created from import',
                     'status' => 'active',
                 ]);
                 $this->autoCreated['categories'][] = $category;

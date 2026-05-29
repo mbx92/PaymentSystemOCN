@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 class TeamDistribution extends Model
 {
     use HasUuids;
+
     protected $fillable = [
         'project_id',
         'user_id',
@@ -22,10 +23,10 @@ class TeamDistribution extends Model
 
     protected $casts = [
         'percentage' => 'decimal:2',
-        'base_pay'   => 'decimal:2',
-        'bonus'      => 'decimal:2',
-        'total_pay'  => 'decimal:2',
-        'paid_at'    => 'datetime',
+        'base_pay' => 'decimal:2',
+        'bonus' => 'decimal:2',
+        'total_pay' => 'decimal:2',
+        'paid_at' => 'datetime',
     ];
 
     public function project()

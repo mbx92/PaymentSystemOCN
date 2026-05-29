@@ -154,6 +154,7 @@ final class ModuleWorkspaceRegistry
             if (! isset($menu['url'])) {
                 $menu['url'] = route($menu['route']);
             }
+
             return $menu;
         }, $menus);
     }

@@ -9,13 +9,17 @@ use App\ERP\Accounting\Models\PayablePayment;
 use App\ERP\Core\Models\Company;
 use App\ERP\Purchasing\Models\Vendor;
 use App\ERP\Shared\Enums\DocumentStatus;
+use App\Http\Middleware\ErpMaintenanceMode;
+use App\Http\Middleware\LogErpActivity;
+use App\Models\AccountingInventoryRecord;
 use App\Models\CashIn;
 use App\Models\CashOut;
 use App\Models\PosSale;
-use App\Models\AccountingInventoryRecord;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
+use Spatie\Permission\Middleware\RoleMiddleware;
+use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
 use Tests\TestCase;
 
 class AccountingOverviewTest extends TestCase
@@ -671,10 +675,10 @@ class AccountingOverviewTest extends TestCase
     private function disableErpMiddleware(): void
     {
         $this->withoutMiddleware([
-            \App\Http\Middleware\ErpMaintenanceMode::class,
-            \App\Http\Middleware\LogErpActivity::class,
-            \Spatie\Permission\Middleware\RoleMiddleware::class,
-            \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
+            ErpMaintenanceMode::class,
+            LogErpActivity::class,
+            RoleMiddleware::class,
+            RoleOrPermissionMiddleware::class,
         ]);
     }
 }

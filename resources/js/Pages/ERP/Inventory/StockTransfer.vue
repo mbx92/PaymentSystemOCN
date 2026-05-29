@@ -1,18 +1,28 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { computed, reactive, ref, watch } from 'vue';
 
 const props = defineProps({
   warehouses: Array,
-  products: Array,
+  products: Object,
   warehouseStocks: Object,
+  filters: Object,
 });
 
 const page = usePage();
 
-const sourceWarehouseId = ref('');
+const filters = reactive({ q: props.filters?.q ?? '', per_page: props.filters?.per_page ?? props.products?.per_page ?? 25 });
+let timer;
+watch(filters, (val) => {
+  clearTimeout(timer);
+  const payload = { ...val, warehouse_id: sourceWarehouseId.value || undefined };
+  timer = setTimeout(() => router.get(route('erp.inventory.stock-transfer'), payload, { preserveState: true, replace: true }), 250);
+}, { deep: true });
+
+const sourceWarehouseId = ref(props.filters?.warehouse_id ?? '');
 const destWarehouseId = ref('');
 const note = ref('');
 const processing = ref(false);
@@ -23,8 +33,8 @@ const destWarehouses = computed(() =>
   props.warehouses.filter((wh) => String(wh.id) !== String(sourceWarehouseId.value)),
 );
 
-watch(sourceWarehouseId, () => {
-  if (String(destWarehouseId.value) === String(sourceWarehouseId.value)) {
+watch(sourceWarehouseId, (val) => {
+  if (String(destWarehouseId.value) === String(val)) {
     destWarehouseId.value = '';
   }
   selectedIds.clear();
@@ -40,16 +50,18 @@ const getAvailable = (productId) => {
 
 const sourceProducts = computed(() => {
   if (!sourceWarehouseId.value) return [];
-  return props.products
+  const items = props.products?.data ?? [];
+  return items
     .map((p) => ({ ...p, available: getAvailable(p.id) }))
     .filter((p) => p.available > 0);
 });
 
 const toggleAll = () => {
-  if (selectedIds.size === sourceProducts.value.length) {
-    selectedIds.clear();
+  const current = sourceProducts.value;
+  if (current.length > 0 && current.every((p) => selectedIds.has(p.id))) {
+    current.forEach((p) => selectedIds.delete(p.id));
   } else {
-    sourceProducts.value.forEach((p) => selectedIds.add(p.id));
+    current.forEach((p) => selectedIds.add(p.id));
   }
 };
 
@@ -61,7 +73,10 @@ const toggleOne = (id) => {
   }
 };
 
-const allChecked = computed(() => sourceProducts.value.length > 0 && selectedIds.size === sourceProducts.value.length);
+const allChecked = computed(() => {
+  const current = sourceProducts.value;
+  return current.length > 0 && current.every((p) => selectedIds.has(p.id));
+});
 
 const canSubmit = computed(() =>
   sourceWarehouseId.value && destWarehouseId.value && selectedIds.size > 0 && !processing.value,
@@ -144,9 +159,14 @@ const submit = () => {
       </div>
 
       <div v-if="sourceWarehouseId" class="ocn-panel">
-        <div class="ocn-panel__head flex items-center justify-between">
-          <h2 class="ocn-panel__title">Pilih produk untuk ditransfer</h2>
-          <span class="text-sm text-base-content/60">{{ selectedIds.size }} / {{ sourceProducts.length }} dipilih</span>
+        <div class="ocn-panel__head">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h2 class="ocn-panel__title">Pilih produk untuk ditransfer</h2>
+            <div class="flex items-center gap-2">
+              <span class="text-sm text-base-content/60">{{ selectedIds.size }} dipilih</span>
+              <input v-model="filters.q" type="text" class="input input-bordered input-sm w-48" placeholder="Cari SKU atau nama..." />
+            </div>
+          </div>
         </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra">
@@ -183,7 +203,9 @@ const submit = () => {
                   />
                 </td>
                 <td class="font-mono text-xs">{{ product.sku }}</td>
-                <td class="font-semibold">{{ product.name }}</td>
+                <td>
+                  <span class="font-semibold">{{ product.name }}</span>
+                </td>
                 <td class="uppercase">{{ product.uom }}</td>
                 <td class="text-right tabular-nums">{{ product.available }}</td>
               </tr>
@@ -193,6 +215,7 @@ const submit = () => {
             </tbody>
           </table>
         </div>
+        <DataTablePagination :paginator="products" @update:per-page="(n) => { filters.per_page = n; }" />
         <div class="card-body flex items-center justify-end gap-3 border-t border-base-200 pt-4">
           <button
             class="btn"

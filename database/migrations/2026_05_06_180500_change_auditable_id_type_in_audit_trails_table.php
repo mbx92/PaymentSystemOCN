@@ -11,6 +11,7 @@ return new class extends Migration
 
         if ($driver === 'pgsql') {
             DB::statement('ALTER TABLE audit_trails ALTER COLUMN auditable_id TYPE VARCHAR(64) USING auditable_id::text');
+
             return;
         }
 

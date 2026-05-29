@@ -3,9 +3,12 @@
 namespace Tests\Feature;
 
 use App\ERP\Accounting\Models\Account;
+use App\Http\Middleware\ErpMaintenanceMode;
+use App\Http\Middleware\LogErpActivity;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
+use Spatie\Permission\Middleware\RoleMiddleware;
 use Tests\TestCase;
 
 class CashBankAccountOptionsTest extends TestCase
@@ -49,9 +52,9 @@ class CashBankAccountOptionsTest extends TestCase
     public function test_payments_page_lists_all_flagged_cash_bank_accounts(): void
     {
         $this->withoutMiddleware([
-            \App\Http\Middleware\ErpMaintenanceMode::class,
-            \App\Http\Middleware\LogErpActivity::class,
-            \Spatie\Permission\Middleware\RoleMiddleware::class,
+            ErpMaintenanceMode::class,
+            LogErpActivity::class,
+            RoleMiddleware::class,
         ]);
 
         foreach (['1001' => 'Kas', '1002' => 'Bank BCA', '1003' => 'Bank Mandiri'] as $code => $name) {

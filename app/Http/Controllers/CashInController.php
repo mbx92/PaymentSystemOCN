@@ -146,7 +146,7 @@ class CashInController extends Controller
 
             $cashIn->update($validated);
 
-            $cashAccount    = Account::query()->findOrFail((int) $validated['cash_account_id']);
+            $cashAccount = Account::query()->findOrFail((int) $validated['cash_account_id']);
             $revenueAccount = Account::query()->findOrFail($revenueAccountId);
 
             $newEntry = $this->glPostingService->post(
@@ -197,11 +197,11 @@ class CashInController extends Controller
         }
 
         foreach ($entry->lines as $line) {
-            $debit  = round((float) $line->debit, 2);
+            $debit = round((float) $line->debit, 2);
             $credit = round((float) $line->credit, 2);
 
             $line->update([
-                'debit'  => number_format($credit, 2, '.', ''),
+                'debit' => number_format($credit, 2, '.', ''),
                 'credit' => number_format($debit, 2, '.', ''),
             ]);
         }

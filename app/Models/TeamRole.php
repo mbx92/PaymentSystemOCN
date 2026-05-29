@@ -18,4 +18,3 @@ class TeamRole extends Model
         ];
     }
 }
-

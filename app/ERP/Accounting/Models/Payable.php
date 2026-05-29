@@ -2,6 +2,9 @@
 
 namespace App\ERP\Accounting\Models;
 
+use App\ERP\Purchasing\Models\GoodsReceipt;
+use App\ERP\Purchasing\Models\PurchaseOrder;
+use App\ERP\Purchasing\Models\Vendor;
 use App\ERP\Shared\Concerns\Auditable;
 use App\ERP\Shared\Enums\DocumentStatus;
 use Illuminate\Database\Eloquent\Model;
@@ -38,17 +41,17 @@ class Payable extends Model
 
     public function vendor(): BelongsTo
     {
-        return $this->belongsTo(\App\ERP\Purchasing\Models\Vendor::class);
+        return $this->belongsTo(Vendor::class);
     }
 
     public function purchaseOrder(): BelongsTo
     {
-        return $this->belongsTo(\App\ERP\Purchasing\Models\PurchaseOrder::class);
+        return $this->belongsTo(PurchaseOrder::class);
     }
 
     public function goodsReceipt(): BelongsTo
     {
-        return $this->belongsTo(\App\ERP\Purchasing\Models\GoodsReceipt::class);
+        return $this->belongsTo(GoodsReceipt::class);
     }
 
     public function journalEntry(): BelongsTo

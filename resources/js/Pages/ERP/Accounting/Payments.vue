@@ -10,7 +10,7 @@ import { useCurrency } from '@/composables/useCurrency';
 import { useDateFormat } from '@/composables/useDateFormat';
 
 const props = defineProps({
-  payables: Array,
+  payables: Object,
   paidPayables: Object,
   summary: Object,
   filters: Object,
@@ -63,7 +63,7 @@ const submitSupplierPayment = () => {
   });
 };
 
-const openPayables = computed(() => (props.payables ?? []).filter((row) => Number(row.outstanding_amount || 0) > 0));
+const openPayables = computed(() => (props.payables?.data ?? []).filter((row) => Number(row.outstanding_amount || 0) > 0));
 const paidPayablePaginator = computed(() => props.paidPayables ?? { data: [], links: [], total: 0, per_page: paidHistoryPerPage.value });
 const paidPayableRows = computed(() => props.paidPayables?.data ?? []);
 

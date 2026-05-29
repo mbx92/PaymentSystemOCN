@@ -2,9 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\ERP\Accounting\Models\Account;
 use App\ERP\Core\Models\Company;
 use App\ERP\Core\Services\ErpCompanyResolver;
-use App\ERP\Accounting\Models\Account;
 use App\ERP\Inventory\Models\Warehouse;
 use App\ERP\Purchasing\Models\GoodsReceipt;
 use App\ERP\Purchasing\Models\PurchaseOrder;

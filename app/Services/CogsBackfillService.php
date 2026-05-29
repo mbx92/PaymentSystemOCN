@@ -4,8 +4,8 @@ namespace App\Services;
 
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\JournalEntry;
-use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Accounting\Services\CoaSettingService;
+use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Core\Services\ErpCompanyResolver;
 use App\Models\MasterProduct;
 use App\Models\PosSale;

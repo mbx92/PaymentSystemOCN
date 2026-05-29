@@ -6,6 +6,8 @@ use App\ERP\Inventory\Models\Warehouse;
 use App\ERP\Purchasing\Models\PurchaseOrder;
 use App\ERP\Purchasing\Models\PurchaseOrderLine;
 use App\ERP\Purchasing\Models\Vendor;
+use App\Http\Middleware\ErpMaintenanceMode;
+use App\Http\Middleware\LogErpActivity;
 use App\Models\CashIn;
 use App\Models\CashOut;
 use App\Models\MasterProduct;
@@ -17,6 +19,8 @@ use App\Models\User;
 use App\Services\ProjectReportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Spatie\Permission\Middleware\RoleMiddleware;
+use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
 use Tests\TestCase;
 
 class ProjectReportTest extends TestCase
@@ -26,10 +30,10 @@ class ProjectReportTest extends TestCase
     public function test_project_report_includes_material_purchase_cost_in_cash_out_and_profit(): void
     {
         $this->withoutMiddleware([
-            \App\Http\Middleware\ErpMaintenanceMode::class,
-            \App\Http\Middleware\LogErpActivity::class,
-            \Spatie\Permission\Middleware\RoleMiddleware::class,
-            \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
+            ErpMaintenanceMode::class,
+            LogErpActivity::class,
+            RoleMiddleware::class,
+            RoleOrPermissionMiddleware::class,
         ]);
 
         $user = User::factory()->create();
@@ -103,10 +107,10 @@ class ProjectReportTest extends TestCase
     public function test_project_report_prefers_recorded_purchase_cash_out_categories_for_purchase_card(): void
     {
         $this->withoutMiddleware([
-            \App\Http\Middleware\ErpMaintenanceMode::class,
-            \App\Http\Middleware\LogErpActivity::class,
-            \Spatie\Permission\Middleware\RoleMiddleware::class,
-            \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
+            ErpMaintenanceMode::class,
+            LogErpActivity::class,
+            RoleMiddleware::class,
+            RoleOrPermissionMiddleware::class,
         ]);
 
         $user = User::factory()->create();
@@ -160,10 +164,10 @@ class ProjectReportTest extends TestCase
     public function test_project_report_uses_converted_budget_item_cost_when_present(): void
     {
         $this->withoutMiddleware([
-            \App\Http\Middleware\ErpMaintenanceMode::class,
-            \App\Http\Middleware\LogErpActivity::class,
-            \Spatie\Permission\Middleware\RoleMiddleware::class,
-            \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
+            ErpMaintenanceMode::class,
+            LogErpActivity::class,
+            RoleMiddleware::class,
+            RoleOrPermissionMiddleware::class,
         ]);
 
         $user = User::factory()->create();
@@ -218,10 +222,10 @@ class ProjectReportTest extends TestCase
     public function test_project_report_falls_back_to_latest_purchase_order_price_when_material_unit_cost_is_zero(): void
     {
         $this->withoutMiddleware([
-            \App\Http\Middleware\ErpMaintenanceMode::class,
-            \App\Http\Middleware\LogErpActivity::class,
-            \Spatie\Permission\Middleware\RoleMiddleware::class,
-            \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
+            ErpMaintenanceMode::class,
+            LogErpActivity::class,
+            RoleMiddleware::class,
+            RoleOrPermissionMiddleware::class,
         ]);
 
         $user = User::factory()->create();

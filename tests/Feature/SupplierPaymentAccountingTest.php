@@ -12,9 +12,13 @@ use App\ERP\Purchasing\Models\GoodsReceipt;
 use App\ERP\Purchasing\Models\PurchaseOrder;
 use App\ERP\Purchasing\Models\Vendor;
 use App\ERP\Shared\Enums\DocumentStatus;
+use App\Http\Middleware\ErpMaintenanceMode;
+use App\Http\Middleware\LogErpActivity;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
+use Spatie\Permission\Middleware\RoleMiddleware;
+use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
 use Tests\TestCase;
 
 class SupplierPaymentAccountingTest extends TestCase
@@ -35,9 +39,9 @@ class SupplierPaymentAccountingTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('ERP/Accounting/Payments')
-                ->where('payables.0.id', $payable->id)
-                ->where('payables.0.vendor_name', 'Supplier Test')
-                ->where('payables.0.outstanding_amount', 100000)
+                ->where('payables.data.0.id', $payable->id)
+                ->where('payables.data.0.vendor_name', 'Supplier Test')
+                ->where('payables.data.0.outstanding_amount', 100000)
                 ->where('summary.outstanding_total', 100000));
     }
 
@@ -241,10 +245,10 @@ class SupplierPaymentAccountingTest extends TestCase
     private function disableErpMiddleware(): void
     {
         $this->withoutMiddleware([
-            \App\Http\Middleware\ErpMaintenanceMode::class,
-            \App\Http\Middleware\LogErpActivity::class,
-            \Spatie\Permission\Middleware\RoleMiddleware::class,
-            \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
+            ErpMaintenanceMode::class,
+            LogErpActivity::class,
+            RoleMiddleware::class,
+            RoleOrPermissionMiddleware::class,
         ]);
     }
 }

@@ -1,9 +1,8 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
-import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 import {
   ArrowLeftIcon,
@@ -25,7 +24,6 @@ const props = defineProps({
 const { format } = useCurrency();
 const saveForm = useForm({});
 const selectedProjectId = computed(() => String(props.selectedProjectId || ''));
-const projectRows = computed(() => props.projects?.data ?? []);
 const filters = reactive({
   q: props.filters?.q ?? '',
   status: props.filters?.status ?? '',
@@ -38,11 +36,72 @@ const statusToneMap = {
   dibatalkan: 'badge-error',
 };
 
+const searchInput = ref(null);
+
+onMounted(() => {
+  nextTick(() => searchInput.value?.focus());
+});
+
+const sentinel = ref(null);
+const scrollContainer = ref(null);
+const allProjects = ref([]);
+const loadingMore = ref(false);
+const loadedPage = ref(0);
+
+const loadNextPage = () => {
+  if (loadingMore.value) return;
+  const nextPage = loadedPage.value + 1;
+  if (!props.projects || nextPage > props.projects.last_page) return;
+  loadingMore.value = true;
+  router.get(route('team-distribution.calculator'), {
+    project_id: selectedProjectId.value || undefined,
+    q: filters.q || undefined,
+    status: filters.status || undefined,
+    per_page: filters.per_page,
+    page: nextPage,
+  }, { preserveState: true, preserveScroll: true, replace: true });
+};
+
+const onScroll = () => {
+  if (loadingMore.value) return;
+  const el = scrollContainer.value;
+  if (!el) return;
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 300) {
+    loadNextPage();
+  }
+};
+
+onMounted(() => {
+  scrollContainer.value?.addEventListener('scroll', onScroll, { passive: true });
+});
+
+onBeforeUnmount(() => {
+  scrollContainer.value?.removeEventListener('scroll', onScroll);
+});
+
+watch(() => props.projects, (paginator) => {
+  if (!paginator?.data || !paginator.current_page) return;
+  loadedPage.value = Math.max(loadedPage.value, paginator.current_page);
+  const existingIds = new Set(allProjects.value.map((p) => p.id));
+  const newItems = paginator.data.filter((p) => !existingIds.has(p.id));
+  if (newItems.length) allProjects.value.push(...newItems);
+  loadingMore.value = false;
+  nextTick(() => {
+    if (loadedPage.value < props.projects.last_page
+      && scrollContainer.value
+      && scrollContainer.value.scrollHeight <= scrollContainer.value.clientHeight + 1
+    ) {
+      loadNextPage();
+    }
+  });
+}, { deep: true, immediate: true });
+
 const defaultRole = computed(() => props.teamRoles?.[0]?.name ?? 'developer');
 const distributionRate = ref(Number(props.selectedProject?.distribution_rate ?? 30));
 
 const makeRow = (overrides = {}) => ({
   user_id: '',
+  user_name: '',
   role_in_project: defaultRole.value,
   percentage: 0,
   bonus: 0,
@@ -51,6 +110,7 @@ const makeRow = (overrides = {}) => ({
 
 const normalizeRow = (row = {}) => makeRow({
   user_id: row.user_id ? Number(row.user_id) : '',
+  user_name: row.user_name ?? '',
   role_in_project: row.role_in_project || defaultRole.value,
   percentage: Number(row.percentage ?? 0),
   bonus: Number(row.bonus ?? 0),
@@ -77,7 +137,7 @@ const selectProject = (projectId) => {
   router.get(
     route('team-distribution.calculator'),
     { project_id: projectId, q: filters.q || undefined, status: filters.status || undefined, per_page: filters.per_page },
-    { preserveScroll: true, preserveState: false },
+    { preserveScroll: true, preserveState: true },
   );
 };
 
@@ -129,6 +189,13 @@ const totalBonus = computed(() => rows.value.reduce((sum, row) => sum + Number(r
 const totalPay = computed(() => totalBasePay.value + totalBonus.value);
 const remainingPool = computed(() => distributableAmount.value - totalPay.value);
 
+const duplicateMemberIds = computed(() => {
+  const ids = rows.value.map((r) => r.user_id).filter((id) => id !== '' && id !== undefined);
+  return ids.filter((id, i) => ids.indexOf(id) !== i);
+});
+
+const hasDuplicates = computed(() => duplicateMemberIds.value.length > 0);
+
 const percentageValid = computed(() => Math.abs(totalPercentage.value - 100) < 0.01);
 const budgetValid = computed(() => !props.selectedProject || totalPay.value <= distributableAmount.value + 0.01);
 const rowsValid = computed(() => rows.value.every((row) => row.user_id && row.role_in_project));
@@ -138,6 +205,7 @@ const canSave = computed(() => (
   && percentageValid.value
   && budgetValid.value
   && rowsValid.value
+  && !hasDuplicates.value
   && rateValid.value
   && !saveForm.processing
 ));
@@ -173,28 +241,34 @@ const save = () => {
 <template>
   <Head title="Kalkulator Pembagian Tim" />
   <AppLayout>
-    <div class="space-y-4">
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Project Workspace</p>
-          <h1 class="ocn-panel__title mt-1">Kalkulator Pembagian Tim</h1>
-          <p class="ocn-panel__desc mt-1">Pilih project dari daftar, lalu atur pembagian dari sisa margin setelah potongan persentase cadangan.</p>
+    <div class="space-y-5">
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Project Workspace</p>
+              <h1 class="ocn-panel__title mt-1">Kalkulator Pembagian Tim</h1>
+              <p class="ocn-panel__desc mt-1">Pilih project dari daftar, lalu atur pembagian dari sisa margin setelah potongan persentase cadangan.</p>
+            </div>
+            <div class="flex shrink-0 flex-wrap items-center gap-2">
+              <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.projects')">
+                <ArrowLeftIcon class="h-4 w-4" />
+                Back
+              </Link>
+            </div>
+          </div>
         </div>
-        <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.projects')">
-          <ArrowLeftIcon class="h-4 w-4" />
-          Back
-        </Link>
       </div>
 
-      <div class="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <section class="ocn-panel min-w-0">
-          <div class="ocn-panel__head">
+      <div class="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
+        <section class="ocn-panel min-w-0 flex flex-col sticky top-24 self-start max-h-[calc(100vh-8rem)] overflow-hidden">
+          <div class="ocn-panel__head shrink-0">
             <h2 class="ocn-panel__title">Daftar Project</h2>
-            <p class="ocn-panel__desc">Semua project ditampilkan di sini. Klik salah satu project untuk membuka detail pembagiannya.</p>
+            <p class="ocn-panel__desc">Pilih project untuk mengatur pembagian tim.</p>
           </div>
-          <div class="card-body space-y-3">
-            <div class="grid gap-3">
-              <input v-model="filters.q" type="search" class="input input-bordered input-sm w-full" placeholder="Cari project / klien..." />
+          <div class="card-body flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4">
+            <div class="grid shrink-0 gap-3">
+              <input ref="searchInput" v-model="filters.q" type="search" class="input input-bordered input-sm w-full" placeholder="Cari project / klien..." />
               <select v-model="filters.status" class="select select-bordered select-sm w-full">
                 <option value="">Semua status</option>
                 <option value="negosiasi">Negosiasi</option>
@@ -203,51 +277,35 @@ const save = () => {
                 <option value="dibatalkan">Dibatalkan</option>
               </select>
             </div>
-            <div class="max-h-[calc(100vh-19rem)] space-y-3 overflow-y-auto">
+            <div ref="scrollContainer" class="-mx-4 flex-1 space-y-3 overflow-y-scroll px-4">
             <button
-              v-for="project in projectRows"
+              v-for="project in allProjects"
               :key="project.id"
               type="button"
-              class="w-full rounded-2xl border p-4 text-left transition"
+              class="w-full rounded-xl border px-4 py-3 text-left transition flex items-center gap-3"
               :class="project.id === selectedProjectId ? 'border-primary bg-primary/5 shadow-sm' : 'border-base-200 bg-base-100 hover:border-primary/30'"
               @click="selectProject(project.id)"
             >
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <p class="truncate font-semibold text-base-content">{{ project.name }}</p>
-                  <p class="mt-1 truncate text-xs text-base-content/60">{{ project.client_name || '-' }} - {{ project.status }}</p>
-                </div>
-                <span class="badge badge-sm shrink-0 capitalize" :class="statusToneMap[project.status_key] || 'badge-ghost'">
+              <div class="flex-1 min-w-0">
+                <p class="truncate text-sm font-semibold text-base-content">{{ project.name }}</p>
+                <p class="truncate text-xs text-base-content/60">{{ project.client_name || '-' }}</p>
+              </div>
+              <div class="flex shrink-0 items-center gap-2">
+                <span v-if="project.distributed_total > 0" class="badge badge-soft badge-success badge-xs">dibagi</span>
+                <span class="badge badge-sm capitalize" :class="statusToneMap[project.status_key] || 'badge-ghost'">
                   {{ project.status }}
                 </span>
               </div>
-              <div class="mt-3 grid gap-2 text-xs sm:grid-cols-2">
-                <div>
-                  <p class="text-base-content/50">Margin</p>
-                  <p class="font-semibold">{{ format(project.margin_amount) }}</p>
-                </div>
-                <div>
-                  <p class="text-base-content/50">Pool dibagi</p>
-                  <p class="font-semibold text-primary">{{ format(project.distributable_amount) }}</p>
-                </div>
-                <div>
-                  <p class="text-base-content/50">Sudah dibagi</p>
-                  <p class="font-semibold">{{ format(project.distributed_total) }}</p>
-                </div>
-                <div>
-                  <p class="text-base-content/50">Sisa pool</p>
-                  <p class="font-semibold" :class="project.remaining_distributable >= 0 ? 'text-success' : 'text-error'">
-                    {{ format(project.remaining_distributable) }}
-                  </p>
-                </div>
-              </div>
             </button>
-            <div v-if="!projectRows.length" class="rounded-2xl border border-dashed border-base-300 p-4 text-sm text-base-content/60">
+            <div v-if="loadingMore" class="flex justify-center py-2">
+              <span class="loading loading-spinner loading-sm text-primary" />
+            </div>
+            <div ref="sentinel" class="h-1" />
+            <div v-if="!(allProjects?.length) && !loadingMore" class="rounded-2xl border border-dashed border-base-300 p-4 text-sm text-base-content/60">
               Tidak ada project yang cocok dengan filter.
             </div>
             </div>
           </div>
-          <DataTablePagination :paginator="projects" @update:per-page="(n) => { filters.per_page = n; }" />
         </section>
 
         <section v-if="selectedProject" class="min-w-0 space-y-4">
@@ -356,7 +414,7 @@ const save = () => {
             </div>
           </div>
 
-          <div v-if="!rateValid || !percentageValid || !budgetValid || !rowsValid || saveForm.errors.distributions" class="space-y-2">
+          <div v-if="!rateValid || !percentageValid || !budgetValid || !rowsValid || hasDuplicates || saveForm.errors.distributions" class="space-y-2">
             <div v-if="!rateValid" class="alert alert-warning">
               <ExclamationTriangleIcon class="h-5 w-5" />
               <span>Persentase cadangan margin harus antara 0% sampai 100%.</span>
@@ -372,6 +430,10 @@ const save = () => {
             <div v-if="!rowsValid" class="alert alert-info">
               <ExclamationTriangleIcon class="h-5 w-5" />
               <span>Setiap baris perlu anggota dan peran sebelum disimpan.</span>
+            </div>
+            <div v-if="hasDuplicates" class="alert alert-warning">
+              <ExclamationTriangleIcon class="h-5 w-5" />
+              <span>Anggota terpilih lebih dari satu baris: {{ duplicateMemberIds.map(id => members.find(m => m.id == id)?.name).filter(Boolean).join(', ') }}.</span>
             </div>
             <div v-if="saveForm.errors.distributions" class="alert alert-error">
               <ExclamationTriangleIcon class="h-5 w-5" />
@@ -410,12 +472,14 @@ const save = () => {
                   <tbody>
                     <tr v-for="(row, index) in rows" :key="index">
                       <td>
-                        <select v-model="row.user_id" class="select select-bordered select-sm w-full">
-                          <option value="">Pilih anggota</option>
-                          <option v-for="member in members" :key="member.id" :value="member.id">
-                            {{ member.name }}
-                          </option>
-                        </select>
+                        <div class="flex items-center gap-2">
+                          <select v-model="row.user_id" class="select select-bordered select-sm w-full">
+                            <option value="">Pilih anggota</option>
+                            <option v-for="member in members" :key="member.id" :value="member.id">
+                              {{ member.name }}
+                            </option>
+                          </select>
+                        </div>
                       </td>
                       <td>
                         <select v-model="row.role_in_project" class="select select-bordered select-sm w-full">
@@ -484,8 +548,16 @@ const save = () => {
         </section>
 
         <section v-else class="ocn-panel min-w-0">
-          <div class="card-body py-10 text-center text-base-content/60">
-            Klik salah satu project pada daftar untuk membuka detail pembagian timnya.
+          <div class="card-body flex flex-col items-center justify-center gap-4 py-16 text-center">
+            <div class="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-primary/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            </div>
+            <div>
+              <p class="font-semibold text-base-content/80">Belum ada project dipilih</p>
+              <p class="mt-1 text-sm text-base-content/50">Klik salah satu project pada daftar di samping untuk mengatur pembagian tim.</p>
+            </div>
           </div>
         </section>
       </div>

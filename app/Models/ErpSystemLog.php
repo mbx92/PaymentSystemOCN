@@ -32,4 +32,3 @@ class ErpSystemLog extends Model
         return $this->belongsTo(User::class);
     }
 }
-

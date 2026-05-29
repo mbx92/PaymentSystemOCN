@@ -19,4 +19,3 @@ class CategoryCoaMapping extends Model
         return $this->belongsTo(Account::class);
     }
 }
-

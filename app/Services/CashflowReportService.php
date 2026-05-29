@@ -2,16 +2,17 @@
 
 namespace App\Services;
 
+use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Accounting\Models\PayablePayment;
 use App\ERP\Core\Services\ErpCompanyResolver;
 use App\Models\CashIn;
 use App\Models\CashOut;
 use App\Models\PosSale;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\Paginator;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 class CashflowReportService
@@ -85,11 +86,11 @@ class CashflowReportService
                 ];
             })
         )->concat($posSales)
-        ->concat($supplierPayments)
-        ->sortBy([
-            ['date', 'asc'],
-            ['direction', 'asc'],
-        ])->values();
+            ->concat($supplierPayments)
+            ->sortBy([
+                ['date', 'asc'],
+                ['direction', 'asc'],
+            ])->values();
 
         $totalIn = (float) $transactions->where('direction', 'in')->sum('amount');
         $totalOut = (float) $transactions->where('direction', 'out')->sum('amount');
@@ -155,7 +156,7 @@ class CashflowReportService
             return collect();
         }
 
-        $journalMap = \App\ERP\Accounting\Models\JournalEntry::query()
+        $journalMap = JournalEntry::query()
             ->whereIn('source_module', ['pos_sale', 'pos_sale_refund', 'pos_sale_reopen'])
             ->when($companyId, fn (Builder $q) => $q->where('company_id', $companyId))
             ->whereIn('source_reference', $sales->pluck('number')->all())

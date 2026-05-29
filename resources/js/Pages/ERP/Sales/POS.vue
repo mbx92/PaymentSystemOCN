@@ -17,7 +17,7 @@ const { format, parse, formatInput } = useCurrency();
 const showProductModal = ref(false);
 const selectedSalesChannel = ref(props.price_channels?.[0]?.key ?? 'retail');
 const priceForChannel = (item, channel) => Number(item.channel_prices?.[channel] ?? item.price ?? item.selling_price ?? 0);
-const productCatalog = ref((props.products ?? []).map((item) => ({
+const productCatalog = ref(((Array.isArray(props.products) ? props.products : props.products?.data) ?? []).map((item) => ({
   ...item,
   price: priceForChannel(item, selectedSalesChannel.value),
 })));

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\ERP\Accounting\Models\Account;
+use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Core\Services\ErpCompanyResolver;
 use App\ERP\Core\Services\FiscalPeriodService;
@@ -29,8 +30,8 @@ class ProjectPaymentController extends Controller
     public function markPaid(Request $request, ProjectPayment $payment)
     {
         $validated = $request->validate([
-            'paid_at'         => 'required|date',
-            'note'            => 'nullable|string',
+            'paid_at' => 'required|date',
+            'note' => 'nullable|string',
             'cash_account_id' => Account::cashBankIdValidationRules(),
         ]);
 
@@ -40,7 +41,7 @@ class ProjectPaymentController extends Controller
         DB::transaction(function () use ($payment, $validated, $companyId) {
             $payment->update([
                 'paid_at' => $validated['paid_at'],
-                'note'    => $validated['note'] ?? null,
+                'note' => $validated['note'] ?? null,
             ]);
 
             $noteParts = [
@@ -55,7 +56,7 @@ class ProjectPaymentController extends Controller
             $cashAccountId = (int) $validated['cash_account_id'];
             $revenueAccountId = $this->resolvePendapatanProjectAccountId();
 
-            $cashAccount    = Account::query()->findOrFail($cashAccountId);
+            $cashAccount = Account::query()->findOrFail($cashAccountId);
             $revenueAccount = Account::query()->findOrFail($revenueAccountId);
 
             // Jika sudah ada CashIn (re-mark paid), reverse journal lama terlebih dahulu
@@ -70,18 +71,18 @@ class ProjectPaymentController extends Controller
             $cashIn = CashIn::updateOrCreate(
                 ['project_payment_id' => $payment->id],
                 [
-                    'project_id'      => $payment->project_id,
+                    'project_id' => $payment->project_id,
                     'cash_account_id' => $cashAccountId,
-                    'category'        => 'pendapatan_project',
-                    'amount'          => $payment->amount,
-                    'date'            => $validated['paid_at'],
-                    'note'            => $cashNote,
-                    'created_by'      => Auth::id(),
+                    'category' => 'pendapatan_project',
+                    'amount' => $payment->amount,
+                    'date' => $validated['paid_at'],
+                    'note' => $cashNote,
+                    'created_by' => Auth::id(),
                     'document_status' => DocumentStatus::Posted->value,
-                    'approved_at'     => now(),
-                    'approved_by'     => Auth::id(),
-                    'posted_at'       => now(),
-                    'posted_by'       => Auth::id(),
+                    'approved_at' => now(),
+                    'approved_by' => Auth::id(),
+                    'posted_at' => now(),
+                    'posted_by' => Auth::id(),
                 ]
             );
 
@@ -188,7 +189,7 @@ class ProjectPaymentController extends Controller
      */
     private function reverseJournalEntry(int $journalEntryId): void
     {
-        $entry = \App\ERP\Accounting\Models\JournalEntry::query()
+        $entry = JournalEntry::query()
             ->with('lines')
             ->find($journalEntryId);
 
@@ -197,11 +198,11 @@ class ProjectPaymentController extends Controller
         }
 
         foreach ($entry->lines as $line) {
-            $debit  = round((float) $line->debit, 2);
+            $debit = round((float) $line->debit, 2);
             $credit = round((float) $line->credit, 2);
 
             $line->update([
-                'debit'  => number_format($credit, 2, '.', ''),
+                'debit' => number_format($credit, 2, '.', ''),
                 'credit' => number_format($debit, 2, '.', ''),
             ]);
         }
@@ -209,18 +210,18 @@ class ProjectPaymentController extends Controller
 
     private function pdfBrand(): array
     {
-        $setting     = ErpSetting::query()->first();
+        $setting = ErpSetting::query()->first();
         $logoDataUri = null;
 
         if ($setting?->app_logo_path && Storage::disk('public')->exists($setting->app_logo_path)) {
-            $path        = Storage::disk('public')->path($setting->app_logo_path);
-            $mime        = function_exists('mime_content_type') ? mime_content_type($path) : 'image/png';
+            $path = Storage::disk('public')->path($setting->app_logo_path);
+            $mime = function_exists('mime_content_type') ? mime_content_type($path) : 'image/png';
             $logoDataUri = 'data:'.$mime.';base64,'.base64_encode((string) file_get_contents($path));
         }
 
         return [
-            'name'          => (string) ($setting?->app_name ?: 'OCN ERP Suite'),
-            'tagline'       => (string) ($setting?->app_tagline ?: 'Integrated Business Platform'),
+            'name' => (string) ($setting?->app_name ?: 'OCN ERP Suite'),
+            'tagline' => (string) ($setting?->app_tagline ?: 'Integrated Business Platform'),
             'logo_data_uri' => $logoDataUri,
         ];
     }

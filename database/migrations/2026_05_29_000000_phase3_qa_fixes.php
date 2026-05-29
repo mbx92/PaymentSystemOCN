@@ -109,7 +109,7 @@ return new class extends Migration
             Schema::table($table, function (Blueprint $t) use ($columns, $name): void {
                 $t->index($columns, $name);
             });
-        } catch (\Throwable) {
+        } catch (Throwable) {
             // index may already exist
         }
     }
@@ -120,7 +120,7 @@ return new class extends Migration
             Schema::table($table, function (Blueprint $t) use ($name): void {
                 $t->dropIndex($name);
             });
-        } catch (\Throwable) {
+        } catch (Throwable) {
             // index may not exist
         }
     }

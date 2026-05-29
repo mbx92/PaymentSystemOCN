@@ -4,6 +4,7 @@ namespace App\ERP\Accounting\Services;
 
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\CoaSetting;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class CoaSettingService
 {
@@ -31,9 +32,8 @@ class CoaSettingService
             return $fromCashList;
         }
 
-        throw new \Illuminate\Database\Eloquent\ModelNotFoundException(
+        throw new ModelNotFoundException(
             "Akun CoA untuk [{$key}] belum diatur di Pengaturan COA."
         );
     }
 }
-

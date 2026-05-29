@@ -2,9 +2,9 @@
 
 namespace App\ERP\Purchasing\Models;
 
+use App\ERP\Inventory\Models\Warehouse;
 use App\ERP\Shared\Concerns\Auditable;
 use App\ERP\Shared\Enums\DocumentStatus;
-use App\ERP\Inventory\Models\Warehouse;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -53,4 +53,3 @@ class GoodsReceipt extends Model
         return 'number';
     }
 }
-

@@ -22,15 +22,49 @@ const props = defineProps({
 const { format } = useCurrency();
 const { formatDate } = useDateFormat();
 
+const now = new Date();
+const currentYear = now.getFullYear();
+const yearOptions = Array.from({ length: 7 }, (_, i) => currentYear - 5 + i);
+
 const filters = ref({
   date_from: props.filters?.date_from ?? '',
   date_to: props.filters?.date_to ?? '',
+  year: props.filters?.year ?? String(currentYear),
+  quarter: props.filters?.quarter ?? 'all',
   source: props.filters?.source ?? 'all',
   project_id: props.filters?.project_id ?? 'all',
   group_by: props.filters?.group_by ?? 'day',
   company_id: props.filters?.company_id ?? 'all',
   per_page: props.filtersMeta?.per_page ?? props.transactions?.per_page ?? 25,
 });
+
+const quarterRange = (year, q) => {
+  if (q === 'all') return null;
+  const qNum = parseInt(q, 10);
+  const startMonth = (qNum - 1) * 3;
+  return {
+    from: `${year}-${String(startMonth + 1).padStart(2, '0')}-01`,
+    to: `${year}-${String(startMonth + 3).padStart(2, '0')}-${new Date(year, startMonth + 3, 0).getDate()}`,
+  };
+};
+
+const applyYearQuarter = () => {
+  const y = filters.value.year;
+  const q = filters.value.quarter;
+  if (q === 'all') {
+    filters.value.date_from = `${y}-01-01`;
+    filters.value.date_to = `${y}-12-31`;
+  } else {
+    const range = quarterRange(y, q);
+    if (range) {
+      filters.value.date_from = range.from;
+      filters.value.date_to = range.to;
+    }
+  }
+};
+
+watch(() => filters.value.year, () => { filters.value.quarter = 'all'; applyYearQuarter(); });
+watch(() => filters.value.quarter, applyYearQuarter);
 
 let timer;
 watch(filters, (val) => {
@@ -68,9 +102,21 @@ watch(filters, (val) => {
           <h2 class="ocn-panel__title">Filter</h2>
         </div>
         <div class="card-body">
-          <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <select v-model="filters.year" class="select select-bordered select-sm w-full">
+              <option v-for="y in yearOptions" :key="y" :value="String(y)">{{ y }}</option>
+            </select>
+            <select v-model="filters.quarter" class="select select-bordered select-sm w-full">
+              <option value="all">Semua Kuartal</option>
+              <option value="1">Q1 (Jan–Mar)</option>
+              <option value="2">Q2 (Apr–Jun)</option>
+              <option value="3">Q3 (Jul–Sep)</option>
+              <option value="4">Q4 (Oct–Dec)</option>
+            </select>
             <input v-model="filters.date_from" type="date" class="input input-bordered input-sm w-full" />
             <input v-model="filters.date_to" type="date" class="input input-bordered input-sm w-full" />
+          </div>
+          <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <select v-model="filters.source" class="select select-bordered select-sm w-full">
               <option v-for="opt in sourceOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
@@ -114,24 +160,24 @@ watch(filters, (val) => {
       </div>
 
       <div class="grid gap-5 xl:grid-cols-2">
-        <div class="ocn-panel">
-          <div class="ocn-panel__head">
+        <div class="ocn-panel flex flex-col min-w-0">
+          <div class="ocn-panel__head shrink-0">
             <h2 class="ocn-panel__title">Pivot Timeline</h2>
             <p class="ocn-panel__desc mt-1">Dikelompokkan berdasarkan pilihan periode di filter.</p>
           </div>
-          <div class="overflow-x-auto">
-            <table class="table table-sm">
-              <thead>
+          <div class="overflow-y-auto max-h-72">
+            <table class="table table-xs">
+              <thead class="sticky top-0 z-10 bg-base-100">
                 <tr>
                   <th>Bucket</th>
-                  <th class="text-right">Kas Masuk</th>
-                  <th class="text-right">Kas Keluar</th>
+                  <th class="text-right">Masuk</th>
+                  <th class="text-right">Keluar</th>
                   <th class="text-right">Net</th>
-                  <th class="text-right">Txn</th>
+                  <th class="w-10 text-right">Txn</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in (pivot?.timeline || [])" :key="row.bucket">
+                <tr v-for="row in (pivot?.timeline || [])" :key="row.bucket" class="text-xs">
                   <td class="font-medium">{{ row.bucket }}</td>
                   <td class="text-right text-success">{{ format(row.total_in) }}</td>
                   <td class="text-right text-error">{{ format(row.total_out) }}</td>
@@ -139,31 +185,31 @@ watch(filters, (val) => {
                   <td class="text-right">{{ row.count }}</td>
                 </tr>
                 <tr v-if="!(pivot?.timeline || []).length">
-                  <td colspan="5" class="text-center py-8 text-base-content/50">Tidak ada data pada periode ini.</td>
+                  <td colspan="5" class="text-center py-6 text-xs text-base-content/50">Tidak ada data pada periode ini.</td>
                 </tr>
               </tbody>
             </table>
           </div>
         </div>
 
-        <div class="ocn-panel">
-          <div class="ocn-panel__head">
+        <div class="ocn-panel flex flex-col min-w-0">
+          <div class="ocn-panel__head shrink-0">
             <h2 class="ocn-panel__title">Pivot per Sumber</h2>
             <p class="ocn-panel__desc mt-1">Membandingkan transaksi project vs manual/umum.</p>
           </div>
-          <div class="overflow-x-auto">
-            <table class="table table-sm">
-              <thead>
+          <div class="overflow-y-auto max-h-72">
+            <table class="table table-xs">
+              <thead class="sticky top-0 z-10 bg-base-100">
                 <tr>
                   <th>Sumber</th>
-                  <th class="text-right">Kas Masuk</th>
-                  <th class="text-right">Kas Keluar</th>
+                  <th class="text-right">Masuk</th>
+                  <th class="text-right">Keluar</th>
                   <th class="text-right">Net</th>
-                  <th class="text-right">Txn</th>
+                  <th class="w-10 text-right">Txn</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in (pivot?.sources || [])" :key="row.label">
+                <tr v-for="row in (pivot?.sources || [])" :key="row.label" class="text-xs">
                   <td class="font-medium">{{ row.label }}</td>
                   <td class="text-right text-success">{{ format(row.total_in) }}</td>
                   <td class="text-right text-error">{{ format(row.total_out) }}</td>
@@ -171,7 +217,7 @@ watch(filters, (val) => {
                   <td class="text-right">{{ row.count }}</td>
                 </tr>
                 <tr v-if="!(pivot?.sources || []).length">
-                  <td colspan="5" class="text-center py-8 text-base-content/50">Belum ada data sumber.</td>
+                  <td colspan="5" class="text-center py-6 text-xs text-base-content/50">Belum ada data sumber.</td>
                 </tr>
               </tbody>
             </table>
@@ -180,23 +226,23 @@ watch(filters, (val) => {
       </div>
 
       <div class="grid gap-5 xl:grid-cols-2">
-        <div class="ocn-panel">
-          <div class="ocn-panel__head">
+        <div class="ocn-panel flex flex-col min-w-0">
+          <div class="ocn-panel__head shrink-0">
             <h2 class="ocn-panel__title">Pivot per Kategori</h2>
           </div>
-          <div class="overflow-x-auto">
-            <table class="table table-sm">
-              <thead>
+          <div class="overflow-y-auto max-h-80">
+            <table class="table table-xs">
+              <thead class="sticky top-0 z-10 bg-base-100">
                 <tr>
                   <th>Kategori</th>
-                  <th class="text-right">Kas Masuk</th>
-                  <th class="text-right">Kas Keluar</th>
+                  <th class="text-right">Masuk</th>
+                  <th class="text-right">Keluar</th>
                   <th class="text-right">Net</th>
-                  <th class="text-right">Txn</th>
+                  <th class="w-10 text-right">Txn</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in (pivot?.categories || [])" :key="row.label">
+                <tr v-for="row in (pivot?.categories || [])" :key="row.label" class="text-xs">
                   <td class="font-medium">{{ row.label }}</td>
                   <td class="text-right text-success">{{ format(row.total_in) }}</td>
                   <td class="text-right text-error">{{ format(row.total_out) }}</td>
@@ -204,38 +250,38 @@ watch(filters, (val) => {
                   <td class="text-right">{{ row.count }}</td>
                 </tr>
                 <tr v-if="!(pivot?.categories || []).length">
-                  <td colspan="5" class="text-center py-8 text-base-content/50">Belum ada data kategori.</td>
+                  <td colspan="5" class="text-center py-6 text-xs text-base-content/50">Belum ada data kategori.</td>
                 </tr>
               </tbody>
             </table>
           </div>
         </div>
 
-        <div class="ocn-panel">
-          <div class="ocn-panel__head">
+        <div class="ocn-panel flex flex-col min-w-0">
+          <div class="ocn-panel__head shrink-0">
             <h2 class="ocn-panel__title">Pivot per Project</h2>
           </div>
-          <div class="overflow-x-auto">
-            <table class="table table-sm">
-              <thead>
+          <div class="overflow-y-auto max-h-80">
+            <table class="table table-xs">
+              <thead class="sticky top-0 z-10 bg-base-100">
                 <tr>
-                  <th>Project</th>
-                  <th class="text-right">Kas Masuk</th>
-                  <th class="text-right">Kas Keluar</th>
+                  <th class="w-48">Project</th>
+                  <th class="text-right">Masuk</th>
+                  <th class="text-right">Keluar</th>
                   <th class="text-right">Net</th>
-                  <th class="text-right">Txn</th>
+                  <th class="w-10 text-right">Txn</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in (pivot?.projects || [])" :key="row.label">
-                  <td class="font-medium">{{ row.label }}</td>
+                <tr v-for="row in (pivot?.projects || [])" :key="row.label" class="text-xs">
+                  <td class="max-w-44 truncate font-medium" :title="row.label">{{ row.label }}</td>
                   <td class="text-right text-success">{{ format(row.total_in) }}</td>
                   <td class="text-right text-error">{{ format(row.total_out) }}</td>
                   <td class="text-right font-semibold" :class="row.net >= 0 ? 'text-primary' : 'text-error'">{{ format(row.net) }}</td>
                   <td class="text-right">{{ row.count }}</td>
                 </tr>
                 <tr v-if="!(pivot?.projects || []).length">
-                  <td colspan="5" class="text-center py-8 text-base-content/50">Belum ada data project.</td>
+                  <td colspan="5" class="text-center py-6 text-xs text-base-content/50">Belum ada data project.</td>
                 </tr>
               </tbody>
             </table>
@@ -249,38 +295,38 @@ watch(filters, (val) => {
           <p class="ocn-panel__desc mt-1">Urutan terbaru di atas untuk audit cepat.</p>
         </div>
         <div class="overflow-x-auto">
-          <table class="table table-sm">
+          <table class="table table-xs">
             <thead>
               <tr>
-                <th>Tanggal</th>
-                <th>Arah</th>
+                <th class="w-24">Tanggal</th>
+                <th class="w-14">Arah</th>
                 <th>Project</th>
-                <th>Kategori</th>
-                <th>Sumber</th>
-                <th>Metode / Penerima</th>
-                <th>Catatan</th>
-                <th class="text-right">Nominal</th>
+                <th class="w-28">Kategori</th>
+                <th class="w-28">Sumber</th>
+                <th class="w-40">Metode / Penerima</th>
+                <th class="w-48">Catatan</th>
+                <th class="w-32 text-right">Nominal</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in (transactions?.data || [])" :key="`${row.direction}-${row.id}`">
-                <td class="whitespace-nowrap">{{ formatDate(row.date) }}</td>
+              <tr v-for="row in (transactions?.data || [])" :key="`${row.direction}-${row.id}`" class="text-xs">
+                <td class="whitespace-nowrap text-xs">{{ formatDate(row.date) }}</td>
                 <td>
-                  <span class="badge badge-sm" :class="row.direction === 'in' ? 'badge-success' : 'badge-error'">
+                  <span class="badge badge-xs" :class="row.direction === 'in' ? 'badge-success' : 'badge-error'">
                     {{ row.direction === 'in' ? 'Masuk' : 'Keluar' }}
                   </span>
                 </td>
-                <td class="font-medium">{{ row.project_name }}</td>
-                <td>{{ row.category }}</td>
-                <td>{{ row.source }}</td>
-                <td>{{ row.direction === 'in' ? row.payment_method : row.counterparty }}</td>
-                <td class="max-w-xs truncate">{{ row.note || '-' }}</td>
+                <td class="max-w-36 truncate font-medium">{{ row.project_name }}</td>
+                <td class="max-w-24 truncate">{{ row.category }}</td>
+                <td class="max-w-24 truncate">{{ row.source }}</td>
+                <td class="max-w-36 truncate">{{ row.direction === 'in' ? row.payment_method : row.counterparty }}</td>
+                <td class="max-w-44 truncate text-base-content/70" :title="row.note">{{ row.note || '-' }}</td>
                 <td class="text-right font-semibold" :class="row.direction === 'in' ? 'text-success' : 'text-error'">
                   {{ format(row.amount) }}
                 </td>
               </tr>
               <tr v-if="!(transactions?.data || []).length">
-                <td colspan="8" class="text-center py-10 text-base-content/50">Tidak ada transaksi pada filter ini.</td>
+                <td colspan="8" class="text-center py-6 text-xs text-base-content/50">Tidak ada transaksi pada filter ini.</td>
               </tr>
             </tbody>
           </table>

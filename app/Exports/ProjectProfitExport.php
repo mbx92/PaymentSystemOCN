@@ -27,13 +27,13 @@ class ProjectProfitExport implements FromCollection, WithHeadings, WithMapping, 
 
     public function map($row): array
     {
-        $cashIn      = $row->cashIns->sum('amount');
-        $cashOut     = $row->cashOuts->sum('amount');
-        $profit      = $cashIn - $cashOut;
-        $margin      = $cashIn > 0 ? round($profit / $cashIn * 100, 1) : 0;
-        $referral    = $row->referrals->sum('commission_amount');
+        $cashIn = $row->cashIns->sum('amount');
+        $cashOut = $row->cashOuts->sum('amount');
+        $profit = $cashIn - $cashOut;
+        $margin = $cashIn > 0 ? round($profit / $cashIn * 100, 1) : 0;
+        $referral = $row->referrals->sum('commission_amount');
         $operational = $row->cashOuts->where('category', 'operasional')->sum('amount');
-        $teamCost    = $row->cashOuts->where('category', 'biaya_tim')->sum('amount');
+        $teamCost = $row->cashOuts->where('category', 'biaya_tim')->sum('amount');
 
         return [
             $row->name, $row->client_name, $row->status,

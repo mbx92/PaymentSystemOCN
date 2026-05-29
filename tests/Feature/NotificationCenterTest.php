@@ -12,7 +12,6 @@ use App\Models\MasterProductWarehouseStock;
 use App\Models\Project;
 use App\Models\ProjectTask;
 use App\Models\User;
-use App\Models\UserNotificationRead;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;

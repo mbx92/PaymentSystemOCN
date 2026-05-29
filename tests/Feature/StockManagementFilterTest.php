@@ -3,12 +3,15 @@
 namespace Tests\Feature;
 
 use App\ERP\Inventory\Models\Warehouse;
+use App\Http\Middleware\ErpMaintenanceMode;
+use App\Http\Middleware\LogErpActivity;
 use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
 use App\Models\ProductStockMovement;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
+use Spatie\Permission\Middleware\RoleMiddleware;
 use Tests\TestCase;
 
 class StockManagementFilterTest extends TestCase
@@ -583,9 +586,9 @@ class StockManagementFilterTest extends TestCase
     private function disableErpMiddleware(): void
     {
         $this->withoutMiddleware([
-            \App\Http\Middleware\ErpMaintenanceMode::class,
-            \App\Http\Middleware\LogErpActivity::class,
-            \Spatie\Permission\Middleware\RoleMiddleware::class,
+            ErpMaintenanceMode::class,
+            LogErpActivity::class,
+            RoleMiddleware::class,
         ]);
     }
 }

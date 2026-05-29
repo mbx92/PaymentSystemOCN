@@ -2,11 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Http\Middleware\ErpMaintenanceMode;
+use App\Http\Middleware\LogErpActivity;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
+use Spatie\Permission\Middleware\RoleMiddleware;
 use Tests\TestCase;
 
 class ProjectLegalFolderTest extends TestCase
@@ -54,9 +57,9 @@ class ProjectLegalFolderTest extends TestCase
     private function disableErpMiddleware(): void
     {
         $this->withoutMiddleware([
-            \App\Http\Middleware\ErpMaintenanceMode::class,
-            \App\Http\Middleware\LogErpActivity::class,
-            \Spatie\Permission\Middleware\RoleMiddleware::class,
+            ErpMaintenanceMode::class,
+            LogErpActivity::class,
+            RoleMiddleware::class,
         ]);
     }
 
@@ -74,4 +77,3 @@ class ProjectLegalFolderTest extends TestCase
         return $project;
     }
 }
-

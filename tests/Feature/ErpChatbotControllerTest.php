@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\ErpChatParserRule;
-use App\Models\InvoiceSendLog;
 use App\Models\MasterProduct;
 use App\Models\PosSale;
 use App\Models\PosSaleItem;

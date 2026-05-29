@@ -2,6 +2,7 @@
 
 namespace App\ERP\Core\Services;
 
+use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Core\Models\FiscalPeriod;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -10,6 +11,7 @@ use Illuminate\Validation\ValidationException;
 class FiscalPeriodService
 {
     public const TYPE_MONTHLY = 'monthly';
+
     public const TYPE_YEARLY = 'yearly';
 
     /**
@@ -144,7 +146,7 @@ class FiscalPeriodService
      */
     private function journalCountsByMonth(int $companyId, int $year): Collection
     {
-        return \App\ERP\Accounting\Models\JournalEntry::query()
+        return JournalEntry::query()
             ->where('company_id', $companyId)
             ->whereYear('entry_date', $year)
             ->get(['entry_date'])

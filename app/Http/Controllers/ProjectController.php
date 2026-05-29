@@ -99,7 +99,7 @@ class ProjectController extends Controller
             ->groupBy('project_type')
             ->get()
             ->map(function ($row): array {
-                $typeDef = ProjectType::find($row->project_type);
+                $typeDef = ProjectType::where('key', $row->project_type)->first();
 
                 return [
                     'key' => (string) $row->project_type,
@@ -144,18 +144,22 @@ class ProjectController extends Controller
             })
             ->values();
 
+        $monthExpr = DB::connection()->getDriverName() === 'pgsql'
+            ? 'EXTRACT(MONTH FROM "date")::int'
+            : "CAST(strftime('%m', date) AS INTEGER)";
+
         $monthlyIncome = DB::table('cash_in')
             ->whereNotNull('project_id')
             ->whereYear('date', $selectedYear)
-            ->selectRaw('MONTH(date) as m, SUM(amount) as total')
-            ->groupBy(DB::raw('MONTH(date)'))
+            ->selectRaw("{$monthExpr} as m, SUM(amount) as total")
+            ->groupBy(DB::raw($monthExpr))
             ->pluck('total', 'm');
 
         $monthlyExpense = DB::table('cash_out')
             ->whereNotNull('project_id')
             ->whereYear('date', $selectedYear)
-            ->selectRaw('MONTH(date) as m, SUM(amount) as total')
-            ->groupBy(DB::raw('MONTH(date)'))
+            ->selectRaw("{$monthExpr} as m, SUM(amount) as total")
+            ->groupBy(DB::raw($monthExpr))
             ->pluck('total', 'm');
 
         $monthlyData = collect(range(1, 12))->map(fn (int $month) => [

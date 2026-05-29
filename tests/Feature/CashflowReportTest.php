@@ -9,6 +9,8 @@ use App\ERP\Accounting\Models\PayablePayment;
 use App\ERP\Core\Models\Company;
 use App\ERP\Purchasing\Models\Vendor;
 use App\ERP\Shared\Enums\DocumentStatus;
+use App\Http\Middleware\ErpMaintenanceMode;
+use App\Http\Middleware\LogErpActivity;
 use App\Models\CashIn;
 use App\Models\CashOut;
 use App\Models\PaymentMethod;
@@ -17,6 +19,8 @@ use App\Models\User;
 use App\Services\CashflowReportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Spatie\Permission\Middleware\RoleMiddleware;
+use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
 use Tests\TestCase;
 
 class CashflowReportTest extends TestCase
@@ -201,10 +205,10 @@ class CashflowReportTest extends TestCase
     private function disableErpMiddleware(): void
     {
         $this->withoutMiddleware([
-            \App\Http\Middleware\ErpMaintenanceMode::class,
-            \App\Http\Middleware\LogErpActivity::class,
-            \Spatie\Permission\Middleware\RoleMiddleware::class,
-            \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
+            ErpMaintenanceMode::class,
+            LogErpActivity::class,
+            RoleMiddleware::class,
+            RoleOrPermissionMiddleware::class,
         ]);
     }
 }

@@ -5,8 +5,10 @@ namespace App\Http\Middleware;
 use App\ERP\Core\Models\Company;
 use App\ERP\Core\Services\ErpCompanyResolver;
 use App\Models\ErpSetting;
+use App\Models\MasterProduct;
 use App\Models\User;
 use App\Support\AppNotificationCenter;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
@@ -65,7 +67,7 @@ class HandleInertiaRequests extends Middleware
             return null;
         }
 
-        $companies = Cache::remember('active_companies', 3600, function (): \Illuminate\Database\Eloquent\Collection {
+        $companies = Cache::remember('active_companies', 3600, function (): Collection {
             return Company::query()
                 ->where('is_active', true)
                 ->orderBy('name')
@@ -84,8 +86,8 @@ class HandleInertiaRequests extends Middleware
 
     private function resolveInventoryAlerts(): array
     {
-        $lowStockItems = \App\Models\MasterProduct::query()
-            ->where('product_type', '!=', \App\Models\MasterProduct::PRODUCT_TYPE_SERVICE)
+        $lowStockItems = MasterProduct::query()
+            ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
             ->where('low_stock_alert_enabled', true)
             ->whereColumn('stock', '<=', 'min_stock')
             ->orderBy('stock')

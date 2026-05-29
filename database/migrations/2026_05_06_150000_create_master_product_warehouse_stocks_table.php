@@ -24,4 +24,3 @@ return new class extends Migration
         Schema::dropIfExists('master_product_warehouse_stocks');
     }
 };
-

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 class Referral extends Model
 {
     use HasUuids;
+
     protected $fillable = [
         'project_id',
         'referrer_name',
@@ -18,7 +19,7 @@ class Referral extends Model
 
     protected $casts = [
         'commission_amount' => 'decimal:2',
-        'paid_at'           => 'date',
+        'paid_at' => 'date',
     ];
 
     public function project()

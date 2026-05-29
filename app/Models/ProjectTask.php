@@ -35,4 +35,3 @@ class ProjectTask extends Model
         return $this->belongsTo(User::class, 'assigned_user_id');
     }
 }
-

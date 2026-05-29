@@ -5,7 +5,6 @@ namespace App\Console\Commands;
 use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Core\Services\ErpCompanyResolver;
-use App\ERP\Purchasing\Models\GoodsReceipt;
 use App\ERP\Purchasing\Models\PurchaseOrder;
 use App\ERP\Shared\Enums\DocumentStatus;
 use App\Models\CategoryCoaMapping;

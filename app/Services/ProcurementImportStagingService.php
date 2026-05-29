@@ -284,6 +284,7 @@ class ProcurementImportStagingService
                 if ($product instanceof MasterProduct && ! $product->isStockTracked()) {
                     $line->delete();
                     $removedServiceLines++;
+
                     continue;
                 }
 

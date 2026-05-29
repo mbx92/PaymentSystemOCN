@@ -25,7 +25,7 @@ class GlPostingService
         $this->fiscalPeriodService->ensureDateIsOpen($entryDate, $companyId, 'entry_date', 'Posting jurnal');
 
         // Validasi prinsip double-entry: total debit HARUS sama dengan total kredit
-        $totalDebit  = collect($lines)->sum(fn (array $line): float => round((float) $line['debit'], 2));
+        $totalDebit = collect($lines)->sum(fn (array $line): float => round((float) $line['debit'], 2));
         $totalCredit = collect($lines)->sum(fn (array $line): float => round((float) $line['credit'], 2));
 
         if (abs($totalDebit - $totalCredit) > 0.01) {

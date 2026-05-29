@@ -17,13 +17,13 @@ use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
 use App\Models\PaymentMethod;
 use App\Models\ProcurementImportStaging;
+use App\Models\ProductStockMovement;
 use App\Models\Project;
 use App\Models\ProjectMaterial;
 use App\Models\ProjectPayment;
-use App\Models\ProductStockMovement;
 use App\Models\ProjectType;
-use App\Models\TeamRole;
 use App\Models\TeamDistribution;
+use App\Models\TeamRole;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -87,17 +87,20 @@ class LegacyProjectImportService
 
             if (($projectData['readiness'] ?? '') === 'blocked') {
                 $skipped[] = $this->skipMessage($projectData, 'Masih berstatus blocked di QC.');
+
                 continue;
             }
 
             if (! empty($projectData['existing_erp_project'])) {
                 $skipped[] = $this->skipMessage($projectData, 'Project dengan import_key yang sama sudah ada di ERP.');
+
                 continue;
             }
 
             $procurementGate = $this->procurementGateForProject($projectData);
             if (! $procurementGate['ready']) {
                 $skipped[] = $this->skipMessage($projectData, (string) $procurementGate['message']);
+
                 continue;
             }
 
@@ -191,22 +194,26 @@ class LegacyProjectImportService
         foreach ($selectedProjects as $projectData) {
             if (($projectData['readiness'] ?? '') === 'blocked') {
                 $skipped[] = $this->skipMessage($projectData, 'Masih berstatus blocked di QC.');
+
                 continue;
             }
 
             if (! empty($projectData['existing_erp_project'])) {
                 $skipped[] = $this->skipMessage($projectData, 'Project dengan import_key yang sama sudah ada di ERP.');
+
                 continue;
             }
 
             $gate = $this->procurementGateForProject($projectData);
             if (! $gate['requires_procurement']) {
                 $skipped[] = $this->skipMessage($projectData, 'Project ini tidak memiliki item stok yang perlu procurement staging.');
+
                 continue;
             }
 
             if (($gate['staging_status'] ?? null) === 'converted') {
                 $skipped[] = $this->skipMessage($projectData, 'Procurement staging sudah converted sebelumnya.');
+
                 continue;
             }
 
@@ -221,6 +228,7 @@ class LegacyProjectImportService
 
             if (! $stagingPrepared) {
                 $skipped[] = $this->skipMessage($projectData, 'Tidak ada line stok yang perlu dibuatkan procurement staging.');
+
                 continue;
             }
 

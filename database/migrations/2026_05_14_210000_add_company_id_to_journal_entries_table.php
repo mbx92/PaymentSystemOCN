@@ -31,7 +31,7 @@ return new class extends Migration
             Schema::table('journal_entries', function (Blueprint $table) {
                 $table->dropConstrainedForeignId('company_id');
             });
-        } catch (\Throwable) {
+        } catch (Throwable) {
             if (Schema::hasColumn('journal_entries', 'company_id')) {
                 Schema::table('journal_entries', function (Blueprint $table) {
                     $table->dropColumn('company_id');

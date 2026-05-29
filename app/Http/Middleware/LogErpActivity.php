@@ -80,4 +80,3 @@ class LogErpActivity
         return $response;
     }
 }
-

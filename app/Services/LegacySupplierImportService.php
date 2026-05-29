@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\ERP\Purchasing\Models\Vendor;
 use App\ERP\Shared\Services\DocumentNumberService;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -143,7 +144,7 @@ class LegacySupplierImportService
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, array<string, mixed>>  $suppliers
+     * @param  Collection<int, array<string, mixed>>  $suppliers
      * @return array<string, mixed>
      */
     private function importCollection($suppliers, int $performedByUserId): array
@@ -158,15 +159,17 @@ class LegacySupplierImportService
 
             if ($name === '') {
                 $skipped[] = 'Legacy supplier '.$supplier['legacy_id'].' dilewati karena nama kosong.';
+
                 continue;
             }
 
             if (($supplier['import_status']['key'] ?? null) === 'already_imported') {
                 $skipped[] = 'Legacy supplier '.$supplier['legacy_id'].' - '.$name.' dilewati karena sudah terhubung ke vendor ERP.';
+
                 continue;
             }
 
-            DB::transaction(function () use ($supplier, $performedByUserId, &$created, &$updated): void {
+            DB::transaction(function () use ($supplier, &$created, &$updated): void {
                 $legacyId = (string) $supplier['legacy_id'];
                 $legacyObject = (object) $supplier;
                 $existingVendor = $this->matchExistingVendor($legacyObject);

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Collection;
 
 class Project extends Model
 {
@@ -170,9 +171,9 @@ class Project extends Model
     /**
      * Baris detail nota/invoice: item budget hasil convert, lalu material project, lalu legacy cctv_items.
      *
-     * @return \Illuminate\Support\Collection<int, array{name: string, description: string, qty: float, uom: string, unit_price: float, subtotal: float}>
+     * @return Collection<int, array{name: string, description: string, qty: float, uom: string, unit_price: float, subtotal: float}>
      */
-    public function resolveInvoiceLineItems(): \Illuminate\Support\Collection
+    public function resolveInvoiceLineItems(): Collection
     {
         $this->loadMissing(['materials.product', 'convertedBudget.items']);
 

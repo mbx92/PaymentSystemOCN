@@ -6,9 +6,9 @@ use App\ERP\Accounting\Models\Account;
 use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Accounting\Models\JournalLine;
 use App\ERP\Accounting\Models\PayablePayment;
-use App\ERP\Accounting\Support\CashAccountLabelResolver;
 use App\ERP\Accounting\Services\CoaSettingService;
 use App\ERP\Accounting\Services\GlPostingService;
+use App\ERP\Accounting\Support\CashAccountLabelResolver;
 use App\ERP\Core\Services\ErpCompanyResolver;
 use App\ERP\Core\Services\FiscalPeriodService;
 use App\ERP\Shared\Enums\DocumentStatus;
@@ -27,8 +27,8 @@ use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -124,7 +124,7 @@ class CashflowController extends Controller
 
             $cashIn->update($validated);
 
-            $cashAccount    = Account::query()->findOrFail((int) $validated['cash_account_id']);
+            $cashAccount = Account::query()->findOrFail((int) $validated['cash_account_id']);
             $revenueAccount = Account::query()->findOrFail($revenueAccountId);
 
             $newEntry = $this->glPostingService->post(
@@ -173,7 +173,7 @@ class CashflowController extends Controller
             $cashOut->update($validated);
 
             $expenseAccount = Account::query()->findOrFail($expenseAccountId);
-            $cashAccount    = Account::query()->findOrFail((int) $validated['cash_account_id']);
+            $cashAccount = Account::query()->findOrFail((int) $validated['cash_account_id']);
 
             $newEntry = $this->glPostingService->post(
                 $companyId,
@@ -296,34 +296,34 @@ class CashflowController extends Controller
         $cashInDebitAccounts = $this->debitCashAccountsByJournal($cashIns->pluck('journal_entry_id')->filter());
 
         $cashIns = $cashIns->map(fn (CashIn $entry) => [
-                    'id' => $entry->id,
-                    'type' => 'in',
-                    'source' => $entry->project_id ? 'project' : 'manual',
-                    'source_name' => $entry->project_payment_id
-                        ? 'Termin Project'
-                        : ($entry->category === 'pendapatan_project' ? 'Invoice Project' : 'Masuk Manual'),
-                    'reference_no' => $entry->project_payment_id ? 'TERM-'.$entry->project_payment_id : (string) $entry->id,
-                    'date' => $entry->date?->format('Y-m-d'),
-                    'project_name' => $entry->project?->name ?? '-',
-                    'project_id' => $entry->project_id,
-                    'category' => $entry->category,
-                    'amount' => (float) $entry->amount,
-                    'payment_method_name' => $entry->paymentMethod?->name,
-                    'payment_method_id' => $entry->payment_method_id,
-                    'cash_account_id' => $entry->cash_account_id,
-                    'cash_account_name' => CashAccountLabelResolver::label(
-                        $entry->cashAccount,
-                        $entry->journal_entry_id,
-                        $cashInDebitAccounts
-                    ),
-                    'recipient_name' => null,
-                    'note' => $entry->note,
-                    'creator_name' => $entry->creator?->name ?? '-',
-                    'document_status' => $entry->document_status,
-                    'journal_entry_id' => $entry->journal_entry_id,
-                    'mutable' => true,
-                    'created_at' => optional($entry->created_at)->timestamp ?? 0,
-                ]);
+            'id' => $entry->id,
+            'type' => 'in',
+            'source' => $entry->project_id ? 'project' : 'manual',
+            'source_name' => $entry->project_payment_id
+                ? 'Termin Project'
+                : ($entry->category === 'pendapatan_project' ? 'Invoice Project' : 'Masuk Manual'),
+            'reference_no' => $entry->project_payment_id ? 'TERM-'.$entry->project_payment_id : (string) $entry->id,
+            'date' => $entry->date?->format('Y-m-d'),
+            'project_name' => $entry->project?->name ?? '-',
+            'project_id' => $entry->project_id,
+            'category' => $entry->category,
+            'amount' => (float) $entry->amount,
+            'payment_method_name' => $entry->paymentMethod?->name,
+            'payment_method_id' => $entry->payment_method_id,
+            'cash_account_id' => $entry->cash_account_id,
+            'cash_account_name' => CashAccountLabelResolver::label(
+                $entry->cashAccount,
+                $entry->journal_entry_id,
+                $cashInDebitAccounts
+            ),
+            'recipient_name' => null,
+            'note' => $entry->note,
+            'creator_name' => $entry->creator?->name ?? '-',
+            'document_status' => $entry->document_status,
+            'journal_entry_id' => $entry->journal_entry_id,
+            'mutable' => true,
+            'created_at' => optional($entry->created_at)->timestamp ?? 0,
+        ]);
 
         $cashOuts = in_array($source, ['pos', 'supplier_payment', 'inventaris'], true)
             ? collect()
@@ -346,39 +346,39 @@ class CashflowController extends Controller
         $cashOutDebitAccounts = $this->debitCashAccountsByJournal($cashOuts->pluck('journal_entry_id')->filter());
 
         $cashOuts = $cashOuts->map(function (CashOut $entry) use ($memberPaymentByCashOutId, $cashOutDebitAccounts) {
-                    $distribution = $memberPaymentByCashOutId->get($entry->id);
-                    $isMemberPayment = $distribution !== null;
+            $distribution = $memberPaymentByCashOutId->get($entry->id);
+            $isMemberPayment = $distribution !== null;
 
-                    return [
-                    'id' => $entry->id,
-                    'type' => 'out',
-                    'source' => $isMemberPayment ? 'member_payment' : ($entry->project_id ? 'project' : 'manual'),
-                    'source_name' => $isMemberPayment ? 'Pembayaran Anggota' : 'Expense',
-                    'reference_no' => $isMemberPayment
-                        ? 'ANGGOTA-'.strtoupper(substr((string) $distribution->id, 0, 8))
-                        : (string) $entry->id,
-                    'date' => $entry->date?->format('Y-m-d'),
-                    'project_name' => $entry->project?->name ?? '-',
-                    'project_id' => $entry->project_id,
-                    'category' => $entry->category,
-                    'amount' => (float) $entry->amount,
-                    'payment_method_name' => null,
-                    'payment_method_id' => null,
-                    'cash_account_id' => $entry->cash_account_id,
-                    'cash_account_name' => CashAccountLabelResolver::label(
-                        $entry->cashAccount,
-                        $entry->journal_entry_id,
-                        $cashOutDebitAccounts
-                    ),
-                    'recipient_name' => $entry->recipient_name,
-                    'note' => $entry->note,
-                    'creator_name' => $entry->creator?->name ?? '-',
-                    'document_status' => $entry->document_status,
-                    'journal_entry_id' => $entry->journal_entry_id,
-                    'mutable' => ! $isMemberPayment,
-                    'created_at' => optional($entry->created_at)->timestamp ?? 0,
-                ];
-                });
+            return [
+                'id' => $entry->id,
+                'type' => 'out',
+                'source' => $isMemberPayment ? 'member_payment' : ($entry->project_id ? 'project' : 'manual'),
+                'source_name' => $isMemberPayment ? 'Pembayaran Anggota' : 'Expense',
+                'reference_no' => $isMemberPayment
+                    ? 'ANGGOTA-'.strtoupper(substr((string) $distribution->id, 0, 8))
+                    : (string) $entry->id,
+                'date' => $entry->date?->format('Y-m-d'),
+                'project_name' => $entry->project?->name ?? '-',
+                'project_id' => $entry->project_id,
+                'category' => $entry->category,
+                'amount' => (float) $entry->amount,
+                'payment_method_name' => null,
+                'payment_method_id' => null,
+                'cash_account_id' => $entry->cash_account_id,
+                'cash_account_name' => CashAccountLabelResolver::label(
+                    $entry->cashAccount,
+                    $entry->journal_entry_id,
+                    $cashOutDebitAccounts
+                ),
+                'recipient_name' => $entry->recipient_name,
+                'note' => $entry->note,
+                'creator_name' => $entry->creator?->name ?? '-',
+                'document_status' => $entry->document_status,
+                'journal_entry_id' => $entry->journal_entry_id,
+                'mutable' => ! $isMemberPayment,
+                'created_at' => optional($entry->created_at)->timestamp ?? 0,
+            ];
+        });
 
         $supplierPayments = $source !== '' && $source !== 'supplier_payment'
             ? collect()
@@ -392,32 +392,32 @@ class CashflowController extends Controller
         $supplierDebitAccounts = $this->debitCashAccountsByJournal($supplierPayments->pluck('journal_entry_id')->filter());
 
         $supplierPayments = $supplierPayments->map(fn (PayablePayment $payment) => [
-                    'id' => 'ap-'.$payment->id,
-                    'type' => 'out',
-                    'source' => 'supplier_payment',
-                    'source_name' => 'Pembayaran Supplier',
-                    'reference_no' => $payment->payable?->bill_no ?? (string) $payment->id,
-                    'date' => $payment->payment_date?->format('Y-m-d'),
-                    'project_name' => '-',
-                    'project_id' => null,
-                    'category' => 'pembayaran_hutang_supplier',
-                    'amount' => (float) $payment->amount,
-                    'payment_method_name' => null,
-                    'payment_method_id' => null,
-                    'cash_account_id' => $payment->cash_account_id,
-                    'cash_account_name' => CashAccountLabelResolver::label(
-                        $payment->cashAccount,
-                        $payment->journal_entry_id,
-                        $supplierDebitAccounts
-                    ),
-                    'recipient_name' => $payment->payable?->vendor?->name,
-                    'note' => $payment->note,
-                    'creator_name' => $payment->payer?->name ?? '-',
-                    'document_status' => DocumentStatus::Posted->value,
-                    'journal_entry_id' => $payment->journal_entry_id,
-                    'mutable' => false,
-                    'created_at' => optional($payment->created_at)->timestamp ?? 0,
-                ]);
+            'id' => 'ap-'.$payment->id,
+            'type' => 'out',
+            'source' => 'supplier_payment',
+            'source_name' => 'Pembayaran Supplier',
+            'reference_no' => $payment->payable?->bill_no ?? (string) $payment->id,
+            'date' => $payment->payment_date?->format('Y-m-d'),
+            'project_name' => '-',
+            'project_id' => null,
+            'category' => 'pembayaran_hutang_supplier',
+            'amount' => (float) $payment->amount,
+            'payment_method_name' => null,
+            'payment_method_id' => null,
+            'cash_account_id' => $payment->cash_account_id,
+            'cash_account_name' => CashAccountLabelResolver::label(
+                $payment->cashAccount,
+                $payment->journal_entry_id,
+                $supplierDebitAccounts
+            ),
+            'recipient_name' => $payment->payable?->vendor?->name,
+            'note' => $payment->note,
+            'creator_name' => $payment->payer?->name ?? '-',
+            'document_status' => DocumentStatus::Posted->value,
+            'journal_entry_id' => $payment->journal_entry_id,
+            'mutable' => false,
+            'created_at' => optional($payment->created_at)->timestamp ?? 0,
+        ]);
 
         $inventoryOutflows = $source !== '' && $source !== 'inventaris'
             ? collect()
@@ -587,8 +587,8 @@ class CashflowController extends Controller
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, int|string|null>  $journalEntryIds
-     * @return \Illuminate\Support\Collection<int, JournalLine>
+     * @param  Collection<int, int|string|null>  $journalEntryIds
+     * @return Collection<int, JournalLine>
      */
     private function debitCashAccountsByJournal(Collection $journalEntryIds): Collection
     {
@@ -615,7 +615,7 @@ class CashflowController extends Controller
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, array{value: string, label: string}>
+     * @return Collection<int, array{value: string, label: string}>
      */
     private function cashflowCategoryOptionsFor(string $domain): Collection
     {

@@ -3,10 +3,13 @@
 namespace Tests\Feature;
 
 use App\ERP\CRM\Models\CrmCustomer;
+use App\Http\Middleware\ErpMaintenanceMode;
+use App\Http\Middleware\LogErpActivity;
 use App\Models\Project;
 use App\Models\ProjectType;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Middleware\RoleMiddleware;
 use Tests\TestCase;
 
 class ProjectCrmCustomerTest extends TestCase
@@ -196,9 +199,9 @@ class ProjectCrmCustomerTest extends TestCase
     private function disableErpMiddleware(): void
     {
         $this->withoutMiddleware([
-            \App\Http\Middleware\ErpMaintenanceMode::class,
-            \App\Http\Middleware\LogErpActivity::class,
-            \Spatie\Permission\Middleware\RoleMiddleware::class,
+            ErpMaintenanceMode::class,
+            LogErpActivity::class,
+            RoleMiddleware::class,
         ]);
     }
 }

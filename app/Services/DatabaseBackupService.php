@@ -8,8 +8,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
-use Symfony\Component\Process\Process;
 use Symfony\Component\Process\ExecutableFinder;
+use Symfony\Component\Process\Process;
 
 class DatabaseBackupService
 {
@@ -179,7 +179,7 @@ class DatabaseBackupService
     {
         return $this->looksLikeAbsoluteBinaryPath($binary)
             ? file_exists($binary)
-            : (new ExecutableFinder())->find($binary) !== null;
+            : (new ExecutableFinder)->find($binary) !== null;
     }
 
     private function resolvePgDumpBinary(?int $serverMajor = null): string
@@ -194,7 +194,7 @@ class DatabaseBackupService
                 return $configured;
             }
 
-            $foundConfigured = (new ExecutableFinder())->find($configured);
+            $foundConfigured = (new ExecutableFinder)->find($configured);
             if ($foundConfigured !== null) {
                 return $foundConfigured;
             }
@@ -206,7 +206,7 @@ class DatabaseBackupService
             }
         }
 
-        $finder = new ExecutableFinder();
+        $finder = new ExecutableFinder;
         $fromPath = $finder->find('pg_dump');
         if ($fromPath !== null) {
             return $fromPath;

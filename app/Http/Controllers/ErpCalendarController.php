@@ -48,7 +48,7 @@ class ErpCalendarController extends Controller
         $projects = Project::query()
             ->where(function ($q) use ($start, $end) {
                 $q->whereBetween('started_at', [$start, $end])
-                  ->orWhereBetween('finished_at', [$start, $end]);
+                    ->orWhereBetween('finished_at', [$start, $end]);
             })
             ->get(['id', 'name', 'client_name', 'status', 'started_at', 'finished_at']);
 
@@ -216,7 +216,7 @@ class ErpCalendarController extends Controller
             ->with(['lead:id,name', 'customer:id,name,company', 'user:id,name'])
             ->where(function ($q) use ($start, $end) {
                 $q->whereBetween('activity_date', [$start, $end])
-                  ->orWhereBetween('next_action_date', [$start, $end]);
+                    ->orWhereBetween('next_action_date', [$start, $end]);
             })
             ->get(['id', 'type', 'subject', 'activity_date', 'next_action_date', 'next_action_note', 'status', 'crm_lead_id', 'crm_customer_id', 'user_id']);
 

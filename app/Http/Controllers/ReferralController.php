@@ -10,11 +10,11 @@ class ReferralController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'project_id'        => 'required|uuid|exists:projects,id',
-            'referrer_name'     => 'required|string|max:255',
+            'project_id' => 'required|uuid|exists:projects,id',
+            'referrer_name' => 'required|string|max:255',
             'commission_amount' => 'required|numeric|min:0',
-            'paid_at'           => 'nullable|date',
-            'note'              => 'nullable|string',
+            'paid_at' => 'nullable|date',
+            'note' => 'nullable|string',
         ]);
 
         Referral::create($validated);
@@ -25,10 +25,10 @@ class ReferralController extends Controller
     public function update(Request $request, Referral $referral)
     {
         $validated = $request->validate([
-            'referrer_name'     => 'required|string|max:255',
+            'referrer_name' => 'required|string|max:255',
             'commission_amount' => 'required|numeric|min:0',
-            'paid_at'           => 'nullable|date',
-            'note'              => 'nullable|string',
+            'paid_at' => 'nullable|date',
+            'note' => 'nullable|string',
         ]);
 
         $referral->update($validated);
@@ -39,6 +39,7 @@ class ReferralController extends Controller
     public function destroy(Referral $referral)
     {
         $referral->delete();
+
         return back()->with('flash', ['type' => 'success', 'message' => 'Referral berhasil dihapus.']);
     }
 }
