@@ -3,12 +3,23 @@
 namespace App\Services;
 
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 
 class InvoiceService
 {
     public function getInvoiceDocument(string|int $id): array
     {
-        $invoice = $this->dummyInvoice((string) $id);
+        $cacheKey = 'invoice_doc_'.$id;
+        $cacheTtl = now()->addMinutes(60);
+
+        return Cache::remember($cacheKey, $cacheTtl, function () use ($id) {
+            return $this->buildInvoiceDocument((string) $id);
+        });
+    }
+
+    private function buildInvoiceDocument(string $id): array
+    {
+        $invoice = $this->dummyInvoice($id);
         $items = collect($invoice['items'])->map(function (array $item, int $index) {
             $qty = (float) $item['qty'];
             $price = (float) $item['price'];

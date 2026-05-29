@@ -85,7 +85,7 @@ class HRLegalController extends Controller
     {
         $validated = $request->validate([
             'path' => 'nullable|string|max:2000',
-            'file' => 'required|file|max:51200',
+            'file' => 'required|file|max:51200|mimes:pdf,doc,docx,xls,xlsx,jpg,jpeg,png,zip,rar',
         ]);
 
         $parent = $this->normalizeRelativePath((string) ($validated['path'] ?? ''));
@@ -123,22 +123,30 @@ class HRLegalController extends Controller
         abort_unless(File::exists($abs), 404);
 
         if ($validated['type'] === 'folder') {
-            abort_unless(File::isDirectory($abs), 422);
+            abort_unless(File::isDirectory($abs), 422, 'Path bukan folder.');
+
             File::deleteDirectory($abs);
         } else {
-            abort_unless(File::isFile($abs), 422);
+            abort_unless(File::isFile($abs), 422, 'Path bukan file.');
+
             File::delete($abs);
+
+            $parentAbs = dirname($abs);
+            if (File::isDirectory($parentAbs) && count(File::files($parentAbs)) === 0 && count(File::directories($parentAbs)) === 0) {
+                File::deleteDirectory($parentAbs);
+            }
         }
 
-        $parentSlash = dirname(str_replace('\\', '/', $rel));
-        $parentNorm = ($parentSlash === '.' || $parentSlash === '/') ? '' : $parentSlash;
-
-        return redirect()->route('erp.hr.legal', ['path' => $parentNorm])
+        return redirect()->route('erp.hr.legal', ['path' => $parent])
             ->with('flash', ['type' => 'success', 'message' => 'Item berhasil dihapus.']);
     }
 
     public function downloadFile(Request $request): BinaryFileResponse
     {
+        if (! $request->hasValidSignature()) {
+            abort(401, 'Link download tidak valid atau sudah kedaluwarsa.');
+        }
+
         $rel = $this->normalizeRelativePath($request->string('path')->toString());
         $abs = $this->absolutePath($rel);
         abort_unless(File::isFile($abs), 404);

@@ -6,7 +6,9 @@ use App\ERP\CRM\Models\CrmCustomer;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -53,10 +55,12 @@ class CrmCustomerController extends Controller
                 'created_at' => $c->created_at?->format('Y-m-d'),
             ]);
 
-        $users = User::query()
-            ->whereHas('roles', fn ($r) => $r->whereIn('name', ['admin', 'manajer']))
-            ->orderBy('name')
-            ->get(['id', 'name']);
+        $users = Cache::remember('crm_pic_users', now()->addMinutes(15), function () {
+            return User::query()
+                ->whereHas('roles', fn ($r) => $r->whereIn('name', ['admin', 'manajer']))
+                ->orderBy('name')
+                ->get(['id', 'name']);
+        });
 
         return Inertia::render('ERP/CRM/Customers', [
             'customers' => $customers,
@@ -72,6 +76,7 @@ class CrmCustomerController extends Controller
             'company' => 'nullable|string|max:255',
             'email' => 'nullable|email|max:255',
             'phone' => 'nullable|string|max:50',
+            'company_id' => 'nullable|integer|exists:companies,id',
             'address' => 'nullable|string|max:1000',
             'business_type' => 'nullable|string|max:60',
             'tax_id' => 'nullable|string|max:50',
@@ -81,6 +86,7 @@ class CrmCustomerController extends Controller
             'notes' => 'nullable|string|max:2000',
         ]);
 
+        $this->checkDuplicateCustomer($validated, null);
         $validated['is_active'] = (bool) ($validated['is_active'] ?? true);
         $validated['code'] = $this->generateCode();
 
@@ -105,6 +111,8 @@ class CrmCustomerController extends Controller
             'notes' => 'nullable|string|max:2000',
         ]);
 
+        $this->checkDuplicateCustomer($validated, $crmCustomer->id);
+
         if (array_key_exists('is_active', $validated)) {
             $validated['is_active'] = (bool) $validated['is_active'];
         }
@@ -119,6 +127,29 @@ class CrmCustomerController extends Controller
         $crmCustomer->delete();
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Customer dihapus.']);
+    }
+
+    private function checkDuplicateCustomer(array $validated, ?int $excludeId): void
+    {
+        $query = CrmCustomer::query();
+        if ($excludeId) {
+            $query->where('id', '!=', $excludeId);
+        }
+
+        $query->where(function ($q) use ($validated): void {
+            if (! empty($validated['email'])) {
+                $q->where('email', $validated['email']);
+            }
+            if (! empty($validated['phone'])) {
+                $q->orWhere('phone', $validated['phone']);
+            }
+        });
+
+        if ($query->exists()) {
+            throw ValidationException::withMessages([
+                'email' => 'Email atau nomor telepon sudah terdaftar untuk customer lain.',
+            ]);
+        }
     }
 
     private function generateCode(): string

@@ -70,4 +70,3 @@ class PurchaseOrder extends Model
         return 'number';
     }
 }
-

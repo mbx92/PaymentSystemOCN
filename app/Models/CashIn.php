@@ -15,6 +15,7 @@ class CashIn extends Model
     protected $table = 'cash_in';
 
     protected $fillable = [
+        'company_id',
         'project_id',
         'project_payment_id',
         'payment_method_id',

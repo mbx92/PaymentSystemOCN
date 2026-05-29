@@ -8,7 +8,9 @@ use App\ERP\CRM\Models\CrmPipeline;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -50,10 +52,12 @@ class CrmPipelineController extends Controller
 
         $customers = CrmCustomer::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'company']);
         $leads = CrmLead::query()->whereNotIn('status', ['won', 'lost'])->orderBy('name')->get(['id', 'name', 'company']);
-        $users = User::query()
-            ->whereHas('roles', fn ($r) => $r->whereIn('name', ['admin', 'manajer']))
-            ->orderBy('name')
-            ->get(['id', 'name']);
+        $users = Cache::remember('crm_pic_users', now()->addMinutes(15), function () {
+            return User::query()
+                ->whereHas('roles', fn ($r) => $r->whereIn('name', ['admin', 'manajer']))
+                ->orderBy('name')
+                ->get(['id', 'name']);
+        });
 
         return Inertia::render('ERP/CRM/Pipelines', [
             'pipelines' => $pipelines,
@@ -70,7 +74,7 @@ class CrmPipelineController extends Controller
             'title' => 'required|string|max:255',
             'crm_customer_id' => 'nullable|exists:crm_customers,id',
             'crm_lead_id' => 'nullable|exists:crm_leads,id',
-            'stage' => 'required|string|max:30',
+            'stage' => ['required', 'string', 'max:30', Rule::in(CrmPipeline::STAGES)],
             'deal_value' => 'nullable|numeric|min:0',
             'win_probability' => 'nullable|integer|min:0|max:100',
             'expected_close_date' => 'nullable|date',
@@ -93,7 +97,7 @@ class CrmPipelineController extends Controller
             'title' => 'required|string|max:255',
             'crm_customer_id' => 'nullable|exists:crm_customers,id',
             'crm_lead_id' => 'nullable|exists:crm_leads,id',
-            'stage' => 'required|string|max:30',
+            'stage' => ['required', 'string', 'max:30', Rule::in(CrmPipeline::STAGES)],
             'deal_value' => 'nullable|numeric|min:0',
             'win_probability' => 'nullable|integer|min:0|max:100',
             'expected_close_date' => 'nullable|date',

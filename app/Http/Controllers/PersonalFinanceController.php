@@ -11,6 +11,7 @@ use App\Models\PersonalWallet;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -103,17 +104,19 @@ class PersonalFinanceController extends Controller
             ->orderBy('name')
             ->get();
 
-        $investmentNetById = PersonalInvestmentMovement::query()
-            ->whereIn('investment_id', $investments->pluck('id'))
-            ->get()
-            ->groupBy('investment_id')
-            ->map(function ($group) {
-                return round($group->sum(function (PersonalInvestmentMovement $movement) {
-                    $amount = (float) $movement->amount;
+        $investmentNetById = Cache::remember('investment_net_'.$userId, now()->addMinutes(5), function () use ($investments) {
+            return PersonalInvestmentMovement::query()
+                ->whereIn('investment_id', $investments->pluck('id'))
+                ->get()
+                ->groupBy('investment_id')
+                ->map(function ($group) {
+                    return round($group->sum(function (PersonalInvestmentMovement $movement) {
+                        $amount = (float) $movement->amount;
 
-                    return $movement->flow === 'withdrawal' ? -$amount : $amount;
-                }), 2);
-            });
+                        return $movement->flow === 'withdrawal' ? -$amount : $amount;
+                    }), 2);
+                });
+        });
 
         $investmentRows = $investments->map(function (PersonalInvestment $investment) use ($assetTypeLabels, $investmentNetById) {
             return [
@@ -398,7 +401,7 @@ class PersonalFinanceController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:120',
-            'currency' => 'required|string|size:3',
+            'currency' => 'required|string|size:3|in:IDR,USD,SGD,MYR,JPY,CNY,EUR,GBP,AUD,KRW,THB,VND,PHP,INR,BRL,CAD,CHF,NZD,SEK,NOK,DKK,TRY,ZAR,MXN,RUB,HKD,TWD,BDT,PKR,NPR,LKR,KHR,LAK,MMK',
             'sort_order' => 'nullable|integer|min:0|max:9999',
             'is_default' => 'required|boolean',
         ]);
@@ -429,7 +432,7 @@ class PersonalFinanceController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:120',
-            'currency' => 'required|string|size:3',
+            'currency' => 'required|string|size:3|in:IDR,USD,SGD,MYR,JPY,CNY,EUR,GBP,AUD,KRW,THB,VND,PHP,INR,BRL,CAD,CHF,NZD,SEK,NOK,DKK,TRY,ZAR,MXN,RUB,HKD,TWD,BDT,PKR,NPR,LKR,KHR,LAK,MMK',
             'sort_order' => 'nullable|integer|min:0|max:9999',
             'is_default' => 'required|boolean',
         ]);

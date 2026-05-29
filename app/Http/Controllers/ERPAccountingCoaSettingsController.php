@@ -8,19 +8,16 @@ use App\Models\CashCategory;
 use App\Models\CategoryCoaMapping;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class ERPAccountingCoaSettingsController extends Controller
 {
-    /**
-     * @return array<int, array{key: string, label: string, description: string, amount_source: string, default_account_code: string, source_module: string}>
-     */
     private function definitions(): array
     {
-        return [
+        return config('accounting.coa_definitions', [
             [
                 'key' => 'pos_sale_cash_account',
                 'label' => 'POS - Akun Kas/Bank',
@@ -41,7 +38,7 @@ class ERPAccountingCoaSettingsController extends Controller
                 'key' => 'pos_sale_additional_income_account',
                 'label' => 'POS - Biaya lainnya (ditagih)',
                 'description' => 'Credit untuk biaya lain yang menambah total bayar (contoh ongkir). Jika kosong, fallback ke akun penjualan POS.',
-                'amount_source' => 'PosSale.additional_fee (hanya baris biaya dengan jenis “tambah ke total”)',
+                'amount_source' => 'PosSale.additional_fee (hanya baris biaya dengan jenis "tambah ke total")',
                 'default_account_code' => '4004',
                 'source_module' => 'pos_sale',
             ],
@@ -85,7 +82,7 @@ class ERPAccountingCoaSettingsController extends Controller
                 'default_account_code' => '4003',
                 'source_module' => 'project_invoice_payment',
             ],
-        ];
+        ]);
     }
 
     public function index(Request $request): Response
@@ -106,13 +103,13 @@ class ERPAccountingCoaSettingsController extends Controller
             ->groupBy(fn (CategoryCoaMapping $mapping) => $mapping->domain.'|'.$mapping->category);
 
         $settings = collect(array_map(function (array $definition) use ($saved): array {
-                $row = $saved->get($definition['key']);
+            $row = $saved->get($definition['key']);
 
-                return [
-                    ...$definition,
-                    'account_id' => $row?->account_id,
-                ];
-            }, $defs))
+            return [
+                ...$definition,
+                'account_id' => $row?->account_id,
+            ];
+        }, $defs))
             ->filter(function (array $row) use ($search): bool {
                 if ($search === '') {
                     return true;
@@ -205,29 +202,16 @@ class ERPAccountingCoaSettingsController extends Controller
 
     public function applyDefaults(): RedirectResponse
     {
-        $adminChannelAccounts = [
-            ['code' => '2090', 'name' => 'Hutang Biaya Channel POS (estimasi)', 'type' => 'liability', 'normal_balance' => 'credit'],
-            ['code' => '5016', 'name' => 'Beban Admin Channel Penjualan POS', 'type' => 'expense', 'normal_balance' => 'debit'],
-        ];
+        $defaults = config('accounting.apply_defaults');
 
-        foreach ($adminChannelAccounts as $account) {
+        foreach ($defaults['admin_channel_accounts'] as $account) {
             Account::query()->updateOrCreate(
                 ['code' => $account['code']],
                 $account + ['is_active' => true],
             );
         }
 
-        $systemDefaults = [
-            'pos_sale_cash_account' => '1001',
-            'pos_sale_revenue_account' => '4002',
-            'pos_sale_additional_income_account' => '4004',
-            'pos_sale_sales_channel_admin_expense' => '5016',
-            'pos_sale_sales_channel_admin_payable' => '2090',
-            'project_invoice_cash_account' => '1001',
-            'project_invoice_revenue_account' => '4003',
-        ];
-
-        foreach ($systemDefaults as $key => $code) {
+        foreach ($defaults['system_defaults'] as $key => $code) {
             $account = Account::query()->where('code', $code)->first();
             if ($account) {
                 CoaSetting::query()->updateOrCreate(
@@ -237,35 +221,7 @@ class ERPAccountingCoaSettingsController extends Controller
             }
         }
 
-        $categoryDefaults = [
-            ['domain' => 'cash_in', 'category' => 'pendapatan_project', 'account_code' => '4003'],
-            ['domain' => 'cash_in', 'category' => 'uang_muka_project', 'account_code' => '2005'],
-            ['domain' => 'cash_in', 'category' => 'pendapatan_pos', 'account_code' => '4002'],
-            ['domain' => 'cash_in', 'category' => 'penjualan_pos', 'account_code' => '4002'],
-            ['domain' => 'cash_in', 'category' => 'pendapatan_jasa', 'account_code' => '4001'],
-            ['domain' => 'cash_in', 'category' => 'piutang_masuk', 'account_code' => '1101'],
-            ['domain' => 'cash_in', 'category' => 'investasi_masuk', 'account_code' => '3001'],
-            ['domain' => 'cash_in', 'category' => 'pendapatan_lainnya', 'account_code' => '4004'],
-            ['domain' => 'cash_in', 'category' => 'lainnya', 'account_code' => '4004'],
-            ['domain' => 'cash_in', 'category' => 'refund_pembelian', 'account_code' => '2001'],
-            ['domain' => 'cash_out', 'category' => 'operasional', 'account_code' => '5001'],
-            ['domain' => 'cash_out', 'category' => 'biaya_tim', 'account_code' => '5002'],
-            ['domain' => 'cash_out', 'category' => 'komisi_referral', 'account_code' => '5014'],
-            ['domain' => 'cash_out', 'category' => 'gaji_karyawan', 'account_code' => '5002'],
-            ['domain' => 'cash_out', 'category' => 'pembelian_material_project', 'account_code' => '5009'],
-            ['domain' => 'cash_out', 'category' => 'pembelian_bahan', 'account_code' => '5009'],
-            ['domain' => 'cash_out', 'category' => 'sewa_tempat', 'account_code' => '5003'],
-            ['domain' => 'cash_out', 'category' => 'listrik_air', 'account_code' => '5004'],
-            ['domain' => 'cash_out', 'category' => 'transportasi', 'account_code' => '5006'],
-            ['domain' => 'cash_out', 'category' => 'marketing', 'account_code' => '5014'],
-            ['domain' => 'cash_out', 'category' => 'pajak', 'account_code' => '5012'],
-            ['domain' => 'cash_out', 'category' => 'pinjaman', 'account_code' => '2004'],
-            ['domain' => 'cash_out', 'category' => 'pengeluaran_lainnya', 'account_code' => '5013'],
-            ['domain' => 'cash_out', 'category' => 'lainnya', 'account_code' => '5013'],
-            ['domain' => 'cash_out', 'category' => 'refund_penjualan_pos', 'account_code' => '4005'],
-        ];
-
-        foreach ($categoryDefaults as $mapping) {
+        foreach ($defaults['category_defaults'] as $mapping) {
             $account = Account::query()->where('code', $mapping['account_code'])->first();
             if ($account) {
                 CategoryCoaMapping::query()->updateOrCreate(

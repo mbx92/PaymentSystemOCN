@@ -62,16 +62,22 @@ class NotificationController extends Controller
     public function markAllRead(Request $request, AppNotificationCenter $notificationCenter): RedirectResponse
     {
         $items = $notificationCenter->buildFor($request->user())['items'] ?? [];
+        $userId = $request->user()->id;
+        $now = now();
 
-        foreach ($items as $item) {
-            UserNotificationRead::query()->updateOrCreate(
-                [
-                    'user_id' => $request->user()->id,
-                    'notification_id' => $item['notification_id'],
-                ],
-                [
-                    'read_at' => now(),
-                ],
+        $records = array_map(fn (array $item) => [
+            'user_id' => $userId,
+            'notification_id' => $item['notification_id'],
+            'read_at' => $now,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ], $items);
+
+        if ($records !== []) {
+            UserNotificationRead::query()->upsert(
+                $records,
+                ['user_id', 'notification_id'],
+                ['read_at', 'updated_at'],
             );
         }
 

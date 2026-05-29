@@ -21,15 +21,15 @@ class RebuildInventoryStockJob implements ShouldQueue
 
     public function handle(WarehouseStockRebuildService $rebuildService): void
     {
-        if ($this->warehouseId) {
-            $rebuildService->rebuild($this->warehouseId);
-        } else {
-            $rebuildService->rebuildAll();
-        }
+        $result = $rebuildService->rebuildFromMovements();
 
         activity()
             ->causedBy($this->initiator)
-            ->withProperties(['warehouse_id' => $this->warehouseId])
+            ->withProperties([
+                'warehouse_id' => $this->warehouseId,
+                'updated' => $result['warehouse_rows_updated'] ?? 0,
+                'created' => $result['warehouse_rows_created'] ?? 0,
+            ])
             ->log('Inventory stock rebuilt');
     }
 }

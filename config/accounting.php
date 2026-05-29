@@ -2,19 +2,125 @@
 
 return [
 
-    /*
-    |--------------------------------------------------------------------------
-    | Fallback kode akun (hanya jika belum di-set di Pengaturan COA)
-    |--------------------------------------------------------------------------
-    |
-    | Dropdown kas/bank memakai flag is_cash_bank pada akun CoA (Chart of Accounts).
-    |
-    */
+    'coa_definitions' => [
+        [
+            'key' => 'pos_sale_cash_account',
+            'label' => 'POS - Akun Kas/Bank',
+            'description' => 'Dipakai saat transaksi POS sukses diposting. (GL: pos_sale)',
+            'amount_source' => 'PosSale.grand_total (penjualan bersih + biaya lain yang ditagih ke pelanggan, tidak termasuk biaya admin channel)',
+            'default_account_code' => '1001',
+            'source_module' => 'pos_sale',
+        ],
+        [
+            'key' => 'pos_sale_revenue_account',
+            'label' => 'POS - Akun Penjualan',
+            'description' => 'Credit penjualan barang (nilai transaksi). Biaya admin channel (jurnal saja) mengurangi kredit ini di jurnal POS.',
+            'amount_source' => 'PosSale.gross_total - PosSale.discount_total',
+            'default_account_code' => '4002',
+            'source_module' => 'pos_sale',
+        ],
+        [
+            'key' => 'pos_sale_additional_income_account',
+            'label' => 'POS - Biaya lainnya (ditagih)',
+            'description' => 'Credit untuk biaya lain yang menambah total bayar (contoh ongkir). Jika kosong, fallback ke akun penjualan POS.',
+            'amount_source' => 'PosSale.additional_fee (hanya baris biaya dengan jenis "tambah ke total")',
+            'default_account_code' => '4004',
+            'source_module' => 'pos_sale',
+        ],
+        [
+            'key' => 'pos_sale_sales_channel_admin_expense',
+            'label' => 'POS - Beban admin channel',
+            'description' => 'Debit beban untuk biaya potongan sales channel (pasangan kredit: hutang estimasi channel).',
+            'amount_source' => 'PosSale.sales_channel_admin_fee',
+            'default_account_code' => '5016',
+            'source_module' => 'pos_sale',
+        ],
+        [
+            'key' => 'pos_sale_sales_channel_admin_payable',
+            'label' => 'POS - Hutang estimasi biaya channel',
+            'description' => 'Kredit hutang estimasi atas biaya admin channel (disettle ke pembayaran aktual menyusul).',
+            'amount_source' => 'PosSale.sales_channel_admin_fee',
+            'default_account_code' => '2090',
+            'source_module' => 'pos_sale',
+        ],
+        [
+            'key' => 'pos_sale_cogs_account',
+            'label' => 'POS - Akun HPP / COGS',
+            'description' => 'Debit Harga Pokok Penjualan (credit ke akun persediaan) saat transaksi POS diposting.',
+            'amount_source' => 'MasterProduct.unit_cost * qty (average cost)',
+            'default_account_code' => '5009',
+            'source_module' => 'pos_sale_cogs',
+        ],
+        [
+            'key' => 'project_invoice_cash_account',
+            'label' => 'Invoice Project - Akun Kas/Bank',
+            'description' => 'Debit saat pembayaran invoice project atau termin project dicatat sebagai kas masuk.',
+            'amount_source' => 'CashIn.amount dari pembayaran project',
+            'default_account_code' => '1001',
+            'source_module' => 'project_invoice_payment',
+        ],
+        [
+            'key' => 'project_invoice_revenue_account',
+            'label' => 'Invoice Project - Akun Pendapatan',
+            'description' => 'Credit untuk pendapatan invoice project.',
+            'amount_source' => 'CashIn.amount dari pembayaran project',
+            'default_account_code' => '4003',
+            'source_module' => 'project_invoice_payment',
+        ],
+    ],
+
     'coa_fallback_codes' => [
-        'pos_sale_cash_account' => env('ACCOUNTING_FALLBACK_CASH_CODE', '1001'),
-        'project_invoice_cash_account' => env('ACCOUNTING_FALLBACK_CASH_CODE', '1001'),
-        'project_invoice_revenue_account' => env('ACCOUNTING_FALLBACK_PROJECT_REVENUE_CODE', '4003'),
-        'pos_sale_revenue_account' => env('ACCOUNTING_FALLBACK_POS_REVENUE_CODE', '4002'),
+        'pos_sale_cash_account' => '1001',
+        'pos_sale_revenue_account' => '4002',
+        'pos_sale_additional_income_account' => '4004',
+        'pos_sale_sales_channel_admin_expense' => '5016',
+        'pos_sale_sales_channel_admin_payable' => '2090',
+        'pos_sale_cogs_account' => '5009',
+        'project_invoice_cash_account' => '1001',
+        'project_invoice_revenue_account' => '4003',
+    ],
+
+    'apply_defaults' => [
+        'admin_channel_accounts' => [
+            ['code' => '2090', 'name' => 'Hutang Biaya Channel POS (estimasi)', 'type' => 'liability', 'normal_balance' => 'credit'],
+            ['code' => '5016', 'name' => 'Beban Admin Channel Penjualan POS', 'type' => 'expense', 'normal_balance' => 'debit'],
+        ],
+        'system_defaults' => [
+            'pos_sale_cash_account' => '1001',
+            'pos_sale_revenue_account' => '4002',
+            'pos_sale_additional_income_account' => '4004',
+            'pos_sale_sales_channel_admin_expense' => '5016',
+            'pos_sale_sales_channel_admin_payable' => '2090',
+            'project_invoice_cash_account' => '1001',
+            'project_invoice_revenue_account' => '4003',
+        ],
+        'category_defaults' => [
+            ['domain' => 'cash_in', 'category' => 'pendapatan_project', 'account_code' => '4003'],
+            ['domain' => 'cash_in', 'category' => 'uang_muka_project', 'account_code' => '2005'],
+            ['domain' => 'cash_in', 'category' => 'pendapatan_pos', 'account_code' => '4002'],
+            ['domain' => 'cash_in', 'category' => 'penjualan_pos', 'account_code' => '4002'],
+            ['domain' => 'cash_in', 'category' => 'pendapatan_jasa', 'account_code' => '4001'],
+            ['domain' => 'cash_in', 'category' => 'piutang_masuk', 'account_code' => '1101'],
+            ['domain' => 'cash_in', 'category' => 'investasi_masuk', 'account_code' => '3001'],
+            ['domain' => 'cash_in', 'category' => 'pendapatan_lainnya', 'account_code' => '4004'],
+            ['domain' => 'cash_in', 'category' => 'lainnya', 'account_code' => '4004'],
+            ['domain' => 'cash_in', 'category' => 'refund_pembelian', 'account_code' => '2001'],
+            ['domain' => 'cash_out', 'category' => 'operasional', 'account_code' => '5001'],
+            ['domain' => 'cash_out', 'category' => 'biaya_tim', 'account_code' => '5002'],
+            ['domain' => 'cash_out', 'category' => 'komisi_referral', 'account_code' => '5014'],
+            ['domain' => 'cash_out', 'category' => 'gaji_karyawan', 'account_code' => '5002'],
+            ['domain' => 'cash_out', 'category' => 'pembelian_material_project', 'account_code' => '5009'],
+            ['domain' => 'cash_out', 'category' => 'pembelian_bahan', 'account_code' => '5009'],
+            ['domain' => 'cash_out', 'category' => 'sewa_tempat', 'account_code' => '5003'],
+            ['domain' => 'cash_out', 'category' => 'listrik_air', 'account_code' => '5004'],
+            ['domain' => 'cash_out', 'category' => 'transportasi', 'account_code' => '5006'],
+            ['domain' => 'cash_out', 'category' => 'marketing', 'account_code' => '5014'],
+            ['domain' => 'cash_out', 'category' => 'pajak', 'account_code' => '5012'],
+            ['domain' => 'cash_out', 'category' => 'pinjaman', 'account_code' => '2004'],
+            ['domain' => 'cash_out', 'category' => 'pengeluaran_lainnya', 'account_code' => '5013'],
+            ['domain' => 'cash_out', 'category' => 'lainnya', 'account_code' => '5013'],
+            ['domain' => 'cash_out', 'category' => 'refund_penjualan_pos', 'account_code' => '4005'],
+        ],
     ],
 
 ];

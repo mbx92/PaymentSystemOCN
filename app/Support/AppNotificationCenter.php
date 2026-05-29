@@ -13,6 +13,7 @@ use App\Models\UserNotificationRead;
 use App\Services\WarehouseStockRebuildService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 class AppNotificationCenter
 {
@@ -29,30 +30,35 @@ class AppNotificationCenter
             ];
         }
 
-        $reads = UserNotificationRead::query()
-            ->where('user_id', $user->id)
-            ->pluck('read_at', 'notification_id');
+        $cacheKey = 'notification_center_'.$user->id;
+        $cacheTtl = now()->addSeconds(15);
 
-        $groups = array_values(array_filter([
-            $this->lowStockGroup($reads),
-            $this->reservedStockGroup($reads),
-            $this->stockMismatchGroup($reads),
-            $this->projectTaskGroup($user, $reads),
-            $this->supplierBillGroup($reads),
-            $this->purchaseOrderEtaGroup($reads),
-        ]));
+        return Cache::remember($cacheKey, $cacheTtl, function () use ($user) {
+            $reads = UserNotificationRead::query()
+                ->where('user_id', $user->id)
+                ->pluck('read_at', 'notification_id');
 
-        $items = collect($groups)
-            ->flatMap(fn (array $group) => $group['items'] ?? [])
-            ->sortByDesc(fn (array $item) => (int) ($item['sort_ts'] ?? 0))
-            ->values()
-            ->all();
+            $groups = array_values(array_filter([
+                $this->lowStockGroup($reads),
+                $this->reservedStockGroup($reads),
+                $this->stockMismatchGroup($reads),
+                $this->projectTaskGroup($user, $reads),
+                $this->supplierBillGroup($reads),
+                $this->purchaseOrderEtaGroup($reads),
+            ]));
 
-        return [
-            'total_count' => array_sum(array_map(fn (array $group) => (int) $group['unread_count'], $groups)),
-            'groups' => $groups,
-            'items' => $items,
-        ];
+            $items = collect($groups)
+                ->flatMap(fn (array $group) => $group['items'] ?? [])
+                ->sortByDesc(fn (array $item) => (int) ($item['sort_ts'] ?? 0))
+                ->values()
+                ->all();
+
+            return [
+                'total_count' => array_sum(array_map(fn (array $group) => (int) $group['unread_count'], $groups)),
+                'groups' => $groups,
+                'items' => $items,
+            ];
+        });
     }
 
     private function lowStockGroup(Collection $reads): ?array

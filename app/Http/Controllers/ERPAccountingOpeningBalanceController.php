@@ -7,6 +7,7 @@ use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Core\Models\Company;
 use App\ERP\Core\Services\ErpCompanyResolver;
+use App\ERP\Shared\Enums\DocumentStatus;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -101,6 +102,22 @@ class ERPAccountingOpeningBalanceController extends Controller
             'lines.*.description' => ['nullable', 'string', 'max:255'],
         ]);
 
+        $entryDate = $validated['entry_date'];
+        $companyId = ErpCompanyResolver::resolveForGlPosting($request);
+
+        $existing = JournalEntry::query()
+            ->where('source_module', 'opening_balance')
+            ->where('company_id', $companyId)
+            ->where('entry_date', $entryDate)
+            ->where('status', '!=', DocumentStatus::Void->value)
+            ->exists();
+
+        if ($existing) {
+            throw ValidationException::withMessages([
+                'entry_date' => 'Saldo awal sudah ada untuk perusahaan dan tanggal ini. Gunakan fungsi void terlebih dahulu jika ingin mengganti.',
+            ]);
+        }
+
         $lines = collect($validated['lines'])
             ->map(function (array $line): array {
                 $debit = round((float) ($line['debit'] ?? 0), 2);
@@ -137,8 +154,6 @@ class ERPAccountingOpeningBalanceController extends Controller
             ]);
         }
 
-        $entryDate = $validated['entry_date'];
-        $companyId = ErpCompanyResolver::resolveForGlPosting($request);
         $description = trim((string) ($validated['description'] ?? '')) ?: 'Saldo awal per '.$entryDate;
         $sourceReference = 'OPENING-'.str_replace('-', '', $entryDate).'-'.now()->format('His');
 

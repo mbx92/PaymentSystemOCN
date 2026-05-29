@@ -7,7 +7,7 @@ import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Link, useForm, router } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
-import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
+import { ArrowLeftIcon, PencilSquareIcon, TrashIcon } from '@heroicons/vue/24/outline';
 import { useDateFormat } from '@/composables/useDateFormat';
 
 const props = defineProps({ cashOuts: Object, total: Number, projects: Array, cashAccounts: Array, categoryOptions: Array, filters: Object });
@@ -43,9 +43,20 @@ const openEdit = (c) => {
 const submitEdit = () => editForm.put(route('cash-out.update', editingId.value), {
     onSuccess: () => document.getElementById('modal-edit-cash-out').close()
 });
+const selected = ref(null);
+const openDetail = (c) => { selected.value = c; document.getElementById('modal-detail-cash-out')?.showModal(); };
 const deletingId = ref(null);
-const confirmDelete = (id) => { deletingId.value = id; document.getElementById('modal-delete-cash-out').showModal(); };
-const doDelete = () => { router.delete(route('cash-out.destroy', deletingId.value)); document.getElementById('modal-delete-cash-out').close(); };
+const confirmDelete = () => {
+    deletingId.value = selected.value.id;
+    document.getElementById('modal-detail-cash-out')?.close();
+    document.getElementById('modal-delete-cash-out')?.showModal();
+};
+const doDelete = () => {
+    router.delete(route('cash-out.destroy', deletingId.value), {
+        onSuccess: () => { deletingId.value = null; selected.value = null; }
+    });
+    document.getElementById('modal-delete-cash-out')?.close();
+};
 </script>
 
 <template>
@@ -85,34 +96,85 @@ const doDelete = () => { router.delete(route('cash-out.destroy', deletingId.valu
                     <p class="ocn-panel__desc">Biaya tim, operasional, referral, dan pengeluaran project sesuai filter.</p>
                 </div>
                 <div class="overflow-x-auto">
-                    <table class="table table-zebra">
+                    <table class="table table-xs table-zebra">
                         <thead>
-                            <tr><th>Tanggal</th><th>Project</th><th>Kategori</th><th>Jumlah</th><th>Status</th><th>Jurnal</th><th>Penerima</th><th>Keterangan</th><th></th></tr>
+                            <tr class="text-[11px] uppercase tracking-wide text-base-content/55">
+                                <th>Tanggal</th><th>Project</th><th>Kategori</th><th>Jumlah</th><th>Status</th><th>Jurnal</th><th>Penerima</th><th>Keterangan</th>
+                            </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="c in cashOuts.data" :key="c.id">
-                                <td class="whitespace-nowrap">{{ formatDate(c.date) }}</td>
-                                <td class="font-medium">{{ c.project_name }}</td>
-                                <td><span class="badge badge-sm badge-ghost">{{ categoryLabel(c.category) }}</span></td>
-                                <td class="font-semibold text-error">{{ format(c.amount) }}</td>
-                                <td><StatusBadge :status="c.document_status" /></td>
-                                <td class="font-mono text-xs">{{ c.journal_entry_id ?? '-' }}</td>
-                                <td>{{ c.recipient_name ?? '-' }}</td>
-                                <td class="text-sm text-base-content/70 max-w-xs truncate">{{ c.note ?? '-' }}</td>
-                                <td>
-                                    <div class="flex gap-1">
-                                        <button class="btn btn-ghost btn-xs" @click="openEdit(c)">Edit</button>
-                                        <button class="btn btn-ghost btn-xs text-error" @click="confirmDelete(c.id)">Hapus</button>
-                                    </div>
-                                </td>
+                            <tr v-for="c in cashOuts.data" :key="c.id" class="cursor-pointer transition-colors hover:bg-primary/5 border-l-2 border-l-error" @click="openDetail(c)">
+                                <td class="whitespace-nowrap tabular-nums">{{ formatDate(c.date) }}</td>
+                                <td class="font-medium max-w-[9rem] truncate" :title="c.project_name">{{ c.project_name }}</td>
+                                <td><span class="badge badge-ghost">{{ categoryLabel(c.category) }}</span></td>
+                                <td class="font-semibold text-error tabular-nums whitespace-nowrap">{{ format(c.amount) }}</td>
+                                <td><StatusBadge :status="c.document_status" size="badge-xs" /></td>
+                                <td class="font-mono text-[10px]">{{ c.journal_entry_id ? String(c.journal_entry_id).slice(0, 8) + '…' : '-' }}</td>
+                                <td class="max-w-[7rem] truncate" :title="c.recipient_name">{{ c.recipient_name ?? '-' }}</td>
+                                <td class="text-base-content/70 max-w-[10rem] truncate" :title="c.note">{{ c.note ?? '-' }}</td>
                             </tr>
-                            <tr v-if="!cashOuts.data.length"><td colspan="9" class="text-center py-10 text-base-content/50">Tidak ada data</td></tr>
+                            <tr v-if="!cashOuts.data.length"><td colspan="8" class="text-center py-10 text-base-content/50">Tidak ada data</td></tr>
                         </tbody>
                     </table>
                 </div>
                 <DataTablePagination :paginator="cashOuts" @update:per-page="(n) => { filters.per_page = n; }" />
             </div>
         </div>
+
+        <!-- Modal: Detail -->
+        <dialog id="modal-detail-cash-out" class="modal">
+            <div class="modal-box max-w-lg p-0 overflow-hidden">
+                <div v-if="selected" class="bg-base-200 px-6 py-4 border-b border-base-300 flex items-start justify-between gap-4">
+                    <div>
+                        <p class="text-[10px] font-semibold uppercase tracking-[0.2em] text-base-content/40">Bukti Kas Keluar</p>
+                        <h3 class="text-lg font-bold mt-0.5">Voucher Pengeluaran</h3>
+                    </div>
+                    <div class="flex items-center gap-1.5 shrink-0">
+                        <button class="btn btn-ghost btn-xs btn-square" title="Edit" @click="openEdit(selected); document.getElementById('modal-detail-cash-out')?.close()">
+                            <PencilSquareIcon class="h-4 w-4" />
+                        </button>
+                        <button class="btn btn-ghost btn-xs btn-square text-error" title="Hapus" @click="confirmDelete">
+                            <TrashIcon class="h-4 w-4" />
+                        </button>
+                        <StatusBadge :status="selected.document_status" />
+                    </div>
+                </div>
+                <div v-if="selected" class="px-6 pt-5 pb-3 space-y-5">
+                    <div class="grid grid-cols-[9rem_1fr] gap-x-4 gap-y-2.5 text-sm">
+                        <span class="text-base-content/50">Tanggal</span>
+                        <span class="font-medium">{{ formatDate(selected.date) }}</span>
+                        <span class="text-base-content/50">No. Jurnal</span>
+                        <span class="font-mono text-xs">{{ selected.journal_entry_id ?? '—' }}</span>
+                        <span class="text-base-content/50">Project</span>
+                        <span class="font-medium">{{ selected.project_name }}</span>
+                        <span class="text-base-content/50">Kategori</span>
+                        <span><span class="badge badge-ghost badge-sm">{{ categoryLabel(selected.category) }}</span></span>
+                        <span class="text-base-content/50">Sumber Dana</span>
+                        <span>{{ selected.cash_account_name ?? '—' }}</span>
+                        <span class="text-base-content/50">Penerima</span>
+                        <span class="font-medium">{{ selected.recipient_name ?? '—' }}</span>
+                    </div>
+                    <div class="divider my-0" />
+                    <div>
+                        <p class="text-xs text-base-content/40 mb-1">Keterangan</p>
+                        <p class="text-sm">{{ selected.note || '—' }}</p>
+                    </div>
+                    <div class="divider my-0" />
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-base-content/40">Total Pengeluaran</span>
+                        <span class="text-2xl font-bold text-error tabular-nums">{{ format(selected.amount) }}</span>
+                    </div>
+                    <div class="divider my-0" />
+                    <div class="flex items-center justify-between text-xs text-base-content/40">
+                        <span>Dicatat oleh: <span class="font-medium text-base-content/60">{{ selected.creator_name }}</span></span>
+                        <span v-if="selected.cash_account_id">ID: {{ selected.cash_account_id }}</span>
+                    </div>
+                </div>
+                <div class="px-6 py-4 bg-base-200 border-t border-base-300 flex justify-end gap-2">
+                    <form method="dialog"><button class="btn btn-ghost btn-sm">Tutup</button></form>
+                </div>
+            </div>
+        </dialog>
 
         <!-- Modal: Add -->
         <dialog id="modal-add-cash-out" class="modal">

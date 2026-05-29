@@ -22,5 +22,21 @@
     <p>File PDF invoice terlampir pada email ini.</p>
 
     <p>Terima kasih.</p>
+
+    {{-- Text fallback for email clients that don't render HTML --}}
+    @section('text')
+Halo {{ $recipientName }},
+
+Berikut kami kirimkan invoice project dengan nomor {{ $invoice['number'] ?? '-' }}.
+
+- Project: {{ $project['name'] ?? '-' }}
+- Client: {{ $project['client_name'] ?? '-' }}
+- Nilai invoice: Rp {{ number_format((float) ($invoice['amount'] ?? 0), 0, ',', '.') }}
+- Sisa tagihan: Rp {{ number_format((float) ($invoice['remaining_amount'] ?? 0), 0, ',', '.') }}
+
+File PDF invoice terlampir pada email ini.
+
+Terima kasih.
+    @endsection
 </body>
 </html>

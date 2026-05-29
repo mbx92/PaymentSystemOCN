@@ -11,6 +11,15 @@ class CrmPipeline extends Model
 {
     protected $table = 'crm_pipelines';
 
+    public const STAGES = [
+        'prospecting',
+        'qualification',
+        'proposal',
+        'negotiation',
+        'closed_won',
+        'closed_lost',
+    ];
+
     protected $fillable = [
         'code',
         'title',

@@ -140,17 +140,15 @@ class ERPAccountingPaymentController extends Controller
     private function resolvedPayablesPerPage(Request $request): int
     {
         $perPage = (int) $request->query('per_page', 25);
-        $allowed = [25, 50, 75, 100, 125, 150, 175, 200, 225, 250];
 
-        return in_array($perPage, $allowed, true) ? $perPage : 25;
+        return in_array($perPage, parent::ALLOWED_PER_PAGE, true) ? $perPage : 25;
     }
 
     private function resolvedPaidSupplierBillHistoryPerPage(Request $request): int
     {
         $perPage = (int) $request->query('paid_history_per_page', 25);
-        $allowed = [25, 50, 75, 100, 125, 150, 175, 200, 225, 250];
 
-        return in_array($perPage, $allowed, true) ? $perPage : 25;
+        return in_array($perPage, parent::ALLOWED_PER_PAGE, true) ? $perPage : 25;
     }
 
     public function storeSupplierPayment(Request $request, Payable $payable): RedirectResponse
@@ -172,9 +170,9 @@ class ERPAccountingPaymentController extends Controller
                 ->lockForUpdate()
                 ->findOrFail($payable->id);
 
-            $outstanding = max((float) $lockedPayable->amount - (float) $lockedPayable->paid_amount, 0);
+            $outstanding = max(0, (float) bcsub((string) $lockedPayable->amount, (string) $lockedPayable->paid_amount, 2));
             $amount = (float) $validated['amount'];
-            if ($amount > $outstanding) {
+            if (bccomp((string) $amount, (string) $outstanding, 2) > 0) {
                 throw ValidationException::withMessages([
                     'amount' => 'Nominal pembayaran melebihi sisa hutang supplier.',
                 ]);
@@ -206,10 +204,10 @@ class ERPAccountingPaymentController extends Controller
                 'paid_by' => Auth::id(),
             ]);
 
-            $newPaidAmount = (float) $lockedPayable->paid_amount + $amount;
+            $newPaidAmount = bcadd((string) $lockedPayable->paid_amount, (string) $amount, 2);
             $lockedPayable->update([
-                'paid_amount' => $newPaidAmount,
-                'status' => $newPaidAmount >= (float) $lockedPayable->amount
+                'paid_amount' => (float) $newPaidAmount,
+                'status' => bccomp($newPaidAmount, (string) $lockedPayable->amount, 2) >= 0
                     ? DocumentStatus::Paid
                     : DocumentStatus::PartiallyPaid,
             ]);
@@ -329,9 +327,8 @@ class ERPAccountingPaymentController extends Controller
     private function resolvedMemberPaymentHistoryPerPage(Request $request): int
     {
         $perPage = (int) $request->query('history_per_page', 25);
-        $allowed = [25, 50, 75, 100, 125, 150, 175, 200, 225, 250];
 
-        return in_array($perPage, $allowed, true) ? $perPage : 25;
+        return in_array($perPage, parent::ALLOWED_PER_PAGE, true) ? $perPage : 25;
     }
 
     public function storeMemberPayment(Request $request, TeamDistribution $teamDistribution): RedirectResponse
@@ -357,7 +354,7 @@ class ERPAccountingPaymentController extends Controller
 
             $amount = (float) $validated['amount'];
             $due = (float) $locked->total_pay;
-            if ($amount > $due) {
+            if (bccomp((string) $amount, (string) $due, 2) > 0) {
                 throw ValidationException::withMessages([
                     'amount' => 'Nominal pembayaran melebihi jumlah distribusi anggota.',
                 ]);

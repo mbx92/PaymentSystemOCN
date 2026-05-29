@@ -26,6 +26,7 @@ class ProfileUpdateRequest extends FormRequest
                 'max:255',
                 Rule::unique(User::class)->ignore($this->user()->id),
             ],
+            'company_id' => ['nullable', 'integer', Rule::exists('companies', 'id')->where('is_active', true)],
         ];
     }
 }

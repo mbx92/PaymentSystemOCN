@@ -90,6 +90,10 @@ class CrmActivityController extends Controller
 
         CrmActivity::query()->create($validated);
 
+        // TODO: 4.5.3 Send notification to assigned user
+        // Notification dispatch should be added here when notification
+        // integration with CRM activities is implemented.
+
         return back()->with('flash', ['type' => 'success', 'message' => 'Aktivitas berhasil dicatat.']);
     }
 

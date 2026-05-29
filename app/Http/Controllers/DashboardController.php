@@ -37,7 +37,7 @@ class DashboardController extends Controller
         $cashSummary = $this->accountingCashSummaryService->totals($companyId, $dateFrom, $dateTo);
         $openingCashBalance = $this->accountingCashSummaryService->openingCashBalance($companyId, $dateFrom);
         $endingCashBalance = $openingCashBalance + (float) $cashSummary['net_cashflow'];
-        $activeCount  = Project::active()->count();
+        $activeCount = Project::active()->count();
         $projectStatus = Project::query()
             ->selectRaw('status, count(*) as total')
             ->groupBy('status')
@@ -46,7 +46,6 @@ class DashboardController extends Controller
         $monthlyData = $this->accountingCashSummaryService->monthlyData((int) $year, $companyId);
 
         $recentProjects = Project::withTrashed(false)
-            ->with('payments')
             ->withSum('cashIns as paid_amount', 'amount')
             ->orderByRaw('COALESCE(started_at, finished_at, created_at) DESC')
             ->orderByDesc('finished_at')
@@ -54,10 +53,10 @@ class DashboardController extends Controller
             ->take(5)
             ->get()
             ->map(fn ($p) => [
-                'id'          => $p->id,
-                'name'        => $p->name,
+                'id' => $p->id,
+                'name' => $p->name,
                 'client_name' => $p->client_name,
-                'status'      => $p->status,
+                'status' => $p->status,
                 'total_value' => (float) $p->total_value,
                 'paid_amount' => (float) ($p->paid_amount ?? 0),
             ]);
@@ -66,12 +65,13 @@ class DashboardController extends Controller
             ->withSum('cashIns as paid_amount', 'amount')
             ->where('status', 'selesai')
             ->with(['convertedBudget.items', 'materials.product'])
+            ->orderByDesc('total_value')
+            ->limit(50)
             ->get()
             ->map(function (Project $project) {
-                // Gunakan resolveListTotalValue() bukan total_value langsung
-                // agar project tanpa total_value (pakai budget/material) juga terdeteksi
                 $contractValue = $project->resolveListTotalValue();
                 $remaining = max($contractValue - (float) ($project->paid_amount ?? 0), 0);
+
                 return [
                     'id' => $project->id,
                     'name' => $project->name,
@@ -88,15 +88,15 @@ class DashboardController extends Controller
 
         return Inertia::render('Dashboard/Index', [
             'stats' => [
-                'total_income'  => (float) $cashSummary['cash_in'],
+                'total_income' => (float) $cashSummary['cash_in'],
                 'total_expense' => (float) $cashSummary['cash_out'],
-                'net_cashflow'  => (float) $cashSummary['net_cashflow'],
+                'net_cashflow' => (float) $cashSummary['net_cashflow'],
                 'opening_cash_balance' => (float) $openingCashBalance,
                 'ending_cash_balance' => (float) $endingCashBalance,
-                'active_count'  => $activeCount,
+                'active_count' => $activeCount,
             ],
-            'monthlyData'     => $monthlyData,
-            'recentProjects'  => $recentProjects,
+            'monthlyData' => $monthlyData,
+            'recentProjects' => $recentProjects,
             'projectStatusSummary' => [
                 'negosiasi' => (int) ($projectStatus['negosiasi'] ?? 0),
                 'berjalan' => (int) ($projectStatus['berjalan'] ?? 0),
@@ -107,8 +107,8 @@ class DashboardController extends Controller
             'filters' => [
                 'company_id' => $request->query('company_id', $companyId ?? ErpCompanyResolver::ALL_COMPANIES),
             ],
-            'selectedYear'    => (int) $year,
-            'years'           => range(now()->year, now()->year - 4),
+            'selectedYear' => (int) $year,
+            'years' => range(now()->year, now()->year - 4),
         ]);
     }
 
@@ -121,14 +121,14 @@ class DashboardController extends Controller
         $totalEarned = $distributions->sum('total_pay');
 
         $projectList = $distributions->map(fn ($d) => [
-            'project_id'      => $d->project_id,
-            'project_name'    => $d->project->name,
-            'project_status'  => $d->project->status,
+            'project_id' => $d->project_id,
+            'project_name' => $d->project->name,
+            'project_status' => $d->project->status,
             'role_in_project' => $d->role_in_project,
-            'percentage'      => (float) $d->percentage,
-            'base_pay'        => (float) $d->base_pay,
-            'bonus'           => (float) $d->bonus,
-            'total_pay'       => (float) $d->total_pay,
+            'percentage' => (float) $d->percentage,
+            'base_pay' => (float) $d->base_pay,
+            'bonus' => (float) $d->bonus,
+            'total_pay' => (float) $d->total_pay,
         ]);
 
         return Inertia::render('Dashboard/Member', [

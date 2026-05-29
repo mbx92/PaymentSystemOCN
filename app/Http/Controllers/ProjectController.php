@@ -144,24 +144,25 @@ class ProjectController extends Controller
             })
             ->values();
 
-        $monthlyData = collect(range(1, 12))->map(function (int $month) use ($selectedYear): array {
-            $income = (float) DB::table('cash_in')
-                ->whereNotNull('project_id')
-                ->whereYear('date', $selectedYear)
-                ->whereMonth('date', $month)
-                ->sum('amount');
-            $expense = (float) DB::table('cash_out')
-                ->whereNotNull('project_id')
-                ->whereYear('date', $selectedYear)
-                ->whereMonth('date', $month)
-                ->sum('amount');
+        $monthlyIncome = DB::table('cash_in')
+            ->whereNotNull('project_id')
+            ->whereYear('date', $selectedYear)
+            ->selectRaw('MONTH(date) as m, SUM(amount) as total')
+            ->groupBy(DB::raw('MONTH(date)'))
+            ->pluck('total', 'm');
 
-            return [
-                'month' => $month,
-                'income' => $income,
-                'expense' => $expense,
-            ];
-        })->all();
+        $monthlyExpense = DB::table('cash_out')
+            ->whereNotNull('project_id')
+            ->whereYear('date', $selectedYear)
+            ->selectRaw('MONTH(date) as m, SUM(amount) as total')
+            ->groupBy(DB::raw('MONTH(date)'))
+            ->pluck('total', 'm');
+
+        $monthlyData = collect(range(1, 12))->map(fn (int $month) => [
+            'month' => $month,
+            'income' => (float) ($monthlyIncome[$month] ?? 0),
+            'expense' => (float) ($monthlyExpense[$month] ?? 0),
+        ])->all();
 
         return Inertia::render('Projects/Overview', [
             'selected_year' => $selectedYear,

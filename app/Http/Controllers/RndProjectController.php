@@ -8,6 +8,7 @@ use App\Models\RndProject;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
@@ -44,12 +45,14 @@ class RndProjectController extends Controller
             'projects' => $projects,
             'filters' => $this->filtersWithPerPage($request, ['q', 'status']),
             'statusOptions' => RndProject::STATUSES,
-            'summary' => [
-                'project_count' => RndProject::query()->count(),
-                'active_count' => RndProject::query()->whereIn('status', ['idea', 'research', 'development'])->count(),
-                'total_estimated_budget' => (float) DB::table('rnd_budget_items')->sum('total_price'),
-                'total_actual_spend' => (float) DB::table('rnd_purchases')->sum('total_price'),
-            ],
+            'summary' => Cache::remember('rnd_summary', now()->addMinutes(5), function () {
+                return [
+                    'project_count' => RndProject::query()->count(),
+                    'active_count' => RndProject::query()->whereIn('status', ['idea', 'research', 'development'])->count(),
+                    'total_estimated_budget' => (float) DB::table('rnd_budget_items')->sum('total_price'),
+                    'total_actual_spend' => (float) DB::table('rnd_purchases')->sum('total_price'),
+                ];
+            }),
         ]);
     }
 

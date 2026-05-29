@@ -9,6 +9,7 @@ use App\Models\LandingSite;
 use App\Models\LandingSitePage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -17,13 +18,15 @@ class CmsModuleController extends Controller
     public function dashboard(Request $request): Response
     {
         return Inertia::render('CMS/Dashboard', [
-            'stats' => [
-                'sites_total' => LandingSite::query()->count(),
-                'sites_active' => LandingSite::query()->where('is_active', true)->count(),
-                'pages_published' => LandingSitePage::query()->where('is_published', true)->count(),
-                'media_total' => CmsMedia::query()->count(),
-                'media_bytes' => (int) CmsMedia::query()->sum('size_bytes'),
-            ],
+            'stats' => Cache::remember('cms_dashboard_stats', now()->addMinutes(5), function () {
+                return [
+                    'sites_total' => LandingSite::query()->count(),
+                    'sites_active' => LandingSite::query()->where('is_active', true)->count(),
+                    'pages_published' => LandingSitePage::query()->where('is_published', true)->count(),
+                    'media_total' => CmsMedia::query()->count(),
+                    'media_bytes' => (int) CmsMedia::query()->sum('size_bytes'),
+                ];
+            }),
             'visitAnalytics' => $this->buildVisitAnalytics(),
             'recentAccess' => $this->buildRecentAccess($request),
             'recentAccessFilters' => $this->filtersWithPerPage($request, ['kind', 'device_type', 'q']),
@@ -58,6 +61,13 @@ class CmsModuleController extends Controller
      * @return array<string, mixed>
      */
     private function buildVisitAnalytics(): array
+    {
+        return Cache::remember('cms_visit_analytics', now()->addMinutes(5), function () {
+            return $this->computeVisitAnalytics();
+        });
+    }
+
+    private function computeVisitAnalytics(): array
     {
         $rangeDays = 14;
         $since = now()->subDays($rangeDays - 1)->startOfDay();

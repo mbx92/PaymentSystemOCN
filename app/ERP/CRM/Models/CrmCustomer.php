@@ -14,6 +14,7 @@ class CrmCustomer extends Model
 
     protected $fillable = [
         'code',
+        'company_id',
         'name',
         'company',
         'email',

@@ -244,6 +244,7 @@ class SupplierPaymentAccountingTest extends TestCase
             \App\Http\Middleware\ErpMaintenanceMode::class,
             \App\Http\Middleware\LogErpActivity::class,
             \Spatie\Permission\Middleware\RoleMiddleware::class,
+            \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
         ]);
     }
 }

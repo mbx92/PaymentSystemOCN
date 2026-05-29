@@ -15,6 +15,7 @@ class CashOut extends Model
     protected $table = 'cash_out';
 
     protected $fillable = [
+        'company_id',
         'project_id',
         'cash_account_id',
         'category',

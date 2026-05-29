@@ -12,17 +12,19 @@ class HREmployeeController extends Controller
 {
     public function index(Request $request): Response
     {
+        $canViewSalary = $request->user()?->hasAnyRole(['admin', 'manajer', 'finance', 'project']);
+
         $employees = Employee::query()->orderBy('name')->paginate($this->resolvedPerPage($request))->withQueryString()
-            ->through(fn (Employee $e) => [
+            ->through(fn (Employee $e) => array_filter([
                 'id' => $e->id,
                 'employee_no' => $e->employee_no,
                 'name' => $e->name,
                 'email' => $e->email,
                 'phone' => $e->phone,
                 'position' => $e->position,
-                'base_salary' => (float) $e->base_salary,
+                'base_salary' => $canViewSalary ? (float) $e->base_salary : null,
                 'is_active' => $e->is_active,
-            ]);
+            ], fn ($v) => $v !== null));
 
         return Inertia::render('ERP/HR/Employees', [
             'employees' => $employees,

@@ -28,7 +28,7 @@ class CashOutController extends Controller
 
     public function index(Request $request)
     {
-        $query = CashOut::with('project', 'creator')
+        $query = CashOut::with('project', 'creator', 'cashAccount')
             ->when(
                 $request->filled('project_id') && Str::isUuid($request->project_id),
                 fn ($q) => $q->where('project_id', $request->project_id)
@@ -44,6 +44,7 @@ class CashOutController extends Controller
                 'id' => $c->id,
                 'project_id' => $c->project_id,
                 'cash_account_id' => $c->cash_account_id,
+                'cash_account_name' => $c->cashAccount?->name,
                 'project_name' => $c->project?->name ?? 'Operasional Umum',
                 'category' => $c->category,
                 'amount' => (float) $c->amount,
@@ -140,7 +141,7 @@ class CashOutController extends Controller
             $cashOut->update($validated);
 
             $expenseAccount = Account::query()->findOrFail($expenseAccountId);
-            $cashAccount    = Account::query()->findOrFail((int) $validated['cash_account_id']);
+            $cashAccount = Account::query()->findOrFail((int) $validated['cash_account_id']);
 
             $newEntry = $this->glPostingService->post(
                 $companyId,
@@ -190,11 +191,11 @@ class CashOutController extends Controller
         }
 
         foreach ($entry->lines as $line) {
-            $debit  = round((float) $line->debit, 2);
+            $debit = round((float) $line->debit, 2);
             $credit = round((float) $line->credit, 2);
 
             $line->update([
-                'debit'  => number_format($credit, 2, '.', ''),
+                'debit' => number_format($credit, 2, '.', ''),
                 'credit' => number_format($debit, 2, '.', ''),
             ]);
         }

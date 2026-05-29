@@ -263,7 +263,7 @@ class ERPPurchasingController extends Controller
 
     public function updatePurchaseOrder(Request $request, PurchaseOrder $purchaseOrder): RedirectResponse
     {
-        if (! in_array($purchaseOrder->status->value, [DocumentStatus::Draft->value, DocumentStatus::Submitted->value], true)) {
+        if (! $purchaseOrder->isEditable()) {
             return back()->with('flash', ['type' => 'warning', 'message' => 'PO hanya bisa diubah saat status draft/submitted.']);
         }
 
@@ -434,6 +434,11 @@ class ERPPurchasingController extends Controller
 
         $requestedLines = collect($validated['lines'])
             ->keyBy(fn (array $line) => (int) $line['product_id']);
+
+        $purchaseOrder->lines()
+            ->whereIn('master_product_id', $requestedLines->keys())
+            ->lockForUpdate()
+            ->get();
 
         $linePayloads = $purchaseOrder->lines
             ->map(function ($poLine) use ($requestedLines) {

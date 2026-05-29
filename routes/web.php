@@ -98,7 +98,7 @@ Route::middleware(['auth', 'throttle:120,1'])->group(function () {
     Route::get('notifications/poll', [NotificationController::class, 'poll'])->name('notifications.poll');
     Route::post('notifications/mark-all-read', [NotificationController::class, 'markAllRead'])->name('notifications.mark-all-read');
     Route::patch('notifications/mark-read', [NotificationController::class, 'markRead'])->name('notifications.mark-read');
-    Route::delete('notifications/mark-read', [NotificationController::class, 'markUnread'])->name('notifications.mark-unread');
+    Route::delete('notifications/mark-unread', [NotificationController::class, 'markUnread'])->name('notifications.mark-unread');
     Route::get('/invoice/{id}', [InvoiceController::class, 'show'])->name('invoice.show');
     Route::get('/invoice/{id}/download', [InvoiceController::class, 'download'])->name('invoice.download');
     Route::get('/sales-note/{id}', [InvoiceController::class, 'showSalesNote'])->name('sales-note.show');
@@ -360,8 +360,8 @@ Route::middleware(['auth', 'throttle:120,1'])->group(function () {
         Route::get('laporan/neraca-saldo', [ERPReportingController::class, 'trialBalance'])->name('reports.trial-balance');
 
         // Export
-        Route::get('export/bulanan', [ReportController::class, 'exportMonthlyExcel'])->name('export.monthly');
-        Route::get('export/anggota', [ReportController::class, 'exportMemberPaymentsExcel'])->name('export.member-payments');
+        Route::get('export/bulanan', [ReportController::class, 'exportMonthlyExcel'])->name('export.monthly')->middleware('throttle:5,1');
+        Route::get('export/anggota', [ReportController::class, 'exportMemberPaymentsExcel'])->name('export.member-payments')->middleware('throttle:5,1');
 
         // Personal — keuangan pribadi & keluarga (terpisah dari ERP bisnis)
         Route::get('personal', [PersonalModuleController::class, 'index'])->name('personal');

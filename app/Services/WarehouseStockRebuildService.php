@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
 use App\Models\ProductStockMovement;
+use Illuminate\Support\Facades\Cache;
 
 class WarehouseStockRebuildService
 {
@@ -41,6 +42,16 @@ class WarehouseStockRebuildService
      * @param  list<int|string>|null  $productIds
      */
     public function mismatchSummary(?int $warehouseId = null, ?array $productIds = null): array
+    {
+        $cacheKey = 'mismatch_summary_'.($warehouseId ?? 'all').'_'.(($productIds !== null) ? md5(implode(',', $productIds)) : 'all');
+        $cacheTtl = now()->addSeconds(30);
+
+        return Cache::remember($cacheKey, $cacheTtl, function () use ($warehouseId, $productIds) {
+            return $this->computeMismatchSummary($warehouseId, $productIds);
+        });
+    }
+
+    private function computeMismatchSummary(?int $warehouseId = null, ?array $productIds = null): array
     {
         $movementQuery = ProductStockMovement::query()
             ->selectRaw('master_product_id, warehouse_id')

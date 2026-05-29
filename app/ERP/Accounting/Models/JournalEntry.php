@@ -8,10 +8,11 @@ use App\ERP\Shared\Enums\DocumentStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class JournalEntry extends Model
 {
-    use Auditable;
+    use Auditable, SoftDeletes;
 
     protected $fillable = [
         'company_id',
@@ -24,6 +25,9 @@ class JournalEntry extends Model
         'posted_at',
         'posted_by',
         'reversed_entry_id',
+        'voided_at',
+        'voided_by',
+        'void_reason',
     ];
 
     protected function casts(): array
@@ -31,8 +35,19 @@ class JournalEntry extends Model
         return [
             'entry_date' => 'date',
             'posted_at' => 'datetime',
+            'voided_at' => 'datetime',
             'status' => DocumentStatus::class,
         ];
+    }
+
+    public function void(string $reason): void
+    {
+        $this->update([
+            'status' => DocumentStatus::Void,
+            'voided_at' => now(),
+            'voided_by' => auth()->id(),
+            'void_reason' => $reason,
+        ]);
     }
 
     public function lines(): HasMany

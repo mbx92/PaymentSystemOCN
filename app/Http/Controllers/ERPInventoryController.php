@@ -603,7 +603,12 @@ class ERPInventoryController extends Controller
                 ->where('master_product_id', $product->id)
                 ->where('warehouse_id', $sourceWarehouse->id)
                 ->first();
-            $available = $sourceStock ? (float) $sourceStock->qty - (float) $sourceStock->reserved_qty : 0;
+            if (! $sourceStock) {
+                $errors["items.{$i}.qty"] = "{$product->sku}: tidak tersedia di gudang asal.";
+
+                continue;
+            }
+            $available = (float) $sourceStock->qty - (float) $sourceStock->reserved_qty;
             if ((float) $item['qty'] > $available) {
                 $errors["items.{$i}.qty"] = "{$product->sku}: stok tersedia hanya {$available}.";
             }

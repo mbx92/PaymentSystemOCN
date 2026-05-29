@@ -4,14 +4,18 @@ namespace App\Providers;
 
 use App\ERP\Core\Models\Company;
 use App\ERP\HR\Models\Employee;
+use App\Models\CmsMedia;
+use App\Models\MasterProductWarehouseStock;
 use App\Models\User;
+use App\Observers\CmsMediaObserver;
+use App\Observers\MasterProductWarehouseStockObserver;
 use App\Policies\CompanyPolicy;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Vite;
-use Illuminate\Cache\RateLimiting\Limit;
-use Illuminate\Http\Request;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -50,5 +54,8 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('manage-rnd', fn (User $user): bool => $user->hasRole('admin') || $user->hasPermissionTo('manage-rnd'));
 
         Gate::policy(Company::class, CompanyPolicy::class);
+
+        MasterProductWarehouseStock::observe(MasterProductWarehouseStockObserver::class);
+        CmsMedia::observe(CmsMediaObserver::class);
     }
 }

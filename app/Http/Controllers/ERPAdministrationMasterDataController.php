@@ -2350,9 +2350,8 @@ class ERPAdministrationMasterDataController extends Controller
     private function resolvedLegacyImportAuxPerPage(Request $request, string $key): int
     {
         $perPage = (int) $request->query($key, 25);
-        $allowed = [25, 50, 75, 100, 125, 150, 175, 200, 225, 250];
 
-        return in_array($perPage, $allowed, true) ? $perPage : 25;
+        return in_array($perPage, parent::ALLOWED_PER_PAGE, true) ? $perPage : 25;
     }
 
     private function paginateCollectionForRequest(\Illuminate\Support\Collection $rows, int $perPage, Request $request, string $pageName = 'page'): LengthAwarePaginator

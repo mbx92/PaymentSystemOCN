@@ -16,6 +16,7 @@ use App\ERP\Core\Services\ErpCompanyResolver;
 use App\ERP\Purchasing\Models\GoodsReceipt;
 use App\ERP\Purchasing\Models\PurchaseOrder;
 use App\ERP\Shared\Enums\DocumentStatus;
+use App\Jobs\RebuildInventoryStockJob;
 use App\Models\CategoryCoaMapping;
 use App\Services\CogsBackfillService;
 use App\Services\ProjectMaterialBackfillService;
@@ -134,13 +135,11 @@ class ERPAccountingUtilityController extends Controller
 
     public function rebuildInventoryStocks(): RedirectResponse
     {
-        $result = app(WarehouseStockRebuildService::class)->rebuildFromMovements();
+        RebuildInventoryStockJob::dispatch();
 
         return back()->with('flash', [
-            'type' => $result['warehouse_rows_updated'] > 0 || $result['warehouse_rows_created'] > 0 ? 'success' : 'info',
-            'message' => ($result['warehouse_rows_updated'] > 0 || $result['warehouse_rows_created'] > 0)
-                ? "Stok warehouse direbuild dari stock movement. {$result['warehouse_rows_updated']} baris diperbarui, {$result['warehouse_rows_created']} baris dibuat."
-                : 'Tidak ada perubahan stok warehouse. Data sudah sinkron dengan stock movement.',
+            'type' => 'success',
+            'message' => 'Rebuild stok warehouse telah dijadwalkan ke antrian (queue) dan akan diproses secara bertahap.',
         ]);
     }
 

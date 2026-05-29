@@ -229,7 +229,7 @@ class ERPSalesController extends Controller
         $this->authorizeHighPrivilege($request);
 
         $validated = $request->validate([
-            'payment_method_id' => 'required|exists:payment_methods,id',
+            'payment_method_id' => ['required', Rule::exists('payment_methods', 'id')->where('status', 'active')],
         ]);
 
         $posSale->update([
@@ -436,7 +436,7 @@ class ERPSalesController extends Controller
         $validated = $request->validate([
             'sales_channel' => ['required', 'string', Rule::in(array_column($this->priceChannels(), 'key'))],
             'marketplace_order_code' => ['nullable', 'string', 'max:100', 'required_if:sales_channel,marketplace'],
-            'payment_method_id' => 'required|exists:payment_methods,id',
+            'payment_method_id' => ['required', Rule::exists('payment_methods', 'id')->where('status', 'active')],
             'cash_paid' => 'nullable|numeric|min:0',
             'additional_charges' => 'nullable|array',
             'additional_charges.*.name' => 'required|string|max:120',

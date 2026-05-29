@@ -36,15 +36,16 @@ class CmsMediaController extends Controller
 
     public function file(CmsMedia $cmsMedia): BinaryFileResponse
     {
-        if ($cmsMedia->disk !== 'public') {
+        $cmsDisk = config('filesystems.cms');
+        if ($cmsMedia->disk !== $cmsDisk) {
             abort(404);
         }
 
-        if (! Storage::disk('public')->exists($cmsMedia->path)) {
+        if (! Storage::disk($cmsDisk)->exists($cmsMedia->path)) {
             abort(404);
         }
 
-        $absolute = Storage::disk('public')->path($cmsMedia->path);
+        $absolute = Storage::disk($cmsDisk)->path($cmsMedia->path);
 
         $filename = str_replace(['"', "\r", "\n"], '', (string) $cmsMedia->original_name) ?: 'file';
 
@@ -57,16 +58,17 @@ class CmsMediaController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'file' => 'required|file|max:5120|mimes:jpg,jpeg,png,webp,gif,pdf',
+            'file' => 'required|file|max:5120|mimes:jpg,jpeg,png,webp,gif,pdf|dimensions:min_width=10,min_height=10,max_width=8000,max_height=8000',
             'alt_text' => 'nullable|string|max:255',
         ]);
 
         $upload = $request->file('file');
-        $path = $upload->store('cms-media', 'public');
+        $cmsDisk = config('filesystems.cms');
+        $path = $upload->store('cms-media', $cmsDisk);
 
         CmsMedia::query()->create([
             'user_id' => $request->user()?->id,
-            'disk' => 'public',
+            'disk' => config('filesystems.cms'),
             'path' => $path,
             'original_name' => $upload->getClientOriginalName(),
             'mime' => $upload->getClientMimeType(),

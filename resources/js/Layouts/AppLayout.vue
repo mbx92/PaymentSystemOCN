@@ -156,6 +156,12 @@ const clearHistory = () => {
     saveHistory();
 };
 
+const clearChatHistory = () => {
+    try {
+        localStorage.removeItem('erp_chat_history');
+    } catch { /* ignore */ }
+};
+
 const formatTime = (ts) => {
     if (!ts) return '';
     const d = new Date(ts);
@@ -456,6 +462,9 @@ const emitNewNotificationToasts = (payload) => {
     writeSeenNotificationIds(Array.from(seen));
 };
 
+let pollFailCount = 0;
+let pollTimerHandle = null;
+
 const pollNotifications = async () => {
     if (!auth.value?.user) return;
 
@@ -464,14 +473,27 @@ const pollNotifications = async () => {
             headers: { Accept: 'application/json' },
             credentials: 'same-origin',
         });
-        if (!response.ok) return;
+        if (!response.ok) {
+            pollFailCount = Math.min(pollFailCount + 1, 5);
+            return;
+        }
         const data = await response.json();
         if (!data?.notificationCenter) return;
         syncNotificationCenter(data.notificationCenter);
         emitNewNotificationToasts(data.notificationCenter);
+        pollFailCount = 0;
     } catch {
-        // ignore
+        pollFailCount = Math.min(pollFailCount + 1, 5);
     }
+};
+
+const schedulePoll = () => {
+    const delay = 60000 * Math.pow(2, pollFailCount);
+    if (pollTimerHandle) window.clearTimeout(pollTimerHandle);
+    pollTimerHandle = window.setTimeout(() => {
+        pollNotifications();
+        schedulePoll();
+    }, delay);
 };
 
 onMounted(() => {
@@ -480,16 +502,16 @@ onMounted(() => {
     emitNewNotificationToasts(localNotificationCenter.value);
 
     if (auth.value?.user) {
-        notificationPollTimer = window.setInterval(() => {
-            pollNotifications();
-        }, 60000);
+        pollFailCount = 0;
+        schedulePoll();
     }
 });
 
 onBeforeUnmount(() => {
     window.removeEventListener('resize', refreshViewport);
-    if (notificationPollTimer) {
-        window.clearInterval(notificationPollTimer);
+    if (pollTimerHandle) {
+        window.clearTimeout(pollTimerHandle);
+        pollTimerHandle = null;
     }
 });
 
@@ -651,7 +673,7 @@ const handleSidebarItemMouseLeave = () => {
                         <p class="text-sm font-semibold text-white truncate">{{ auth?.user?.name }}</p>
                         <span class="text-xs text-slate-400 capitalize">{{ auth?.user?.role }}</span>
                     </div>
-                    <Link :href="route('logout')" method="post" as="button" :class="['btn btn-ghost btn-xs text-slate-300 hover:text-white hover:bg-white/10', desktopSidebarCollapsed ? 'mt-2 flex w-full justify-center' : '']">
+                    <Link :href="route('logout')" method="post" as="button" @click="clearChatHistory" :class="['btn btn-ghost btn-xs text-slate-300 hover:text-white hover:bg-white/10', desktopSidebarCollapsed ? 'mt-2 flex w-full justify-center' : '']">
                         <ArrowRightOnRectangleIcon class="w-4 h-4" />
                     </Link>
                 </div>

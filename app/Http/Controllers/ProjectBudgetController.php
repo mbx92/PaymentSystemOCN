@@ -262,6 +262,11 @@ class ProjectBudgetController extends Controller
                 'budget' => 'Budget ini sudah pernah di-convert.',
             ]);
         }
+        if ($budget->supportsBudgetItems() && $budget->items()->count() === 0) {
+            throw ValidationException::withMessages([
+                'budget' => 'Budget tidak memiliki item. Tambahkan item terlebih dahulu sebelum convert.',
+            ]);
+        }
 
         DB::transaction(function () use ($budget): void {
             $project = Project::query()->create([

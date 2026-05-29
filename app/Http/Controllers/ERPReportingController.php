@@ -656,6 +656,11 @@ class ERPReportingController extends Controller
             [$dateFrom, $dateTo] = [$dateTo->copy()->startOfDay(), $dateFrom->copy()->endOfDay()];
         }
 
+        $maxRangeDays = 365;
+        if ($dateFrom->diffInDays($dateTo) > $maxRangeDays) {
+            $dateTo = $dateFrom->copy()->addDays($maxRangeDays)->endOfDay();
+        }
+
         return [$selectedYear, $dateFrom, $dateTo];
     }
 
@@ -675,7 +680,10 @@ class ERPReportingController extends Controller
     public function storeChartOfAccount(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'code' => 'required|string|max:32|unique:accounts,code',
+            'code' => [
+                'required', 'string', 'max:32',
+                Rule::unique('accounts', 'code')->where(fn ($q) => $q->where('company_id', $request->user()?->company_id)),
+            ],
             'name' => 'required|string|max:255',
             'type' => 'required|in:asset,liability,equity,revenue,expense',
             'normal_balance' => 'required|in:debit,credit',
@@ -702,7 +710,7 @@ class ERPReportingController extends Controller
                 'required',
                 'string',
                 'max:32',
-                Rule::unique('accounts', 'code')->ignore($account->id),
+                Rule::unique('accounts', 'code')->ignore($account->id)->where(fn ($q) => $q->where('company_id', $account->company_id)),
             ],
             'name' => ['required', 'string', 'max:255'],
             'type' => ['required', 'in:asset,liability,equity,revenue,expense'],

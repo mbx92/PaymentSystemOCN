@@ -9,7 +9,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -67,5 +69,19 @@ class AuthenticatedSessionController extends Controller
         $request->session()->regenerateToken();
 
         return redirect('/');
+    }
+
+    /**
+     * Logout from all devices by invalidating all sessions for the current user.
+     */
+    public function destroyAll(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'password' => 'required|string|current_password',
+        ]);
+
+        Auth::guard('web')->logoutOtherDevices($validated['password']);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Sesi perangkat lain berhasil dihapus.']);
     }
 }

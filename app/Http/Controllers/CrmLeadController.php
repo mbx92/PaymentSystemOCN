@@ -6,6 +6,7 @@ use App\ERP\CRM\Models\CrmLead;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -48,10 +49,12 @@ class CrmLeadController extends Controller
                 'created_at' => $lead->created_at?->format('Y-m-d H:i'),
             ]);
 
-        $users = User::query()
-            ->whereHas('roles', fn ($r) => $r->whereIn('name', ['admin', 'manajer']))
-            ->orderBy('name')
-            ->get(['id', 'name']);
+        $users = Cache::remember('crm_pic_users', now()->addMinutes(15), function () {
+            return User::query()
+                ->whereHas('roles', fn ($r) => $r->whereIn('name', ['admin', 'manajer']))
+                ->orderBy('name')
+                ->get(['id', 'name']);
+        });
 
         return Inertia::render('ERP/CRM/Leads', [
             'leads' => $leads,

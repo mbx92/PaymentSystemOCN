@@ -8,6 +8,12 @@ import ResponsiveNavLink from '@/Components/ResponsiveNavLink.vue';
 import { Link } from '@inertiajs/vue3';
 
 const showingNavigationDropdown = ref(false);
+
+const clearChatHistoryOnLogout = () => {
+    try {
+        localStorage.removeItem('erp_chat_history');
+    } catch { /* ignore */ }
+};
 </script>
 
 <template>
@@ -80,6 +86,7 @@ const showingNavigationDropdown = ref(false);
                                             :href="route('logout')"
                                             method="post"
                                             as="button"
+                                            @click="clearChatHistoryOnLogout"
                                         >
                                             Log Out
                                         </DropdownLink>
@@ -171,6 +178,7 @@ const showingNavigationDropdown = ref(false);
                                 :href="route('logout')"
                                 method="post"
                                 as="button"
+                                @click="clearChatHistoryOnLogout"
                             >
                                 Log Out
                             </ResponsiveNavLink>
