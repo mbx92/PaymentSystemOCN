@@ -26,6 +26,7 @@ const net = () => props.metrics?.network ?? {};
 const app = () => props.metrics?.app ?? {};
 const system = () => props.metrics?.system ?? {};
 const storage = () => props.metrics?.storage ?? {};
+const glitchtip = () => props.metrics?.glitchtip ?? {};
 const history = () => props.metrics?.history ?? {};
 
 const memoryHistoryChart = computed(() => ({
@@ -116,6 +117,20 @@ const refresh = () => {
           <dl class="mt-3 space-y-2 text-sm">
             <div class="flex justify-between gap-2"><dt class="text-base-content/60">PHP</dt><dd class="font-mono">{{ app().php_version ?? '—' }}</dd></div>
             <div class="flex justify-between gap-2"><dt class="text-base-content/60">Laravel</dt><dd class="font-mono">{{ app().laravel_version ?? '—' }}</dd></div>
+            <div class="flex justify-between gap-2">
+              <dt class="text-base-content/60">GlitchTip</dt>
+              <dd class="font-mono flex items-center gap-1.5">
+                <template v-if="glitchtip().configured">
+                  <span class="size-2 rounded-full bg-success" />
+                  <span>Terhubung</span>
+                  <span v-if="glitchtip().reachable_ms != null" class="text-xs text-base-content/50">({{ glitchtip().reachable_ms }} ms)</span>
+                </template>
+                <template v-else>
+                  <span class="size-2 rounded-full bg-base-300" />
+                  <span class="text-base-content/50">Tidak dikonfigurasi</span>
+                </template>
+              </dd>
+            </div>
           </dl>
         </article>
 

@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
+use Sentry\SentrySdk;
 use Throwable;
 
 class ServerMetricsService
@@ -42,6 +43,7 @@ class ServerMetricsService
             'system' => $system,
             'history' => $history,
             'storage' => $this->storageMetrics(),
+            'glitchtip' => $this->glitchtipMetrics(),
         ];
     }
 
@@ -463,6 +465,60 @@ class ServerMetricsService
             'php_usage_human' => $this->formatBytes((int) memory_get_usage(true)),
             'php_peak_bytes' => memory_get_peak_usage(true),
             'php_peak_human' => $this->formatBytes((int) memory_get_peak_usage(true)),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function glitchtipMetrics(): array
+    {
+        $dsn = (string) config('sentry.dsn', '');
+        $configured = $dsn !== '';
+
+        $host = null;
+        $port = 443;
+        $path = null;
+
+        if ($configured) {
+            $parts = parse_url($dsn);
+            $host = $parts['host'] ?? null;
+            if (isset($parts['port'])) {
+                $port = (int) $parts['port'];
+            }
+            $path = $parts['path'] ?? null;
+        }
+
+        $reachable = null;
+        $reachableError = null;
+        if ($host !== null) {
+            try {
+                $reachable = $this->tcpConnectMs($host, $port);
+            } catch (Throwable $e) {
+                $reachableError = $e->getMessage();
+            }
+        }
+
+        $clientHasDsn = false;
+        try {
+            $client = SentrySdk::getCurrentHub()->getClient();
+            if ($client !== null) {
+                $clientDsn = (string) $client->getOptions()->getDsn();
+                $clientHasDsn = $clientDsn !== '';
+            }
+        } catch (Throwable) {
+            // Sentry SDK not yet initialised
+        }
+
+        return [
+            'configured' => $configured,
+            'dsn' => $configured ? $dsn : null,
+            'host' => $host,
+            'port' => $port,
+            'project_path' => $path,
+            'reachable_ms' => $reachable,
+            'reachable_error' => $reachableError,
+            'client_has_dsn' => $clientHasDsn,
         ];
     }
 }
