@@ -8,6 +8,7 @@ use App\Models\PersonalInvestment;
 use App\Models\PersonalInvestmentMovement;
 use App\Models\PersonalTransaction;
 use App\Models\PersonalWallet;
+use App\Services\MarketDataService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -119,6 +120,10 @@ class PersonalFinanceController extends Controller
         });
 
         $investmentRows = $investments->map(function (PersonalInvestment $investment) use ($assetTypeLabels, $investmentNetById) {
+            $units = (float) $investment->units_held;
+            $currentPrice = (float) ($investment->current_price ?? 0);
+            $marketValue = $units > 0 && $currentPrice > 0 ? round($units * $currentPrice, 2) : null;
+
             return [
                 'id' => $investment->id,
                 'name' => $investment->name,
@@ -127,6 +132,14 @@ class PersonalFinanceController extends Controller
                 'institution' => $investment->institution,
                 'is_active' => (bool) $investment->is_active,
                 'net_flow' => round((float) ($investmentNetById[$investment->id] ?? 0), 2),
+                'ticker' => $investment->ticker,
+                'units_held' => $units,
+                'current_price' => $currentPrice > 0 ? $currentPrice : null,
+                'previous_close' => $investment->previous_close !== null ? (float) $investment->previous_close : null,
+                'price_change' => $investment->price_change !== null ? (float) $investment->price_change : null,
+                'price_change_percent' => $investment->price_change_percent !== null ? (float) $investment->price_change_percent : null,
+                'market_value' => $marketValue,
+                'last_synced_at' => $investment->last_synced_at?->diffForHumans(),
             ];
         });
 
@@ -148,6 +161,7 @@ class PersonalFinanceController extends Controller
                     'count' => $investmentRows->count(),
                     'active_count' => $investmentRows->where('is_active', true)->count(),
                     'net_flow' => round((float) $investmentRows->sum('net_flow'), 2),
+                    'portfolio_value' => round((float) $investmentRows->sum('market_value'), 2),
                 ],
                 'items' => $investmentRows,
             ],
@@ -610,15 +624,26 @@ class PersonalFinanceController extends Controller
 
         $items = $investments->map(function (PersonalInvestment $inv) use ($netByInvestment) {
             $net = (float) ($netByInvestment[$inv->id] ?? 0);
+            $units = (float) $inv->units_held;
+            $currentPrice = (float) ($inv->current_price ?? 0);
+            $marketValue = $units > 0 && $currentPrice > 0 ? round($units * $currentPrice, 2) : null;
 
             return [
                 'id' => $inv->id,
                 'name' => $inv->name,
+                'ticker' => $inv->ticker,
                 'asset_type' => $inv->asset_type,
                 'institution' => $inv->institution,
                 'notes' => $inv->notes,
                 'opened_at' => $inv->opened_at?->format('Y-m-d'),
                 'is_active' => (bool) $inv->is_active,
+                'units_held' => $units,
+                'current_price' => $currentPrice > 0 ? $currentPrice : null,
+                'previous_close' => $inv->previous_close !== null ? (float) $inv->previous_close : null,
+                'price_change' => $inv->price_change !== null ? (float) $inv->price_change : null,
+                'price_change_percent' => $inv->price_change_percent !== null ? (float) $inv->price_change_percent : null,
+                'market_value' => $marketValue,
+                'last_synced_at' => $inv->last_synced_at?->diffForHumans(),
                 'net_flow' => round($net, 2),
                 'movements' => $inv->movements->map(fn (PersonalInvestmentMovement $m) => [
                     'id' => $m->id,
@@ -650,20 +675,24 @@ class PersonalFinanceController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:160',
             'asset_type' => ['required', 'string', 'max:32'],
+            'ticker' => 'nullable|string|max:32',
             'institution' => 'nullable|string|max:160',
             'notes' => 'nullable|string|max:2000',
             'opened_at' => 'nullable|date',
             'is_active' => 'required|boolean',
+            'units_held' => 'nullable|numeric|min:0',
         ]);
 
         PersonalInvestment::query()->create([
             'user_id' => $userId,
             'name' => trim($validated['name']),
+            'ticker' => isset($validated['ticker']) ? strtoupper(trim($validated['ticker'])) : null,
             'asset_type' => $validated['asset_type'],
             'institution' => isset($validated['institution']) ? trim((string) $validated['institution']) ?: null : null,
             'notes' => $validated['notes'] ?? null,
             'opened_at' => isset($validated['opened_at']) ? Carbon::parse($validated['opened_at'])->format('Y-m-d') : null,
             'is_active' => (bool) $validated['is_active'],
+            'units_held' => (float) ($validated['units_held'] ?? 0),
         ]);
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Investasi ditambahkan.']);
@@ -676,19 +705,23 @@ class PersonalFinanceController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:160',
             'asset_type' => ['required', 'string', 'max:32'],
+            'ticker' => 'nullable|string|max:32',
             'institution' => 'nullable|string|max:160',
             'notes' => 'nullable|string|max:2000',
             'opened_at' => 'nullable|date',
             'is_active' => 'required|boolean',
+            'units_held' => 'nullable|numeric|min:0',
         ]);
 
         $investment->update([
             'name' => trim($validated['name']),
+            'ticker' => isset($validated['ticker']) ? strtoupper(trim($validated['ticker'])) : null,
             'asset_type' => $validated['asset_type'],
             'institution' => isset($validated['institution']) ? trim((string) $validated['institution']) ?: null : null,
             'notes' => $validated['notes'] ?? null,
             'opened_at' => isset($validated['opened_at']) ? Carbon::parse($validated['opened_at'])->format('Y-m-d') : null,
             'is_active' => (bool) $validated['is_active'],
+            'units_held' => (float) ($validated['units_held'] ?? 0),
         ]);
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Investasi diperbarui.']);
@@ -699,7 +732,79 @@ class PersonalFinanceController extends Controller
         $this->assertInvestmentOwner($request, $investment);
         $investment->delete();
 
+        Cache::forget('investment_net_'.$investment->user_id);
+
         return back()->with('flash', ['type' => 'success', 'message' => 'Investasi dihapus.']);
+    }
+
+    public function refreshPrice(Request $request, PersonalInvestment $investment): RedirectResponse
+    {
+        $this->assertInvestmentOwner($request, $investment);
+
+        if (blank($investment->ticker)) {
+            return back()->with('flash', ['type' => 'error', 'message' => 'Ticker saham belum diisi.']);
+        }
+
+        $marketData = app(MarketDataService::class);
+        $priceData = $marketData->fetchStockPrice($investment->ticker);
+
+        if ($priceData === null) {
+            return back()->with('flash', ['type' => 'error', 'message' => 'Gagal mengambil data harga saham. Coba lagi nanti.']);
+        }
+
+        $investment->update([
+            'current_price' => $priceData['current_price'],
+            'previous_close' => $priceData['previous_close'],
+            'price_change' => $priceData['price_change'],
+            'price_change_percent' => $priceData['price_change_percent'],
+            'last_synced_at' => now(),
+        ]);
+
+        $price = $priceData['current_price'] !== null
+            ? 'Rp '.number_format($priceData['current_price'], 0, ',', '.')
+            : 'N/A';
+
+        return back()->with('flash', ['type' => 'success', 'message' => "Harga {$investment->ticker}: {$price}"]);
+    }
+
+    public function refreshAllPrices(Request $request): RedirectResponse
+    {
+        $userId = (int) $request->user()->id;
+
+        $investments = PersonalInvestment::query()
+            ->where('user_id', $userId)
+            ->where('asset_type', 'saham')
+            ->whereNotNull('ticker')
+            ->get();
+
+        if ($investments->isEmpty()) {
+            return back()->with('flash', ['type' => 'error', 'message' => 'Tidak ada saham dengan ticker untuk diperbarui.']);
+        }
+
+        $marketData = app(MarketDataService::class);
+        $updated = 0;
+        $failed = 0;
+
+        foreach ($investments as $investment) {
+            $priceData = $marketData->fetchStockPrice($investment->ticker);
+
+            if ($priceData === null) {
+                $failed++;
+
+                continue;
+            }
+
+            $investment->update([
+                'current_price' => $priceData['current_price'],
+                'previous_close' => $priceData['previous_close'],
+                'price_change' => $priceData['price_change'],
+                'price_change_percent' => $priceData['price_change_percent'],
+                'last_synced_at' => now(),
+            ]);
+            $updated++;
+        }
+
+        return back()->with('flash', ['type' => 'success', 'message' => "{$updated} harga diperbarui, {$failed} gagal."]);
     }
 
     public function storeInvestmentMovement(Request $request, PersonalInvestment $investment): RedirectResponse

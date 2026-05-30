@@ -15,6 +15,11 @@ defineProps({
 });
 
 const money = (n) => `Rp ${Number(n ?? 0).toLocaleString('id-ID')}`;
+const formatUnits = (n) => Number(n ?? 0).toLocaleString('id-ID');
+const priceClass = (change) => {
+    if (!change || change === 0) return 'text-base-content';
+    return change > 0 ? 'text-success' : 'text-error';
+};
 
 const flowLabel = (f) => ({
     deposit: 'Setoran',
@@ -25,15 +30,17 @@ const flowLabel = (f) => ({
 const addForm = useForm({
     name: '',
     asset_type: 'reksadana',
+    ticker: '',
     institution: '',
     notes: '',
     opened_at: '',
     is_active: true,
+    units_held: '',
 });
 
 const resetAddInvestmentForm = () => {
     addForm.clearErrors();
-    addForm.reset('name', 'institution', 'notes', 'opened_at');
+    addForm.reset('name', 'ticker', 'institution', 'notes', 'opened_at', 'units_held');
     addForm.asset_type = 'reksadana';
     addForm.is_active = true;
 };
@@ -57,21 +64,25 @@ const editingInv = ref(null);
 const editForm = useForm({
     name: '',
     asset_type: 'reksadana',
+    ticker: '',
     institution: '',
     notes: '',
     opened_at: '',
     is_active: true,
+    units_held: '',
 });
 
 const openEditInv = (inv) => {
     editingInv.value = inv;
     editForm.clearErrors();
     editForm.name = inv.name;
+    editForm.ticker = inv.ticker ?? '';
     editForm.asset_type = inv.asset_type;
     editForm.institution = inv.institution ?? '';
     editForm.notes = inv.notes ?? '';
     editForm.opened_at = inv.opened_at ?? '';
     editForm.is_active = !!inv.is_active;
+    editForm.units_held = inv.units_held ?? '';
     document.getElementById('modal-edit-investment')?.showModal();
 };
 
@@ -177,12 +188,27 @@ const assetLabel = (types, value) => types?.find((t) => t.value === value)?.labe
               <h2 class="ocn-panel__title">{{ inv.name }}</h2>
               <p class="ocn-panel__desc">
                 <span class="badge badge-outline badge-sm">{{ assetLabel(assetTypes, inv.asset_type) }}</span>
+                <span v-if="inv.ticker" class="ml-2 badge badge-sm badge-info">{{ inv.ticker }}</span>
                 <span v-if="inv.institution" class="ml-2 text-sm">{{ inv.institution }}</span>
                 <span class="ml-2 badge badge-sm" :class="inv.is_active ? 'badge-success' : 'badge-ghost'">{{ inv.is_active ? 'aktif' : 'ditutup' }}</span>
               </p>
-              <p class="mt-2 text-sm font-semibold">Arus kas tercatat: <span class="font-mono" :class="inv.net_flow >= 0 ? 'text-success' : 'text-error'">{{ money(inv.net_flow) }}</span></p>
+              <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                <span class="font-semibold">Arus kas: <span class="font-mono" :class="inv.net_flow >= 0 ? 'text-success' : 'text-error'">{{ money(inv.net_flow) }}</span></span>
+                <span v-if="inv.current_price !== null" class="font-semibold">
+                  Harga: <span class="font-mono">{{ money(inv.current_price) }}</span>
+                  <span v-if="inv.price_change !== null" class="font-mono" :class="priceClass(inv.price_change)">
+                    ({{ inv.price_change >= 0 ? '+' : '' }}{{ money(inv.price_change) }} / {{ (inv.price_change_percent ?? 0) >= 0 ? '+' : '' }}{{ (inv.price_change_percent ?? 0).toFixed(2) }}%)
+                  </span>
+                </span>
+                <span v-if="inv.market_value !== null" class="font-semibold">
+                  Nilai: <span class="font-mono text-primary">{{ money(inv.market_value) }}</span>
+                </span>
+                <span v-if="inv.units_held > 0" class="text-base-content/60">{{ formatUnits(inv.units_held) }} unit</span>
+                <span v-if="inv.last_synced_at" class="text-base-content/40 text-xs">{{ inv.last_synced_at }}</span>
+              </div>
             </div>
             <div class="flex flex-wrap gap-2">
+              <button type="button" class="btn btn-outline btn-xs" :disabled="!inv.ticker" @click="router.post(route('personal.investments.refresh-price', inv.id), { preserveScroll: true })">Sync harga</button>
               <button type="button" class="btn btn-outline btn-xs" @click="openMovement(inv)">+ Mutasi</button>
               <button type="button" class="btn btn-ghost btn-xs" @click="openEditInv(inv)">Edit</button>
               <button type="button" class="btn btn-ghost btn-xs text-error" @click="confirmDeleteInv(inv)">Hapus</button>
@@ -235,13 +261,15 @@ const assetLabel = (types, value) => types?.find((t) => t.value === value)?.labe
               <option v-for="t in assetTypes" :key="t.value" :value="t.value">{{ t.label }}</option>
             </select>
           </div>
+          <div v-if="addForm.asset_type === 'saham'" class="sm:col-span-2">
+            <label class="label"><span class="label-text">Kode saham (ticker)</span></label>
+            <input v-model="addForm.ticker" type="text" class="input input-bordered w-full uppercase" placeholder="BBCA" />
+            <p v-if="addForm.errors.ticker" class="text-error text-xs mt-1">{{ addForm.errors.ticker }}</p>
+            <p class="text-xs text-base-content/50 mt-1">Kode saham di IDX (tanpa .JK). Contoh: BBCA, TLKM, ASII</p>
+          </div>
           <div class="sm:col-span-2">
             <label class="label"><span class="label-text">Institusi / platform</span></label>
             <input v-model="addForm.institution" type="text" class="input input-bordered w-full" />
-          </div>
-          <div class="sm:col-span-2">
-            <label class="label"><span class="label-text">Catatan</span></label>
-            <textarea v-model="addForm.notes" class="textarea textarea-bordered w-full" rows="2" />
           </div>
           <div>
             <label class="label"><span class="label-text">Mulai (opsional)</span></label>
@@ -252,6 +280,14 @@ const assetLabel = (types, value) => types?.find((t) => t.value === value)?.labe
               <input v-model="addForm.is_active" type="checkbox" class="toggle toggle-success" />
               <span class="label-text">Masih aktif</span>
             </label>
+          </div>
+          <div class="sm:col-span-2">
+            <label class="label"><span class="label-text">Catatan</span></label>
+            <textarea v-model="addForm.notes" class="textarea textarea-bordered w-full" rows="2" />
+          </div>
+          <div v-if="addForm.asset_type === 'saham'" class="sm:col-span-2">
+            <label class="label"><span class="label-text">Jumlah unit (lembar)</span></label>
+            <input v-model="addForm.units_held" type="number" min="0" step="1" class="input input-bordered w-full" placeholder="100" />
           </div>
         </div>
         <div class="modal-action">
@@ -280,6 +316,12 @@ const assetLabel = (types, value) => types?.find((t) => t.value === value)?.labe
               <option v-for="t in assetTypes" :key="t.value" :value="t.value">{{ t.label }}</option>
             </select>
           </div>
+          <div v-if="editForm.asset_type === 'saham'" class="sm:col-span-2">
+            <label class="label"><span class="label-text">Kode saham (ticker)</span></label>
+            <input v-model="editForm.ticker" type="text" class="input input-bordered w-full uppercase" placeholder="BBCA" />
+            <p v-if="editForm.errors.ticker" class="text-error text-xs mt-1">{{ editForm.errors.ticker }}</p>
+            <p class="text-xs text-base-content/50 mt-1">Kode saham di IDX (tanpa .JK). Contoh: BBCA, TLKM, ASII</p>
+          </div>
           <div class="sm:col-span-2">
             <label class="label"><span class="label-text">Institusi / platform</span></label>
             <input v-model="editForm.institution" type="text" class="input input-bordered w-full" />
@@ -297,6 +339,10 @@ const assetLabel = (types, value) => types?.find((t) => t.value === value)?.labe
               <input v-model="editForm.is_active" type="checkbox" class="toggle toggle-success" />
               <span class="label-text">Aktif</span>
             </label>
+          </div>
+          <div v-if="editForm.asset_type === 'saham'" class="sm:col-span-2">
+            <label class="label"><span class="label-text">Jumlah unit (lembar)</span></label>
+            <input v-model="editForm.units_held" type="number" min="0" step="1" class="input input-bordered w-full" />
           </div>
         </div>
         <div class="modal-action">

@@ -11,11 +11,18 @@ class PersonalInvestment extends Model
     protected $fillable = [
         'user_id',
         'name',
+        'ticker',
         'asset_type',
         'institution',
         'notes',
         'opened_at',
         'is_active',
+        'units_held',
+        'current_price',
+        'previous_close',
+        'price_change',
+        'price_change_percent',
+        'last_synced_at',
     ];
 
     protected function casts(): array
@@ -24,6 +31,12 @@ class PersonalInvestment extends Model
             'user_id' => 'int',
             'opened_at' => 'date',
             'is_active' => 'bool',
+            'units_held' => 'decimal:4',
+            'current_price' => 'decimal:2',
+            'previous_close' => 'decimal:2',
+            'price_change' => 'decimal:2',
+            'price_change_percent' => 'decimal:4',
+            'last_synced_at' => 'datetime',
         ];
     }
 

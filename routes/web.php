@@ -385,6 +385,8 @@ Route::middleware(['auth', 'throttle:120,1'])->group(function () {
         Route::patch('personal/investments/{investment}', [PersonalFinanceController::class, 'updateInvestment'])->name('personal.investments.update');
         Route::delete('personal/investments/{investment}', [PersonalFinanceController::class, 'destroyInvestment'])->name('personal.investments.destroy');
         Route::post('personal/investments/{investment}/movements', [PersonalFinanceController::class, 'storeInvestmentMovement'])->name('personal.investments.movements.store');
+        Route::post('personal/investments/refresh-all', [PersonalFinanceController::class, 'refreshAllPrices'])->name('personal.investments.refresh-all');
+        Route::post('personal/investments/{investment}/refresh-price', [PersonalFinanceController::class, 'refreshPrice'])->name('personal.investments.refresh-price');
     });
 
     // User Management (Admin only)
