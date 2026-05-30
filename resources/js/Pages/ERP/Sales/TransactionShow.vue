@@ -68,6 +68,9 @@ const closeReopenTransaction = () => {
   closeReopenForm.post(route('erp.sales.pos.transactions.close-reopen', props.detail.id), {
     ...authPayload(),
     preserveScroll: true,
+    onSuccess: () => {
+      document.getElementById('modal-confirm-close-reopen')?.close();
+    },
   });
 };
 
