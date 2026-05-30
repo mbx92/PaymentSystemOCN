@@ -22,6 +22,20 @@ const paymentForm = useForm({
   authorization_password: '',
 });
 
+const orderCodeForm = useForm({
+  marketplace_order_code: props.detail.marketplace_order_code ?? '',
+});
+
+const updateOrderCode = () => {
+  orderCodeForm.patch(route('erp.sales.pos.transactions.order-code.update', props.detail.id), {
+    preserveScroll: true,
+    onSuccess: () => {
+      props.detail.marketplace_order_code = orderCodeForm.marketplace_order_code;
+      document.getElementById('modal-order-code')?.close();
+    },
+  });
+};
+
 const updatePaymentMethod = () => {
   paymentForm.patch(route('erp.sales.pos.transactions.payment-method.update', props.detail.id), {
     preserveScroll: true,
@@ -257,6 +271,10 @@ const printReceipt = async () => {
             <p v-if="printReceiptSuccess" class="text-xs text-success">{{ printReceiptSuccess }}</p>
             <p v-if="printReceiptError" class="text-xs text-error">{{ printReceiptError }}</p>
 
+            <button class="btn btn-outline btn-accent btn-sm" @click="openConfirmModal('modal-order-code')">
+              Input / Ubah Kode Pesanan
+            </button>
+
             <div class="rounded-lg border border-base-300 bg-base-100 p-3">
               <p class="text-xs uppercase tracking-wide text-base-content/60">Metode Pembayaran Saat Ini</p>
               <p class="mt-1 font-semibold">{{ detail.payment_method_name || '-' }}</p>
@@ -310,6 +328,20 @@ const printReceipt = async () => {
           <div class="modal-action">
             <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
             <button class="btn btn-primary" :disabled="paymentForm.processing" @click="openConfirmModal('modal-confirm-payment-method')">Lanjut Konfirmasi</button>
+          </div>
+        </div>
+      </dialog>
+
+      <dialog id="modal-order-code" class="modal">
+        <div class="modal-box max-w-md">
+          <h3 class="font-bold text-lg">Input / Ubah Kode Pesanan</h3>
+          <div class="mt-3 space-y-3">
+            <input v-model="orderCodeForm.marketplace_order_code" type="text" class="input input-bordered w-full" placeholder="Contoh: MP-20260516-001" maxlength="100" />
+            <p v-if="orderCodeForm.errors.marketplace_order_code" class="text-xs text-error">{{ orderCodeForm.errors.marketplace_order_code }}</p>
+          </div>
+          <div class="modal-action">
+            <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
+            <button class="btn btn-accent" :disabled="orderCodeForm.processing" @click="updateOrderCode">Simpan</button>
           </div>
         </div>
       </dialog>

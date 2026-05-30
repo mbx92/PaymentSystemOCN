@@ -239,6 +239,19 @@ class ERPSalesController extends Controller
         return back()->with('flash', ['type' => 'success', 'message' => 'Metode pembayaran transaksi berhasil diperbarui.']);
     }
 
+    public function updatePosTransactionOrderCode(Request $request, PosSale $posSale): RedirectResponse
+    {
+        $validated = $request->validate([
+            'marketplace_order_code' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $posSale->update([
+            'marketplace_order_code' => $validated['marketplace_order_code'],
+        ]);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Kode pesanan berhasil diperbarui.']);
+    }
+
     public function refundPosTransaction(PosSale $posSale): RedirectResponse
     {
         $this->authorizeHighPrivilege(request());
