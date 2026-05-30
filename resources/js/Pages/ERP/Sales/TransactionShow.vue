@@ -44,6 +44,7 @@ const updatePaymentMethod = () => {
 
 const refundForm = useForm({});
 const reopenForm = useForm({});
+const closeReopenForm = useForm({});
 const authForm = useForm({
   authorization_email: '',
   authorization_password: '',
@@ -63,8 +64,16 @@ const reopenTransaction = () => {
   });
 };
 
+const closeReopenTransaction = () => {
+  closeReopenForm.post(route('erp.sales.pos.transactions.close-reopen', props.detail.id), {
+    ...authPayload(),
+    preserveScroll: true,
+  });
+};
+
 const canRefund = computed(() => props.detail.status !== 'refunded');
 const canReopen = computed(() => props.detail.status !== 'reopened');
+const isReopened = computed(() => props.detail.status === 'reopened');
 const printingReceipt = ref(false);
 const printReceiptError = ref('');
 const printReceiptSuccess = ref('');
@@ -295,11 +304,14 @@ const printReceipt = async () => {
             <button class="btn btn-outline btn-warning btn-sm" :disabled="!canRefund || refundForm.processing" @click="openConfirmModal('modal-confirm-refund')">
               Cancel / Refund Transaksi
             </button>
+            <button v-if="isReopened" class="btn btn-outline btn-success btn-sm" :disabled="closeReopenForm.processing" @click="openConfirmModal('modal-confirm-close-reopen')">
+              Mark as Paid
+            </button>
             <button class="btn btn-outline btn-success btn-sm" :disabled="!canReopen || reopenForm.processing" @click="openConfirmModal('modal-confirm-reopen')">
               Reopen Transaksi
             </button>
-            <p v-if="paymentForm.errors.authorization || refundForm.errors.authorization || reopenForm.errors.authorization" class="text-xs text-error">
-              {{ paymentForm.errors.authorization || refundForm.errors.authorization || reopenForm.errors.authorization }}
+            <p v-if="paymentForm.errors.authorization || refundForm.errors.authorization || reopenForm.errors.authorization || closeReopenForm.errors.authorization" class="text-xs text-error">
+              {{ paymentForm.errors.authorization || refundForm.errors.authorization || reopenForm.errors.authorization || closeReopenForm.errors.authorization }}
             </p>
           </div>
         </div>
@@ -353,6 +365,17 @@ const printReceipt = async () => {
           <div class="modal-action">
             <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
             <button class="btn btn-warning" @click="refundTransaction">Ya, Refund</button>
+          </div>
+        </div>
+      </dialog>
+
+      <dialog id="modal-confirm-close-reopen" class="modal">
+        <div class="modal-box">
+          <h3 class="font-bold text-lg">Konfirmasi Mark as Paid</h3>
+          <p class="py-3 text-sm text-base-content/70">Transaksi akan dikembalikan ke status paid. Lanjutkan?</p>
+          <div class="modal-action">
+            <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
+            <button class="btn btn-success" @click="closeReopenTransaction">Ya, Mark as Paid</button>
           </div>
         </div>
       </dialog>

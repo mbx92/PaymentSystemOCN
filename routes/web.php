@@ -285,6 +285,7 @@ Route::middleware(['auth', 'throttle:120,1'])->group(function () {
         Route::patch('erp/sales/transactions/{posSale}/order-code', [ERPSalesController::class, 'updatePosTransactionOrderCode'])->name('erp.sales.pos.transactions.order-code.update');
         Route::post('erp/sales/transactions/{posSale}/refund', [ERPSalesController::class, 'refundPosTransaction'])->name('erp.sales.pos.transactions.refund');
         Route::post('erp/sales/transactions/{posSale}/reopen', [ERPSalesController::class, 'reopenPosTransaction'])->name('erp.sales.pos.transactions.reopen');
+        Route::post('erp/sales/transactions/{posSale}/close-reopen', [ERPSalesController::class, 'closeReopenPosTransaction'])->name('erp.sales.pos.transactions.close-reopen');
         Route::get('erp/sales/project-invoices', [ERPSalesController::class, 'projectInvoices'])->name('erp.sales.project-invoices');
         Route::get('erp/sales/project-invoices/{project}', [ERPSalesController::class, 'projectInvoiceShow'])->name('erp.sales.project-invoices.show');
         Route::post('erp/sales/project-invoices/{project}/payments', [ERPSalesController::class, 'storeProjectInvoicePayment'])->name('erp.sales.project-invoices.payments.store');

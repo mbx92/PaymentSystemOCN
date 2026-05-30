@@ -444,6 +444,18 @@ class ERPSalesController extends Controller
         return back()->with('flash', ['type' => 'success', 'message' => 'Transaksi berhasil di-reopen.']);
     }
 
+    public function closeReopenPosTransaction(PosSale $posSale): RedirectResponse
+    {
+        abort_if($posSale->status !== 'reopened', 422, 'Hanya transaksi dengan status reopened yang dapat ditutup kembali.');
+
+        $posSale->update([
+            'status' => 'paid',
+            'note' => trim(($posSale->note ? $posSale->note.' | ' : '').'Closed reopen '.now()->format('Y-m-d H:i')),
+        ]);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Transaksi berhasil dikembalikan ke status paid.']);
+    }
+
     public function checkoutPos(Request $request): JsonResponse
     {
         $validated = $request->validate([
