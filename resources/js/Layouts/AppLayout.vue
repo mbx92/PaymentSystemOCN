@@ -24,6 +24,13 @@ import {
 } from '@heroicons/vue/24/outline';
 import FlashMessage from '@/Components/FlashMessage.vue';
 
+const props = defineProps({
+    fullWidth: {
+        type: Boolean,
+        default: false,
+    },
+});
+
 const SIDEBAR_COLLAPSE_STORAGE_KEY = 'ocn_sidebar_collapsed';
 const page = usePage();
 const auth = computed(() => page.props.auth);
@@ -799,7 +806,7 @@ const handleSidebarItemMouseLeave = () => {
 
             <main :class="[
                 'ocn-main-shell flex-1 w-full',
-                isPosFullscreen ? 'ocn-main-shell--pos' : 'ocn-main-shell--default',
+                isPosFullscreen ? 'ocn-main-shell--pos' : (props.fullWidth ? 'ocn-main-shell--fluid' : 'ocn-main-shell--default'),
             ]">
                 <slot />
             </main>

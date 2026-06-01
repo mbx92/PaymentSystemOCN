@@ -42,6 +42,21 @@ class CmsAccessLogger
     /**
      * @param  array<string, mixed>  $meta
      */
+    public static function logLandingEvent(Request $request, int $landingSiteId, string $eventName, array $meta = []): void
+    {
+        self::insert(
+            $request,
+            CmsAccessLog::KIND_LANDING_PUBLIC,
+            $landingSiteId,
+            $request->user()?->id,
+            $eventName,
+            $meta,
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     */
     private static function insert(Request $request, string $kind, ?int $landingSiteId, ?int $userId, string $event, array $meta): void
     {
         try {

@@ -258,7 +258,7 @@ watch(
                         <div class="flex flex-wrap items-center gap-2 shrink-0">
                             <Link
                                 class="btn btn-ghost btn-sm gap-1.5"
-                                :href="route('erp.admin.legacy-import')"
+                                :href="route('erp.administration')"
                             >
                                 <ArrowLeftIcon class="h-4 w-4" />
                                 Kembali ke daftar
@@ -1212,9 +1212,9 @@ watch(
                             </button>
                             <Link
                                 class="btn btn-outline btn-sm justify-start"
-                                :href="route('erp.admin.legacy-import')"
+                                :href="route('erp.administration')"
                             >
-                                Kembali ke daftar legacy import
+                                Kembali ke modul admin
                             </Link>
                             <Link
                                 v-if="project.existing_erp_project?.id"

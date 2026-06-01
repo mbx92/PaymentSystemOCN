@@ -18,6 +18,7 @@ use App\Models\ErpSetting;
 use App\Models\LabelProfile;
 use App\Models\LandingSite;
 use App\Models\LandingSitePage;
+use App\Models\LandingSitePageVersion;
 use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
 use App\Models\PaymentMethod;
@@ -26,6 +27,7 @@ use App\Models\ProcurementImportStaging;
 use App\Models\ProductStockMovement;
 use App\Models\ProjectMaterial;
 use App\Services\DatabaseBackupService;
+use App\Services\LandingSiteBuilderService;
 use App\Services\LanEscPosPrinter;
 use App\Services\LanTsplPrinter;
 use App\Services\LegacyProjectImportService;
@@ -42,6 +44,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -123,9 +126,18 @@ class ERPAdministrationMasterDataController extends Controller
 
     public function landingSites(Request $request): Response
     {
+        $builder = app(LandingSiteBuilderService::class);
+        $builder->ensurePresets();
+
         return Inertia::render('ERP/Admin/LandingSites', [
             'landingSites' => LandingSite::query()
-                ->with(['warehouse:id,code,name', 'page:id,landing_site_id,is_published'])
+                ->with([
+                    'warehouse:id,code,name',
+                    'page:id,landing_site_id,is_published',
+                    'pageVersions' => fn ($query) => $query
+                        ->where('status', LandingSitePageVersion::STATUS_DRAFT)
+                        ->with(['template:id,key', 'theme:id,key']),
+                ])
                 ->orderBy('is_active', 'desc')
                 ->orderBy('name')
                 ->paginate($this->resolvedPerPage($request))
@@ -134,6 +146,8 @@ class ERPAdministrationMasterDataController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'code', 'name']),
             'filters' => $this->filtersWithPerPage($request, []),
+            'availableTemplates' => $builder->allTemplateOptions(),
+            'availableThemes' => $builder->themeOptions(),
         ]);
     }
 
@@ -149,9 +163,18 @@ class ERPAdministrationMasterDataController extends Controller
             'layout_key' => 'required|string|in:toko,cctv,coming_soon,countdown',
             'warehouse_id' => 'nullable|exists:warehouses,id',
             'is_active' => 'required|boolean',
+            'template_key' => 'nullable|string|max:120',
+            'theme_key' => 'nullable|string|max:120',
         ]);
 
-        LandingSite::query()->create($validated);
+        $landingSite = LandingSite::query()->create(Arr::except($validated, ['template_key', 'theme_key']));
+
+        app(LandingSiteBuilderService::class)->bootstrapForLandingSite(
+            $landingSite->fresh('page'),
+            $validated['template_key'] ?? null,
+            $validated['theme_key'] ?? null,
+            $request->user(),
+        );
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Landing site berhasil ditambahkan.']);
     }
@@ -168,9 +191,18 @@ class ERPAdministrationMasterDataController extends Controller
             'layout_key' => 'required|string|in:toko,cctv,coming_soon,countdown',
             'warehouse_id' => 'nullable|exists:warehouses,id',
             'is_active' => 'required|boolean',
+            'template_key' => 'nullable|string|max:120',
+            'theme_key' => 'nullable|string|max:120',
         ]);
 
-        $landingSite->update($validated);
+        $landingSite->update(Arr::except($validated, ['template_key', 'theme_key']));
+
+        app(LandingSiteBuilderService::class)->updateDraftSelection(
+            $landingSite->fresh('page'),
+            $validated['template_key'] ?? null,
+            $validated['theme_key'] ?? null,
+            $request->user(),
+        );
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Landing site berhasil diperbarui.']);
     }
@@ -215,6 +247,7 @@ class ERPAdministrationMasterDataController extends Controller
     public function landingSiteCms(Request $request, LandingSite $landingSite): Response
     {
         $landingSite->load('page');
+        $builder = app(LandingSiteBuilderService::class);
 
         return Inertia::render('ERP/Admin/LandingSiteCms', [
             'landingSite' => $landingSite,
@@ -233,45 +266,125 @@ class ERPAdministrationMasterDataController extends Controller
                 'seo_description' => $landingSite->page?->seo_description ?? '',
                 'is_published' => (bool) ($landingSite->page?->is_published ?? true),
             ],
+            ...$builder->editorPayload($landingSite),
+            'previewUrl' => route('erp.admin.landing-sites.cms.preview', $landingSite),
         ]);
     }
 
     public function updateLandingSiteCms(Request $request, LandingSite $landingSite): RedirectResponse
     {
         $validated = $request->validate([
-            'headline' => 'nullable|string|max:190',
-            'subheadline' => 'nullable|string|max:255',
-            'body' => 'nullable|string|max:4000',
-            'countdown_at' => 'nullable|date',
-            'primary_cta_text' => 'nullable|string|max:80',
-            'primary_cta_url' => 'nullable|string|max:500',
-            'secondary_cta_text' => 'nullable|string|max:80',
-            'secondary_cta_url' => 'nullable|string|max:500',
-            'contact_text' => 'nullable|string|max:255',
-            'seo_title' => 'nullable|string|max:190',
-            'seo_description' => 'nullable|string|max:255',
-            'is_published' => 'required|boolean',
+            'template_key' => 'nullable|string|max:120',
+            'theme_key' => 'nullable|string|max:120',
+            'settings' => 'nullable|array',
+            'settings.full_width' => 'nullable|boolean',
+            'theme_overrides' => 'nullable|array',
+            'theme_overrides.*' => 'nullable|string|max:255',
+            'seo' => 'required|array',
+            'seo.title' => 'nullable|string|max:190',
+            'seo.description' => 'nullable|string|max:255',
+            'sections' => 'required|array|min:1|max:40',
+            'sections.*.id' => 'required|string|max:120',
+            'sections.*.type' => 'required|string|in:hero,text,cta_group,feature_list,image_gallery,contact_card,countdown,warehouse_highlight',
+            'sections.*.layout' => 'nullable|array',
+            'sections.*.layout.width' => 'nullable|string|in:full,half,third,two-thirds',
+            'sections.*.layout.variant' => 'nullable|string|max:80',
+            'sections.*.visibility' => 'nullable|array',
+            'sections.*.visibility.enabled' => 'nullable|boolean',
+            'sections.*.props' => 'nullable|array',
+            'sections.*.assets' => 'nullable|array',
         ]);
+
+        $builder = app(LandingSiteBuilderService::class);
+        $builder->saveDraft($landingSite->fresh('page'), $validated, $request->user());
+        $this->syncLegacyLandingSitePage($landingSite, $validated);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Draft landing page berhasil disimpan.']);
+    }
+
+    public function previewLandingSiteCms(Request $request, LandingSite $landingSite): Response
+    {
+        $builder = app(LandingSiteBuilderService::class);
+        $draft = $builder->draftForLandingSite($landingSite->loadMissing(['page', 'warehouse']), $request->user());
+        $payload = $builder->buildPublicPayload($landingSite->loadMissing('warehouse'), $draft);
+
+        return Inertia::render('Public/LandingBuilder', [
+            ...$payload,
+            'previewMode' => true,
+            'previewLabel' => 'Preview draft CMS',
+        ]);
+    }
+
+    public function publishLandingSiteCms(Request $request, LandingSite $landingSite): RedirectResponse
+    {
+        $builder = app(LandingSiteBuilderService::class);
+        $published = $builder->publishDraft($landingSite->loadMissing('page'), $request->user());
+        $document = (array) ($published->document ?? []);
 
         LandingSitePage::query()->updateOrCreate(
             ['landing_site_id' => $landingSite->id],
             [
-                'headline' => trim((string) ($validated['headline'] ?? '')) ?: null,
-                'subheadline' => trim((string) ($validated['subheadline'] ?? '')) ?: null,
-                'body' => trim((string) ($validated['body'] ?? '')) ?: null,
-                'countdown_at' => $validated['countdown_at'] ?? null,
-                'primary_cta_text' => trim((string) ($validated['primary_cta_text'] ?? '')) ?: null,
-                'primary_cta_url' => trim((string) ($validated['primary_cta_url'] ?? '')) ?: null,
-                'secondary_cta_text' => trim((string) ($validated['secondary_cta_text'] ?? '')) ?: null,
-                'secondary_cta_url' => trim((string) ($validated['secondary_cta_url'] ?? '')) ?: null,
-                'contact_text' => trim((string) ($validated['contact_text'] ?? '')) ?: null,
-                'seo_title' => trim((string) ($validated['seo_title'] ?? '')) ?: null,
-                'seo_description' => trim((string) ($validated['seo_description'] ?? '')) ?: null,
-                'is_published' => (bool) $validated['is_published'],
+                'headline' => trim((string) data_get($document, 'sections.0.props.headline')) ?: null,
+                'subheadline' => trim((string) data_get($document, 'sections.0.props.subheadline')) ?: null,
+                'body' => trim((string) data_get($document, 'sections.0.props.body')) ?: null,
+                'countdown_at' => data_get($document, 'sections.3.props.target_at') ?: data_get($document, 'sections.2.props.target_at'),
+                'primary_cta_text' => trim((string) data_get($document, 'sections.0.props.primary_cta_text')) ?: null,
+                'primary_cta_url' => trim((string) data_get($document, 'sections.0.props.primary_cta_url')) ?: null,
+                'secondary_cta_text' => trim((string) data_get($document, 'sections.0.props.secondary_cta_text')) ?: null,
+                'secondary_cta_url' => trim((string) data_get($document, 'sections.0.props.secondary_cta_url')) ?: null,
+                'contact_text' => trim((string) data_get($document, 'sections.0.props.contact_text')) ?: null,
+                'seo_title' => trim((string) data_get($document, 'seo.title')) ?: null,
+                'seo_description' => trim((string) data_get($document, 'seo.description')) ?: null,
+                'is_published' => true,
             ]
         );
 
-        return back()->with('flash', ['type' => 'success', 'message' => 'Konten landing page berhasil disimpan.']);
+        return back()->with('flash', ['type' => 'success', 'message' => 'Draft landing page berhasil dipublish.']);
+    }
+
+    public function saveLandingSiteCmsTemplate(Request $request, LandingSite $landingSite): RedirectResponse
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:120',
+            'scope' => 'required|string|in:private,shared_internal',
+        ]);
+
+        app(LandingSiteBuilderService::class)->saveDraftAsTemplate(
+            $landingSite->loadMissing('page'),
+            (string) $validated['name'],
+            (string) $validated['scope'],
+            $request->user(),
+        );
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Template berhasil disimpan dari draft saat ini.']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    private function syncLegacyLandingSitePage(LandingSite $landingSite, array $validated): void
+    {
+        $sections = collect((array) ($validated['sections'] ?? []));
+        $hero = $sections->firstWhere('type', 'hero');
+        $countdown = $sections->firstWhere('type', 'countdown');
+
+        LandingSitePage::query()->updateOrCreate(
+            ['landing_site_id' => $landingSite->id],
+            [
+                'headline' => trim((string) data_get($hero, 'props.headline')) ?: null,
+                'subheadline' => trim((string) data_get($hero, 'props.subheadline')) ?: null,
+                'body' => trim((string) data_get($hero, 'props.body')) ?: null,
+                'countdown_at' => data_get($countdown, 'props.target_at'),
+                'primary_cta_text' => trim((string) data_get($hero, 'props.primary_cta_text')) ?: null,
+                'primary_cta_url' => trim((string) data_get($hero, 'props.primary_cta_url')) ?: null,
+                'secondary_cta_text' => trim((string) data_get($hero, 'props.secondary_cta_text')) ?: null,
+                'secondary_cta_url' => trim((string) data_get($hero, 'props.secondary_cta_url')) ?: null,
+                'contact_text' => trim((string) data_get($hero, 'props.contact_text')) ?: null,
+                'seo_title' => trim((string) data_get($validated, 'seo.title')) ?: null,
+                'seo_description' => trim((string) data_get($validated, 'seo.description')) ?: null,
+                'is_published' => (bool) ($landingSite->page?->is_published ?? false),
+            ]
+        );
     }
 
     private function normalizeLandingDomain(string $domain): string

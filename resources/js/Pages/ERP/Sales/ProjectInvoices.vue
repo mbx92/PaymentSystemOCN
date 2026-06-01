@@ -46,7 +46,7 @@ const openInvoice = (invoice) => {
               <p class="ocn-panel__desc mt-1">Invoice otomatis dari project yang sudah selesai.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
-              <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.accounting.payments')">
+              <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.sales')">
               <ArrowLeftIcon class="h-4 w-4" />
               Back
             </Link>

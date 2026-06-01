@@ -422,6 +422,9 @@ Route::middleware(['auth', 'throttle:120,1'])->group(function () {
         Route::patch('erp/admin/landing-sites/{landingSite}', [ERPAdministrationMasterDataController::class, 'updateLandingSite'])->name('erp.admin.landing-sites.update');
         Route::get('erp/admin/landing-sites/{landingSite}/cms', [ERPAdministrationMasterDataController::class, 'landingSiteCms'])->name('erp.admin.landing-sites.cms');
         Route::post('erp/admin/landing-sites/{landingSite}/cms', [ERPAdministrationMasterDataController::class, 'updateLandingSiteCms'])->name('erp.admin.landing-sites.cms.update');
+        Route::get('erp/admin/landing-sites/{landingSite}/cms/preview', [ERPAdministrationMasterDataController::class, 'previewLandingSiteCms'])->name('erp.admin.landing-sites.cms.preview');
+        Route::post('erp/admin/landing-sites/{landingSite}/cms/publish', [ERPAdministrationMasterDataController::class, 'publishLandingSiteCms'])->name('erp.admin.landing-sites.cms.publish');
+        Route::post('erp/admin/landing-sites/{landingSite}/cms/templates', [ERPAdministrationMasterDataController::class, 'saveLandingSiteCmsTemplate'])->name('erp.admin.landing-sites.cms.templates.store');
         Route::get('erp/admin/parser-rules', [ERPAdministrationMasterDataController::class, 'parserRules'])->name('erp.admin.parser-rules');
         Route::post('erp/admin/parser-rules', [ERPAdministrationMasterDataController::class, 'storeParserRule'])->name('erp.admin.parser-rules.store');
         Route::patch('erp/admin/parser-rules/{parserRule}', [ERPAdministrationMasterDataController::class, 'updateParserRule'])->name('erp.admin.parser-rules.update');

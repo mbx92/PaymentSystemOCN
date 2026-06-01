@@ -11,6 +11,8 @@ const props = defineProps({
   warehouses: Array,
   filters: Object,
   cmsModule: { type: Boolean, default: false },
+  availableTemplates: { type: Array, default: () => [] },
+  availableThemes: { type: Array, default: () => [] },
 });
 
 const filterKeyword = ref('');
@@ -47,10 +49,16 @@ const warehouseOptions = computed(() => (props.warehouses ?? []).map((w) => ({
   label: `${w.code} — ${w.name}`,
 })));
 
+const templatesForLayout = (layoutKey) => (props.availableTemplates ?? []).filter((item) =>
+  item.family_layout_key === layoutKey || item.scope !== 'system'
+);
+
 const form = useForm({
   name: '',
   domain: '',
   layout_key: 'toko',
+  template_key: '',
+  theme_key: props.availableThemes?.[0]?.key || '',
   warehouse_id: '',
   is_active: true,
 });
@@ -59,6 +67,8 @@ const openAddModal = () => {
   form.clearErrors();
   form.reset('name', 'domain', 'warehouse_id');
   form.layout_key = 'toko';
+  form.template_key = templatesForLayout('toko')[0]?.key || '';
+  form.theme_key = props.availableThemes?.[0]?.key || '';
   form.is_active = true;
   document.getElementById('modal-add-landing-site')?.showModal();
 };
@@ -68,6 +78,8 @@ const submit = () => {
     name: data.name,
     domain: data.domain,
     layout_key: data.layout_key,
+    template_key: data.template_key || null,
+    theme_key: data.theme_key || null,
     warehouse_id: data.warehouse_id ? Number(data.warehouse_id) : null,
     is_active: !!data.is_active,
   })).post(route('erp.admin.landing-sites.store'), {
@@ -75,6 +87,8 @@ const submit = () => {
     onSuccess: () => {
       form.reset('name', 'domain', 'warehouse_id');
       form.layout_key = 'toko';
+      form.template_key = templatesForLayout('toko')[0]?.key || '';
+      form.theme_key = props.availableThemes?.[0]?.key || '';
       form.is_active = true;
       document.getElementById('modal-add-landing-site')?.close();
     },
@@ -86,16 +100,21 @@ const editForm = useForm({
   name: '',
   domain: '',
   layout_key: 'toko',
+  template_key: '',
+  theme_key: props.availableThemes?.[0]?.key || '',
   warehouse_id: '',
   is_active: true,
 });
 
 const openEditModal = (site) => {
+  const draftVersion = Array.isArray(site.page_versions) ? site.page_versions[0] : null;
   editingSite.value = site;
   editForm.clearErrors();
   editForm.name = site.name;
   editForm.domain = site.domain;
   editForm.layout_key = site.layout_key || 'toko';
+  editForm.template_key = draftVersion?.template?.key || templatesForLayout(editForm.layout_key)[0]?.key || '';
+  editForm.theme_key = draftVersion?.theme?.key || props.availableThemes?.[0]?.key || '';
   editForm.warehouse_id = site.warehouse_id ?? '';
   editForm.is_active = !!site.is_active;
   document.getElementById('modal-edit-landing-site')?.showModal();
@@ -107,6 +126,8 @@ const submitEdit = () => {
     name: data.name,
     domain: data.domain,
     layout_key: data.layout_key,
+    template_key: data.template_key || null,
+    theme_key: data.theme_key || null,
     warehouse_id: data.warehouse_id ? Number(data.warehouse_id) : null,
     is_active: !!data.is_active,
   })).patch(route('erp.admin.landing-sites.update', editingSite.value.id), {
@@ -120,6 +141,8 @@ const toggleStatus = (site) => {
     name: site.name,
     domain: site.domain,
     layout_key: site.layout_key || 'toko',
+    template_key: null,
+    theme_key: null,
     warehouse_id: site.warehouse_id,
     is_active: !site.is_active,
   }, {
@@ -362,13 +385,25 @@ const useNormalizedDomainForAdd = () => {
           </div>
           <div>
             <label class="label"><span class="label-text">Jenis landing</span></label>
-            <select v-model="form.layout_key" class="select select-bordered w-full">
+            <select v-model="form.layout_key" class="select select-bordered w-full" @change="form.template_key = templatesForLayout(form.layout_key)[0]?.key || ''">
               <option value="toko">Toko (retail)</option>
               <option value="cctv">CCTV & jaringan</option>
               <option value="coming_soon">Coming Soon (simple)</option>
               <option value="countdown">Countdown launch</option>
             </select>
             <p v-if="form.errors.layout_key" class="text-error text-xs mt-1">{{ form.errors.layout_key }}</p>
+          </div>
+          <div>
+            <label class="label"><span class="label-text">Template awal</span></label>
+            <select v-model="form.template_key" class="select select-bordered w-full">
+              <option v-for="item in templatesForLayout(form.layout_key)" :key="item.key" :value="item.key">{{ item.name }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="label"><span class="label-text">Theme awal</span></label>
+            <select v-model="form.theme_key" class="select select-bordered w-full">
+              <option v-for="item in availableThemes" :key="item.key" :value="item.key">{{ item.name }}</option>
+            </select>
           </div>
           <div>
             <label class="label"><span class="label-text">Warehouse Default</span></label>
@@ -414,13 +449,25 @@ const useNormalizedDomainForAdd = () => {
           </div>
           <div>
             <label class="label"><span class="label-text">Jenis landing</span></label>
-            <select v-model="editForm.layout_key" class="select select-bordered w-full">
+            <select v-model="editForm.layout_key" class="select select-bordered w-full" @change="editForm.template_key = templatesForLayout(editForm.layout_key)[0]?.key || ''">
               <option value="toko">Toko (retail)</option>
               <option value="cctv">CCTV & jaringan</option>
               <option value="coming_soon">Coming Soon (simple)</option>
               <option value="countdown">Countdown launch</option>
             </select>
             <p v-if="editForm.errors.layout_key" class="text-error text-xs mt-1">{{ editForm.errors.layout_key }}</p>
+          </div>
+          <div>
+            <label class="label"><span class="label-text">Template awal</span></label>
+            <select v-model="editForm.template_key" class="select select-bordered w-full">
+              <option v-for="item in templatesForLayout(editForm.layout_key)" :key="item.key" :value="item.key">{{ item.name }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="label"><span class="label-text">Theme awal</span></label>
+            <select v-model="editForm.theme_key" class="select select-bordered w-full">
+              <option v-for="item in availableThemes" :key="item.key" :value="item.key">{{ item.name }}</option>
+            </select>
           </div>
           <div>
             <label class="label"><span class="label-text">Warehouse Default</span></label>

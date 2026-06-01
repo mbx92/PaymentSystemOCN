@@ -7,6 +7,8 @@ use App\Models\CmsAccessLog;
 use App\Models\CmsMedia;
 use App\Models\LandingSite;
 use App\Models\LandingSitePage;
+use App\Models\LandingSitePageVersion;
+use App\Services\LandingSiteBuilderService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -42,9 +44,18 @@ class CmsModuleController extends Controller
 
     public function sites(Request $request): Response
     {
+        $builder = app(LandingSiteBuilderService::class);
+        $builder->ensurePresets();
+
         return Inertia::render('ERP/Admin/LandingSites', [
             'landingSites' => LandingSite::query()
-                ->with(['warehouse:id,code,name', 'page:id,landing_site_id,is_published'])
+                ->with([
+                    'warehouse:id,code,name',
+                    'page:id,landing_site_id,is_published',
+                    'pageVersions' => fn ($query) => $query
+                        ->where('status', LandingSitePageVersion::STATUS_DRAFT)
+                        ->with(['template:id,key', 'theme:id,key']),
+                ])
                 ->orderBy('is_active', 'desc')
                 ->orderBy('name')
                 ->paginate($this->resolvedPerPage($request))
@@ -54,6 +65,8 @@ class CmsModuleController extends Controller
                 ->get(['id', 'code', 'name']),
             'filters' => $this->filtersWithPerPage($request, []),
             'cmsModule' => true,
+            'availableTemplates' => $builder->allTemplateOptions(),
+            'availableThemes' => $builder->themeOptions(),
         ]);
     }
 

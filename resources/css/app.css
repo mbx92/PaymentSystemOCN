@@ -186,6 +186,11 @@ body {
     max-width: none;
 }
 
+.ocn-main-shell--fluid {
+    max-width: none;
+    width: 100%;
+}
+
 @media (min-width: 768px) {
     .ocn-content-shell--expanded {
         padding-left: var(--ocn-sidebar-width);

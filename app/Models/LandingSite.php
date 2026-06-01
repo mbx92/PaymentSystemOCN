@@ -40,4 +40,9 @@ class LandingSite extends Model
     {
         return $this->hasMany(CmsAccessLog::class);
     }
+
+    public function pageVersions(): HasMany
+    {
+        return $this->hasMany(LandingSitePageVersion::class);
+    }
 }

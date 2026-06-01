@@ -148,7 +148,7 @@ const totalPayable = computed(() => (
                 <ArrowDownTrayIcon class="h-4 w-4" />
                 Export Excel
               </button>
-              <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.accounting.payments')">
+              <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.accounting')">
                 <ArrowLeftIcon class="h-4 w-4" />
                 Back
               </Link>

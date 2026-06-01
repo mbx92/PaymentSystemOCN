@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\LandingSite;
 use App\Services\CmsAccessLogger;
+use App\Services\LandingSiteBuilderService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -17,10 +18,19 @@ class PublicHomeController extends Controller
     {
         $host = $this->normalizeHost($request);
         $landing = $this->resolveLanding($host);
+        $builder = app(LandingSiteBuilderService::class);
 
         if ($host === 'ocnetworks.web.id') {
             if ($landing) {
                 CmsAccessLogger::logLandingPublic($request, (int) $landing->id);
+
+                if ($published = $builder->publishedForLandingSite($landing)) {
+                    return Inertia::render('Public/LandingBuilder', [
+                        ...$builder->buildPublicPayload($landing, $published),
+                        'previewMode' => false,
+                        'previewLabel' => null,
+                    ]);
+                }
             }
 
             return Inertia::render('Public/LandingCountdown', [
@@ -31,6 +41,14 @@ class PublicHomeController extends Controller
 
         if ($landing) {
             CmsAccessLogger::logLandingPublic($request, (int) $landing->id);
+
+            if ($published = $builder->publishedForLandingSite($landing)) {
+                return Inertia::render('Public/LandingBuilder', [
+                    ...$builder->buildPublicPayload($landing, $published),
+                    'previewMode' => false,
+                    'previewLabel' => null,
+                ]);
+            }
 
             $page = match ($landing->layout_key) {
                 'cctv' => 'Public/LandingCctv',

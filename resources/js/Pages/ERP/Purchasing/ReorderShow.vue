@@ -10,7 +10,7 @@ const props = defineProps({
 });
 
 const goBack = () => {
-  router.visit(route('erp.purchasing.reorder-planning'));
+  router.visit(route('erp.purchasing'));
 };
 
 const poForm = useForm({

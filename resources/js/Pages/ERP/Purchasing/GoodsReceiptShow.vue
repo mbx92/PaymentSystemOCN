@@ -20,7 +20,7 @@ const postToStock = () => {
 };
 
 const goBack = () => {
-  router.visit(route('erp.purchasing.goods-receipts'));
+  router.visit(route('erp.purchasing'));
 };
 </script>
 

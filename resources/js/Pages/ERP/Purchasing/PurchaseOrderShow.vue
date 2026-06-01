@@ -73,7 +73,7 @@ const grnListUrl = () =>
   `${route('erp.purchasing.goods-receipts')}?po=${encodeURIComponent(props.detail.number)}`;
 
 const goBack = () => {
-  router.visit(route('erp.purchasing.purchase-orders'));
+  router.visit(route('erp.purchasing'));
 };
 
 const editForm = useForm({

@@ -149,6 +149,28 @@ class ErpChatbotControllerTest extends TestCase
             ->assertJsonPath('answer', "**Invoice belum dibayar** (1):\n- Implementasi CCTV | INV-PRJ-001 | Termin 1 | Rp 500.000\n\n**Total: Rp 500.000**");
     }
 
+    public function test_chatbot_handles_invoice_due_query_when_project_payment_due_date_column_is_missing(): void
+    {
+        $user = User::factory()->create();
+
+        ErpChatParserRule::query()->create([
+            'name' => 'Invoice Due',
+            'intent_key' => 'invoice_due_list',
+            'keywords' => ['invoice', 'jatuh tempo'],
+            'match_mode' => 'and',
+            'priority' => 1,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->postJson(route('erp.chatbot.ask'), [
+                'message' => 'invoice jatuh tempo',
+            ])
+            ->assertOk()
+            ->assertJsonPath('intent', 'invoice_due_list')
+            ->assertJsonPath('answer', 'Data jatuh tempo invoice project belum tersedia karena tabel termin project belum memiliki kolom due date.');
+    }
+
     public function test_chatbot_uses_built_in_rules_when_parser_rule_table_is_empty(): void
     {
         $user = User::factory()->create();

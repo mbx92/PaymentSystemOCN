@@ -12,7 +12,7 @@ const poListUrl = () =>
   `${route('erp.purchasing.purchase-orders')}?supplier=${encodeURIComponent(props.detail.code)}`;
 
 const goBack = () => {
-  router.visit(route('erp.purchasing.suppliers'));
+  router.visit(route('erp.purchasing'));
 };
 
 const editForm = useForm({

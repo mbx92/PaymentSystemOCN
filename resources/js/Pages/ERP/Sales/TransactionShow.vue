@@ -155,7 +155,7 @@ const printReceipt = async () => {
             <div class="flex flex-wrap items-center gap-2 shrink-0">
               <div class="flex items-center gap-2">
             <StatusBadge :status="detail.status" />
-            <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.sales.pos.transactions')">
+            <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.sales')">
             <ArrowLeftIcon class="h-4 w-4" />
             Back
           </Link>

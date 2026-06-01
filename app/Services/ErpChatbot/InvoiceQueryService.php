@@ -5,9 +5,15 @@ namespace App\Services\ErpChatbot;
 use App\Models\InvoiceSendLog;
 use App\Models\ProjectPayment;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 class InvoiceQueryService
 {
+    public function supportsProjectPaymentDueDate(): bool
+    {
+        return Schema::hasColumn('project_payments', 'due_date');
+    }
+
     public function unpaidProjectPayments(int $limit = 8): Collection
     {
         return ProjectPayment::query()
@@ -20,6 +26,10 @@ class InvoiceQueryService
 
     public function dueProjectPaymentsWithinDays(int $days, int $limit = 8): Collection
     {
+        if (! $this->supportsProjectPaymentDueDate()) {
+            return collect();
+        }
+
         return ProjectPayment::query()
             ->with('project:id,name,invoice_number')
             ->whereNull('paid_at')

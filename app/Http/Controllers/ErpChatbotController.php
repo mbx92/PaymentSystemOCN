@@ -565,6 +565,10 @@ class ErpChatbotController extends Controller
 
     private function answerInvoiceDueList(): string
     {
+        if (! $this->invoiceQueries->supportsProjectPaymentDueDate()) {
+            return 'Data jatuh tempo invoice project belum tersedia karena tabel termin project belum memiliki kolom due date.';
+        }
+
         $soon = $this->invoiceQueries->dueProjectPaymentsWithinDays(14);
 
         if ($soon->isEmpty()) {
