@@ -192,14 +192,14 @@ const downloadReceipt = (payment) => window.open(route('erp.sales.project-invoic
         </div>
         <div class="card-body">
           <div class="overflow-x-auto">
-            <table class="table table-sm">
+            <table class="table table-sm min-w-[760px]">
               <thead>
                 <tr>
                   <th>Item</th>
                   <th class="text-right">Qty</th>
                   <th>UoM</th>
-                  <th class="text-right">Harga</th>
-                  <th class="text-right">Subtotal</th>
+                  <th class="w-40 text-right whitespace-nowrap">Harga</th>
+                  <th class="w-44 text-right whitespace-nowrap">Subtotal</th>
                 </tr>
               </thead>
               <tbody>
@@ -208,10 +208,10 @@ const downloadReceipt = (payment) => window.open(route('erp.sales.project-invoic
                     <p class="font-medium">{{ item.name }}</p>
                     <p v-if="item.description" class="text-xs text-base-content/60">{{ item.description }}</p>
                   </td>
-                  <td class="text-right">{{ item.qty }}</td>
-                  <td>{{ item.uom }}</td>
-                  <td class="text-right">{{ format(item.unit_price) }}</td>
-                  <td class="text-right font-semibold">{{ format(item.subtotal) }}</td>
+                  <td class="text-right whitespace-nowrap">{{ item.qty }}</td>
+                  <td class="whitespace-nowrap">{{ item.uom }}</td>
+                  <td class="w-40 text-right whitespace-nowrap">{{ format(item.unit_price) }}</td>
+                  <td class="w-44 text-right font-semibold whitespace-nowrap">{{ format(item.subtotal) }}</td>
                 </tr>
                 <tr v-if="!(invoice.line_items || []).length">
                   <td colspan="5" class="text-center text-sm text-base-content/50">Belum ada item.</td>

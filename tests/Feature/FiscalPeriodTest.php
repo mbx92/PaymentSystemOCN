@@ -15,6 +15,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Spatie\Permission\Middleware\RoleMiddleware;
 use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class FiscalPeriodTest extends TestCase
@@ -31,6 +32,7 @@ class FiscalPeriodTest extends TestCase
             'is_active' => true,
         ]);
         $user = User::factory()->create(['company_id' => $company->id]);
+        $this->assignAdminRole($user);
 
         $this->actingAs($user)
             ->get(route('erp.accounting.fiscal-periods', ['company_id' => $company->id, 'year' => 2026]))
@@ -69,6 +71,94 @@ class FiscalPeriodTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertFalse($period->fresh()->is_closed);
+    }
+
+    public function test_admin_can_reopen_closed_periods_by_transaction_date(): void
+    {
+        $this->disableErpMiddleware();
+
+        $company = Company::query()->create([
+            'name' => 'OCN Main',
+            'legal_name' => 'PT OCN Main',
+            'is_active' => true,
+        ]);
+        $admin = User::factory()->create(['company_id' => $company->id]);
+        $this->assignAdminRole($admin);
+
+        $yearly = FiscalPeriod::query()->create([
+            'company_id' => $company->id,
+            'name' => 'Tutup buku tahunan 2026',
+            'period_type' => 'yearly',
+            'period_year' => 2026,
+            'period_month' => 0,
+            'start_date' => '2026-01-01',
+            'end_date' => '2026-12-31',
+            'is_closed' => true,
+            'closed_at' => now(),
+            'closed_by' => $admin->id,
+        ]);
+        $monthly = FiscalPeriod::query()->create([
+            'company_id' => $company->id,
+            'name' => 'Tutup buku Mei 2026',
+            'period_type' => 'monthly',
+            'period_year' => 2026,
+            'period_month' => 5,
+            'start_date' => '2026-05-01',
+            'end_date' => '2026-05-31',
+            'is_closed' => true,
+            'closed_at' => now(),
+            'closed_by' => $admin->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('erp.accounting.fiscal-periods.reopen-by-date'), [
+                'company_id' => $company->id,
+                'open_date' => '2026-05-10',
+            ])
+            ->assertRedirect(route('erp.accounting.fiscal-periods', [
+                'company_id' => $company->id,
+                'year' => 2026,
+            ]))
+            ->assertSessionHasNoErrors();
+
+        $this->assertFalse($yearly->fresh()->is_closed);
+        $this->assertFalse($monthly->fresh()->is_closed);
+    }
+
+    public function test_non_admin_cannot_reopen_closed_period(): void
+    {
+        $this->disableErpMiddleware();
+
+        $company = Company::query()->create([
+            'name' => 'OCN Main',
+            'legal_name' => 'PT OCN Main',
+            'is_active' => true,
+        ]);
+        $user = User::factory()->create(['company_id' => $company->id]);
+
+        $period = FiscalPeriod::query()->create([
+            'company_id' => $company->id,
+            'name' => 'Tutup buku Mei 2026',
+            'period_type' => 'monthly',
+            'period_year' => 2026,
+            'period_month' => 5,
+            'start_date' => '2026-05-01',
+            'end_date' => '2026-05-31',
+            'is_closed' => true,
+            'closed_at' => now(),
+            'closed_by' => $user->id,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('erp.accounting.fiscal-periods.reopen', $period))
+            ->assertForbidden();
+
+        $this->actingAs($user)
+            ->post(route('erp.accounting.fiscal-periods.reopen-by-date'), [
+                'company_id' => $company->id,
+                'open_date' => '2026-05-10',
+            ])
+            ->assertForbidden();
     }
 
     public function test_closed_period_blocks_cashflow_posting_only_for_closed_company(): void
@@ -164,5 +254,11 @@ class FiscalPeriodTest extends TestCase
             RoleOrPermissionMiddleware::class,
             RoleMiddleware::class,
         ]);
+    }
+
+    private function assignAdminRole(User $user): void
+    {
+        Role::findOrCreate('admin', 'web');
+        $user->assignRole('admin');
     }
 }

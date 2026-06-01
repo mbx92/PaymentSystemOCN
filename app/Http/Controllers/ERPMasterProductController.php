@@ -102,12 +102,13 @@ class ERPMasterProductController extends Controller
         ]);
     }
 
-    public function show(MasterProduct $masterProduct, WindowsSmbRawPrinter $smb): Response
+    public function show(Request $request, MasterProduct $masterProduct, WindowsSmbRawPrinter $smb): Response
     {
         $masterProduct->load(['uomMappings', 'channelPrices', 'warehouse:id,code,name']);
 
         return Inertia::render('ERP/MasterProducts/Show', [
             'product' => $masterProduct,
+            'returnFilters' => $request->only(['q', 'sales_channel', 'product_type', 'warehouse_id', 'per_page', 'page']),
             'barcodePrint' => $this->barcodePrintAvailability($smb, $masterProduct),
             'uomMappings' => $masterProduct->uomMappings->map(fn (MasterProductUomMapping $mapping) => [
                 'id' => $mapping->id,

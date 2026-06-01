@@ -1,6 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { ArrowLeftIcon, LockClosedIcon, LockOpenIcon } from '@heroicons/vue/24/outline';
 import { computed, ref, watch } from 'vue';
 import { useDateFormat } from '@/composables/useDateFormat';
@@ -13,6 +13,7 @@ const props = defineProps({
 });
 
 const { formatDateTime } = useDateFormat();
+const page = usePage();
 
 const selectedCompanyId = ref(props.selected_company_id ?? props.companies?.[0]?.id ?? '');
 const selectedYear = ref(props.selected_year ?? new Date().getFullYear());
@@ -45,10 +46,20 @@ watch(selectedYear, (value) => {
   closeForm.period_year = value;
 });
 
+const reopenByDateForm = useForm({
+  company_id: props.selected_company_id ?? props.companies?.[0]?.id ?? '',
+  open_date: '',
+});
+
+watch(selectedCompanyId, (value) => {
+  reopenByDateForm.company_id = value || '';
+});
+
 const selectedCompany = computed(() =>
   (props.companies ?? []).find((company) => Number(company.id) === Number(selectedCompanyId.value)) ?? null,
 );
 
+const isAdmin = computed(() => page.props.auth?.user?.role === 'admin');
 const monthlyRows = computed(() => props.periods?.monthly ?? []);
 const yearlyRow = computed(() => props.periods?.yearly ?? null);
 const closedMonthCount = computed(() => monthlyRows.value.filter((row) => row.is_closed).length);
@@ -67,6 +78,12 @@ const closeMonth = (month) => {
 
 const reopen = (periodId) => {
   useForm({}).post(route('erp.accounting.fiscal-periods.reopen', periodId), { preserveScroll: true });
+};
+
+const reopenByDate = () => {
+  reopenByDateForm.post(route('erp.accounting.fiscal-periods.reopen-by-date'), {
+    preserveScroll: true,
+  });
 };
 </script>
 
@@ -135,7 +152,7 @@ const reopen = (periodId) => {
                       Tutup Tahun
                     </button>
                     <button
-                      v-else-if="yearlyRow?.id"
+                      v-else-if="yearlyRow?.id && isAdmin"
                       type="button"
                       class="btn btn-outline btn-sm gap-1.5"
                       @click="reopen(yearlyRow.id)"
@@ -147,11 +164,11 @@ const reopen = (periodId) => {
                 </div>
               </div>
 
-              <label class="form-control">
+              <label class="form-control w-full">
                 <span class="label-text text-xs font-semibold uppercase tracking-wide text-base-content/70">Catatan tutup buku</span>
                 <textarea
                   v-model="closeForm.notes"
-                  class="textarea textarea-bordered h-24"
+                  class="textarea textarea-bordered h-24 w-full"
                   placeholder="Opsional: contoh rekonsiliasi selesai, siap audit, atau closing final manajemen."
                 />
                 <span v-if="closeForm.errors.notes" class="mt-1 text-xs text-error">{{ closeForm.errors.notes }}</span>
@@ -174,6 +191,37 @@ const reopen = (periodId) => {
                 {{ yearlyRow?.is_closed ? 'Closed' : 'Open' }}
               </p>
             </div>
+            <form
+              v-if="isAdmin"
+              class="rounded-2xl border border-base-300 bg-white p-5 shadow-sm sm:col-span-3 xl:col-span-1"
+              @submit.prevent="reopenByDate"
+            >
+              <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Buka Buku Cepat</p>
+              <p class="mt-2 text-sm text-base-content/70">Pilih tanggal transaksi. Sistem akan membuka semua periode closed yang menutup tanggal tersebut.</p>
+              <div class="mt-4 space-y-3">
+                <div>
+                  <label class="label py-1">
+                    <span class="label-text text-xs font-semibold uppercase tracking-wide text-base-content/80">Tanggal transaksi</span>
+                  </label>
+                  <input
+                    v-model="reopenByDateForm.open_date"
+                    type="date"
+                    class="input input-bordered w-full"
+                    required
+                  />
+                  <p v-if="reopenByDateForm.errors.open_date" class="mt-1 text-xs text-error">{{ reopenByDateForm.errors.open_date }}</p>
+                </div>
+                <button
+                  type="submit"
+                  class="btn btn-outline btn-sm w-full gap-1.5"
+                  :disabled="reopenByDateForm.processing || !reopenByDateForm.company_id || !reopenByDateForm.open_date"
+                >
+                  <LockOpenIcon class="h-4 w-4" />
+                  Buka Buku Berdasarkan Tanggal
+                </button>
+                <p v-if="reopenByDateForm.errors.company_id" class="text-xs text-error">{{ reopenByDateForm.errors.company_id }}</p>
+              </div>
+            </form>
           </div>
         </div>
 
@@ -217,7 +265,7 @@ const reopen = (periodId) => {
                     Tutup
                   </button>
                   <button
-                    v-else-if="row.id"
+                    v-else-if="row.id && isAdmin"
                     type="button"
                     class="btn btn-outline btn-sm flex-1 gap-1.5"
                     @click="reopen(row.id)"

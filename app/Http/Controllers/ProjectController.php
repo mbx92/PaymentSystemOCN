@@ -252,7 +252,8 @@ class ProjectController extends Controller
             'description' => 'nullable|string',
             'payment_scheme' => 'nullable|in:terms,final',
             'payments' => 'nullable|array|min:1|max:20',
-            'payments.*.percentage' => 'required|numeric|min:0.01|max:100',
+            'payments.*.percentage' => 'nullable|numeric|min:0|max:100',
+            'payments.*.amount' => 'nullable|numeric|min:0',
             'payments.*.note' => 'nullable|string|max:500',
         ]);
 
@@ -261,6 +262,7 @@ class ProjectController extends Controller
             if (($validated['payment_scheme'] ?? 'terms') === 'final') {
                 $validated['payments'] = [[
                     'percentage' => 100,
+                    'amount' => $validated['total_value'],
                     'note' => 'Pelunasan di akhir',
                 ]];
             }
@@ -271,7 +273,7 @@ class ProjectController extends Controller
                 ]);
             }
 
-            $this->assertPaymentsTotalHundredPercent($validated['payments']);
+            $validated['payments'] = $this->normalizePaymentRows($validated['total_value'], $validated['payments']);
         } else {
             $validated['payments'] = [];
         }
@@ -636,7 +638,8 @@ class ProjectController extends Controller
 
         if ($canEditPayments) {
             $rules['payments'] = 'nullable|array|min:1|max:20';
-            $rules['payments.*.percentage'] = 'required|numeric|min:0.01|max:100';
+            $rules['payments.*.percentage'] = 'nullable|numeric|min:0|max:100';
+            $rules['payments.*.amount'] = 'nullable|numeric|min:0';
             $rules['payments.*.note'] = 'nullable|string|max:500';
         }
 
@@ -666,7 +669,7 @@ class ProjectController extends Controller
                     ]);
                 }
 
-                $this->assertPaymentsTotalHundredPercent($validated['payments']);
+                $validated['payments'] = $this->normalizePaymentRows($validated['total_value'], $validated['payments']);
             } else {
                 $validated['payments'] = [];
             }
@@ -1092,18 +1095,9 @@ class ProjectController extends Controller
 
     protected function createPaymentRows(Project $project, array $payments): void
     {
-        $totalValue = (float) $project->total_value;
-        $n = count($payments);
-        $assigned = 0.0;
-
         foreach ($payments as $i => $term) {
-            $pct = (float) $term['percentage'];
-            if ($i === $n - 1) {
-                $amount = round($totalValue - $assigned, 2);
-            } else {
-                $amount = round($totalValue * ($pct / 100), 2);
-                $assigned += $amount;
-            }
+            $pct = round((float) ($term['percentage'] ?? 0), 2);
+            $amount = round((float) ($term['amount'] ?? 0), 2);
 
             ProjectPayment::create([
                 'project_id' => $project->id,
@@ -1119,6 +1113,70 @@ class ProjectController extends Controller
     {
         $project->payments()->delete();
         $this->createPaymentRows($project, $payments);
+    }
+
+    /**
+     * @return array<int, array{percentage: float, amount: float, note: string|null}>
+     */
+    protected function normalizePaymentRows(float $totalValue, array $payments): array
+    {
+        if ($totalValue <= 0) {
+            return [];
+        }
+
+        $resolved = collect($payments)->values()->map(function (array $term, int $index) use ($totalValue): array {
+            $percentage = round((float) ($term['percentage'] ?? 0), 2);
+            $amount = round((float) ($term['amount'] ?? 0), 2);
+
+            if ($amount <= 0 && $percentage > 0) {
+                $amount = round($totalValue * ($percentage / 100), 2);
+            }
+
+            if ($amount <= 0) {
+                throw ValidationException::withMessages([
+                    "payments.{$index}.amount" => 'Nominal termin wajib diisi lebih dari 0 atau isi persentase termin.',
+                ]);
+            }
+
+            return [
+                'amount' => $amount,
+                'percentage' => $percentage,
+                'note' => $term['note'] ?? null,
+            ];
+        });
+
+        $totalAmount = round((float) $resolved->sum('amount'), 2);
+        if (abs($totalAmount - $totalValue) > 0.02) {
+            throw ValidationException::withMessages([
+                'payments' => 'Total nominal termin harus sama dengan nilai kontrak '.number_format($totalValue, 2, ',', '.').' (saat ini: '.number_format($totalAmount, 2, ',', '.').').',
+            ]);
+        }
+
+        $assignedAmount = 0.0;
+        $assignedPct = 0.0;
+        $lastIndex = $resolved->count() - 1;
+
+        $normalized = $resolved->map(function (array $term, int $index) use ($totalValue, &$assignedAmount, &$assignedPct, $lastIndex): array {
+            if ($index === $lastIndex) {
+                $amount = round($totalValue - $assignedAmount, 2);
+                $percentage = round(100 - $assignedPct, 2);
+            } else {
+                $amount = round((float) $term['amount'], 2);
+                $percentage = round(($amount / $totalValue) * 100, 2);
+                $assignedAmount += $amount;
+                $assignedPct += $percentage;
+            }
+
+            return [
+                'amount' => $amount,
+                'percentage' => $percentage,
+                'note' => $term['note'],
+            ];
+        })->all();
+
+        $this->assertPaymentsTotalHundredPercent($normalized);
+
+        return $normalized;
     }
 
     private function existingLegalVaultRelativePath(Project $project): ?string

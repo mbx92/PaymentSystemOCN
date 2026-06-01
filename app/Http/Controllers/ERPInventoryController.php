@@ -2,7 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\ERP\Accounting\Services\CoaSettingService;
+use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Core\Models\Company;
+use App\ERP\Core\Services\ErpCompanyResolver;
+use App\ERP\Core\Services\FiscalPeriodService;
 use App\ERP\Inventory\Models\Warehouse;
 use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
@@ -13,11 +17,14 @@ use App\Services\WarehouseStockRebuildService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class ERPInventoryController extends Controller
 {
+    public function __construct(private readonly GlPostingService $glPostingService) {}
+
     public function stockManagement(Request $request): Response
     {
         $warehouses = Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']);
@@ -235,6 +242,8 @@ class ERPInventoryController extends Controller
 
     public function stockOpname(): Response
     {
+        $previewSettings = $this->stockOpnamePreviewSettings();
+
         $warehouses = Warehouse::query()
             ->where('is_active', true)
             ->orderBy('name')
@@ -277,12 +286,14 @@ class ERPInventoryController extends Controller
                         'sku' => $product->sku,
                         'name' => $product->name,
                         'uom' => $product->uom,
+                        'unit_cost' => (float) ($product->unit_cost ?? 0),
                         'stock' => (float) $product->stock,
                         'warehouse_stock' => (float) ($warehouseStock?->qty ?? 0),
                         'reserved_qty' => (float) ($warehouseStock?->reserved_qty ?? 0),
                     ];
                 })
                 ->values(),
+            'postingPreview' => $previewSettings,
         ]);
     }
 
@@ -296,10 +307,21 @@ class ERPInventoryController extends Controller
             'note' => 'nullable|string|max:500',
         ]);
 
-        $product = MasterProduct::query()->findOrFail($validated['product_id']);
-        $newStock = (float) $validated['physical_stock'];
+        DB::transaction(function () use ($request, $validated): void {
+            $product = MasterProduct::query()
+                ->lockForUpdate()
+                ->findOrFail($validated['product_id']);
+            $warehouse = Warehouse::query()->findOrFail($validated['warehouse_id']);
+            $newStock = (float) $validated['physical_stock'];
+            $companyId = (int) ($warehouse->company_id ?: ErpCompanyResolver::resolveForGlPosting($request));
 
-        DB::transaction(function () use ($product, $newStock, $validated): void {
+            app(FiscalPeriodService::class)->ensureDateIsOpen(
+                $validated['stock_opname_date'],
+                $companyId,
+                'stock_opname_date',
+                'Stock opname'
+            );
+
             $warehouseStock = MasterProductWarehouseStock::query()->firstOrCreate(
                 [
                     'master_product_id' => $product->id,
@@ -332,8 +354,15 @@ class ERPInventoryController extends Controller
             $product->update(['stock' => (int) round($totalStock)]);
 
             $diff = $newStock - $oldStock;
-            if ($diff !== 0) {
-                ProductStockMovement::query()->create([
+            if (abs($diff) > 0.00001) {
+                $unitCost = (float) ($product->unit_cost ?? 0);
+                if ($unitCost <= 0) {
+                    throw ValidationException::withMessages([
+                        'product_id' => 'Unit cost untuk produk '.$product->sku.' - '.$product->name.' masih 0. Isi unit cost terlebih dahulu agar stock opname bisa diposting ke akunting.',
+                    ]);
+                }
+
+                $movement = ProductStockMovement::query()->create([
                     'master_product_id' => $product->id,
                     'warehouse_id' => $validated['warehouse_id'],
                     'movement_date' => $validated['stock_opname_date'],
@@ -341,6 +370,17 @@ class ERPInventoryController extends Controller
                     'qty' => abs($diff),
                     'note' => $validated['note'] ?? 'Stock opname',
                 ]);
+
+                $this->postStockOpnameJournal(
+                    companyId: $companyId,
+                    warehouse: $warehouse,
+                    product: $product,
+                    movement: $movement,
+                    diff: $diff,
+                    unitCost: $unitCost,
+                    opnameDate: (string) $validated['stock_opname_date'],
+                    note: $validated['note'] ?? null,
+                );
             }
         });
 
@@ -349,6 +389,77 @@ class ERPInventoryController extends Controller
                 'warehouse_id' => $validated['warehouse_id'],
             ])
             ->with('flash', ['type' => 'success', 'message' => 'Stock opname berhasil disimpan.']);
+    }
+
+    private function postStockOpnameJournal(
+        int $companyId,
+        Warehouse $warehouse,
+        MasterProduct $product,
+        ProductStockMovement $movement,
+        float $diff,
+        float $unitCost,
+        string $opnameDate,
+        ?string $note = null,
+    ): void {
+        $amount = round(abs($diff) * $unitCost, 2);
+        if ($amount <= 0) {
+            throw ValidationException::withMessages([
+                'product_id' => 'Nilai stock opname untuk produk '.$product->sku.' - '.$product->name.' masih 0. Periksa qty selisih dan unit cost produk.',
+            ]);
+        }
+
+        $coa = app(CoaSettingService::class);
+        $inventoryAccount = $coa->resolveAccountByKey('stock_opname_inventory_account', '1201');
+        $adjustmentAccount = $coa->resolveAccountByKey('stock_opname_adjustment_account', '5013');
+        $isIncrease = $diff > 0;
+
+        $description = 'Stock opname '.($isIncrease ? 'masuk' : 'keluar').' '
+            .$product->sku.' - '.$product->name
+            .' @ '.$warehouse->code.' - '.$warehouse->name;
+
+        $cleanNote = trim((string) $note);
+        if ($cleanNote !== '') {
+            $description .= ' — '.$cleanNote;
+        }
+
+        $this->glPostingService->post(
+            $companyId,
+            sourceModule: 'stock_opname',
+            sourceReference: (string) $movement->id,
+            description: $description,
+            entryDate: $opnameDate,
+            lines: $isIncrease
+                ? [
+                    ['account_id' => $inventoryAccount->id, 'debit' => $amount, 'credit' => 0],
+                    ['account_id' => $adjustmentAccount->id, 'debit' => 0, 'credit' => $amount],
+                ]
+                : [
+                    ['account_id' => $adjustmentAccount->id, 'debit' => $amount, 'credit' => 0],
+                    ['account_id' => $inventoryAccount->id, 'debit' => 0, 'credit' => $amount],
+                ],
+        );
+    }
+
+    /**
+     * @return array{inventory_account_label:?string,adjustment_account_label:?string}
+     */
+    private function stockOpnamePreviewSettings(): array
+    {
+        try {
+            $coa = app(CoaSettingService::class);
+            $inventoryAccount = $coa->resolveAccountByKey('stock_opname_inventory_account', '1201');
+            $adjustmentAccount = $coa->resolveAccountByKey('stock_opname_adjustment_account', '5013');
+
+            return [
+                'inventory_account_label' => $inventoryAccount->displayLabel(),
+                'adjustment_account_label' => $adjustmentAccount->displayLabel(),
+            ];
+        } catch (\Throwable) {
+            return [
+                'inventory_account_label' => null,
+                'adjustment_account_label' => null,
+            ];
+        }
     }
 
     public function stockReport(Request $request): Response

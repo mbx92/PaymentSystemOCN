@@ -39,6 +39,15 @@ const filters = reactive({
   per_page: props.filters?.per_page ?? props.products?.per_page ?? 25,
 });
 
+const currentIndexQuery = computed(() => ({
+  q: filters.q || undefined,
+  sales_channel: filters.sales_channel || undefined,
+  product_type: filters.product_type || undefined,
+  warehouse_id: filters.warehouse_id || undefined,
+  per_page: filters.per_page || undefined,
+  page: props.products?.current_page && props.products.current_page > 1 ? props.products.current_page : undefined,
+}));
+
 const form = useForm({
   sku: '',
   barcode: '',
@@ -149,7 +158,7 @@ const submitAddProduct = () => {
 };
 
 const goToDetail = (id) => {
-  router.visit(route('erp.master-products.show', id));
+  router.visit(route('erp.master-products.show', { masterProduct: id, ...currentIndexQuery.value }));
 };
 </script>
 

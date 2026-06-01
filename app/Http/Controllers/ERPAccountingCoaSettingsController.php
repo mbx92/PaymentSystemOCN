@@ -67,6 +67,22 @@ class ERPAccountingCoaSettingsController extends Controller
                 'source_module' => 'pos_sale_cogs',
             ],
             [
+                'key' => 'stock_opname_inventory_account',
+                'label' => 'Stock Opname - Akun Persediaan',
+                'description' => 'Akun persediaan yang didebit saat opname menambah stok, dan dikredit saat opname mengurangi stok.',
+                'amount_source' => 'Selisih qty opname x MasterProduct.unit_cost',
+                'default_account_code' => '1201',
+                'source_module' => 'stock_opname',
+            ],
+            [
+                'key' => 'stock_opname_adjustment_account',
+                'label' => 'Stock Opname - Akun Selisih Opname',
+                'description' => 'Akun lawan untuk selisih stock opname. Kredit saat stok bertambah, debit saat stok berkurang.',
+                'amount_source' => 'Selisih qty opname x MasterProduct.unit_cost',
+                'default_account_code' => '5013',
+                'source_module' => 'stock_opname',
+            ],
+            [
                 'key' => 'project_invoice_cash_account',
                 'label' => 'Invoice Project - Akun Kas/Bank',
                 'description' => 'Debit saat pembayaran invoice project atau termin project dicatat sebagai kas masuk.',

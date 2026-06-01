@@ -154,7 +154,6 @@ Route::middleware(['auth', 'throttle:120,1'])->group(function () {
         Route::delete('erp/accounting/cashflow/cash-out/{cashOut}', [CashflowController::class, 'destroyCashOut'])->name('erp.accounting.cashflow.cash-out.destroy');
         Route::post('erp/accounting/opening-balance', [ERPAccountingOpeningBalanceController::class, 'store'])->name('erp.accounting.opening-balance.store');
         Route::post('erp/accounting/tutup-buku', [ERPAccountingFiscalPeriodController::class, 'store'])->name('erp.accounting.fiscal-periods.store');
-        Route::post('erp/accounting/tutup-buku/{fiscalPeriod}/reopen', [ERPAccountingFiscalPeriodController::class, 'reopen'])->name('erp.accounting.fiscal-periods.reopen');
         Route::post('erp/accounting/utilities/move-journals', [ERPAccountingUtilityController::class, 'moveJournalEntries'])->name('erp.accounting.utilities.move-journals');
         Route::post('erp/accounting/utilities/reverse-journal-sides', [ERPAccountingUtilityController::class, 'reverseJournalEntrySides'])->name('erp.accounting.utilities.reverse-journal-sides');
         Route::post('erp/accounting/utilities/correct-pos-channel-payable', [ERPAccountingUtilityController::class, 'correctPosChannelPayable'])->name('erp.accounting.utilities.correct-pos-channel-payable');
@@ -393,6 +392,8 @@ Route::middleware(['auth', 'throttle:120,1'])->group(function () {
 
     // User Management (Admin only)
     Route::middleware('role:admin')->group(function () {
+        Route::post('erp/accounting/tutup-buku/{fiscalPeriod}/reopen', [ERPAccountingFiscalPeriodController::class, 'reopen'])->name('erp.accounting.fiscal-periods.reopen');
+        Route::post('erp/accounting/tutup-buku/reopen-by-date', [ERPAccountingFiscalPeriodController::class, 'reopenByDate'])->name('erp.accounting.fiscal-periods.reopen-by-date');
         Route::get('users/accounts', [UserController::class, 'index'])->name('users.accounts');
         Route::get('users/roles-permissions', [UserRolePermissionController::class, 'index'])->name('users.roles-permissions');
         Route::get('users', [UserController::class, 'workspace'])->name('users.index');

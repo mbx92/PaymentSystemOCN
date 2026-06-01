@@ -18,7 +18,7 @@ const props = defineProps({
     project_types: { type: Array, default: () => [] },
 });
 
-const { format } = useCurrency();
+const { format, parse, formatInput } = useCurrency();
 
 const form = useForm({
     name: props.project.name,
@@ -33,9 +33,12 @@ const form = useForm({
     description: props.project.description ?? '',
     legal_vault_path: props.project.legal_vault_path ?? '',
     payments: props.can_edit_payments
-        ? props.payments.map((p) => ({ percentage: p.percentage, note: p.note ?? '' }))
+        ? props.payments.map((p) => ({ percentage: p.percentage, amount: p.amount, note: p.note ?? '' }))
         : [],
 });
+
+const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
+const contractValue = computed(() => Number(form.total_value) || 0);
 
 const selectedCustomer = computed(() =>
     props.crm_customers.find((customer) => Number(customer.id) === Number(form.crm_customer_id)),
@@ -49,32 +52,43 @@ const syncSelectedCustomer = () => {
 
 watch(() => form.crm_customer_id, syncSelectedCustomer);
 
-const previewAmounts = computed(() => {
-    const tv = Number(form.total_value) || 0;
-    const rows = form.payments;
-    const n = rows.length;
-    if (!n || !tv) return rows.map(() => 0);
-
-    let assigned = 0;
-    return rows.map((row, i) => {
-        const pct = Number(row.percentage) || 0;
-        if (i === n - 1) {
-            return Math.round((tv - assigned) * 100) / 100;
-        }
-        const amt = Math.round(tv * (pct / 100) * 100) / 100;
-        assigned += amt;
-        return amt;
-    });
-});
-
 const totalPercent = computed(() =>
     form.payments.reduce((s, row) => s + (Number(row.percentage) || 0), 0),
 );
 
+const totalAmount = computed(() =>
+    round2(form.payments.reduce((sum, row) => sum + (Number(row.amount) || 0), 0)),
+);
+
 const percentOk = computed(() => Math.abs(totalPercent.value - 100) < 0.02);
 
+const syncAmountFromPercentage = (row) => {
+    row.percentage = round2(row.percentage);
+    row.amount = contractValue.value > 0
+        ? round2(contractValue.value * ((Number(row.percentage) || 0) / 100))
+        : 0;
+};
+
+const syncPercentageFromAmount = (row) => {
+    row.amount = round2(row.amount);
+    row.percentage = contractValue.value > 0
+        ? round2(((Number(row.amount) || 0) / contractValue.value) * 100)
+        : 0;
+};
+
+const onAmountInput = (row, event) => {
+    const rawValue = event?.target?.value ?? '';
+    row.amount = round2(parse(rawValue));
+    event.target.value = formatInput(row.amount);
+    syncPercentageFromAmount(row);
+};
+
+watch(() => form.total_value, () => {
+    form.payments.forEach((row) => syncAmountFromPercentage(row));
+});
+
 const addTerm = () => {
-    form.payments.push({ percentage: 0, note: '' });
+    form.payments.push({ percentage: 0, amount: 0, note: '' });
 };
 
 const removeTerm = (index) => {
@@ -204,7 +218,7 @@ const submit = () => {
                         <div class="flex flex-wrap items-center justify-between gap-2">
                             <div>
                                 <p class="text-sm font-semibold">Ubah jadwal termin</p>
-                                <p class="text-xs text-base-content/60">Total persentase harus 100%. Jumlah per termin dihitung otomatis dari nilai kontrak.</p>
+                                <p class="text-xs text-base-content/60">Anda bisa isi persentase atau nominal termin. Keduanya akan saling menghitung otomatis dari nilai kontrak.</p>
                             </div>
                             <button type="button" class="btn btn-outline btn-sm gap-1" @click="addTerm">
                                 <PlusIcon class="w-4 h-4" /> Tambah termin
@@ -221,7 +235,7 @@ const submit = () => {
                                     <tr>
                                         <th class="w-12">#</th>
                                         <th>Persentase (%)</th>
-                                        <th>Jumlah (preview)</th>
+                                        <th>Nominal Termin</th>
                                         <th>Catatan</th>
                                         <th class="w-12" />
                                     </tr>
@@ -238,12 +252,30 @@ const submit = () => {
                                                 step="0.5"
                                                 class="input input-bordered input-sm w-full max-w-[8rem]"
                                                 :class="form.errors[`payments.${index}.percentage`] ? 'input-error' : ''"
+                                                @input="syncAmountFromPercentage(row)"
                                             />
                                             <p v-if="form.errors[`payments.${index}.percentage`]" class="text-error text-xs mt-1">
                                                 {{ form.errors[`payments.${index}.percentage`] }}
                                             </p>
                                         </td>
-                                        <td class="font-semibold whitespace-nowrap">{{ format(previewAmounts[index]) }}</td>
+                                        <td>
+                                            <label
+                                                class="input input-bordered input-sm w-full max-w-[14rem]"
+                                                :class="form.errors[`payments.${index}.amount`] ? 'input-error' : ''"
+                                            >
+                                                <span class="text-xs text-base-content/50">Rp</span>
+                                                <input
+                                                    :value="formatInput(row.amount)"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    class="grow text-right"
+                                                    @input="onAmountInput(row, $event)"
+                                                />
+                                            </label>
+                                            <p v-if="form.errors[`payments.${index}.amount`]" class="text-error text-xs mt-1">
+                                                {{ form.errors[`payments.${index}.amount`] }}
+                                            </p>
+                                        </td>
                                         <td>
                                             <input v-model="row.note" type="text" class="input input-bordered input-sm w-full" placeholder="Opsional" />
                                         </td>
@@ -269,7 +301,7 @@ const submit = () => {
                                 <span v-if="!percentOk" class="text-error"> — harus 100%</span>
                             </span>
                             <span class="text-base-content/60">
-                                Total preview: <strong>{{ format(previewAmounts.reduce((a, b) => a + b, 0)) }}</strong>
+                                Total nominal: <strong>{{ format(totalAmount) }}</strong>
                             </span>
                         </div>
                     </template>
