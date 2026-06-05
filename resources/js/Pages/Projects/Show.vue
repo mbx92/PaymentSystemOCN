@@ -26,7 +26,7 @@ const deletingMaterialId = ref(null);
 const createFolderForm = useForm({});
 
 // Mark term paid
-const payForm = useForm({ paid_at: new Date().toISOString().slice(0, 10), note: '' });
+const payForm = useForm({ paid_at: new Date().toISOString().slice(0, 10), cash_account_id: '', note: '' });
 const selectedTerm = ref(null);
 
 const openPayModal = (term) => {
@@ -1183,6 +1183,14 @@ const deleteProject = () => {
                         <label class="label"><span class="label-text">Tanggal Bayar</span></label>
                         <input v-model="payForm.paid_at" type="date" class="input input-bordered w-full" />
                         <p v-if="payForm.errors.paid_at" class="text-error text-xs mt-1">{{ payForm.errors.paid_at }}</p>
+                    </div>
+                    <div>
+                        <label class="label"><span class="label-text">Sumber Dana Kas / Bank</span></label>
+                        <select v-model="payForm.cash_account_id" class="select select-bordered w-full">
+                            <option value="">Pilih akun kas/bank</option>
+                            <option v-for="account in cash_accounts" :key="account.id" :value="account.id">{{ account.code }} - {{ account.name }}</option>
+                        </select>
+                        <p v-if="payForm.errors.cash_account_id" class="text-error text-xs mt-1">{{ payForm.errors.cash_account_id }}</p>
                     </div>
                     <div>
                         <label class="label"><span class="label-text">Catatan</span></label>
