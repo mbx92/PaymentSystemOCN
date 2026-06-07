@@ -55,6 +55,7 @@ use App\Http\Controllers\RndProjectController;
 use App\Http\Controllers\RndPurchaseController;
 use App\Http\Controllers\RndReportController;
 use App\Http\Controllers\RndResearchNoteController;
+use App\Http\Controllers\ShelfController;
 use App\Http\Controllers\TeamDistributionController;
 use App\Http\Controllers\UiPreferenceController;
 use App\Http\Controllers\UserController;
@@ -260,6 +261,22 @@ Route::middleware(['auth', 'throttle:120,1'])->group(function () {
         Route::post('erp/inventory/stock-transfer', [ERPInventoryController::class, 'storeStockTransfer'])->name('erp.inventory.stock-transfer.store');
         Route::get('erp/inventory/stock-report', [ERPInventoryController::class, 'stockReport'])->name('erp.inventory.stock-report');
         Route::get('erp/inventory/stock-movements', [ERPInventoryController::class, 'stockMovements'])->name('erp.inventory.stock-movements');
+        Route::get('erp/inventory/shelf-map', [ShelfController::class, 'page'])->name('erp.inventory.shelf-map');
+
+        // Shelf API routes (session-based, inside web middleware)
+        Route::prefix('api')->group(function () {
+            Route::get('/products/search', [ShelfController::class, 'productSearch']);
+            Route::get('/shelves', [ShelfController::class, 'index']);
+            Route::post('/shelves', [ShelfController::class, 'store']);
+            Route::delete('/shelves/{id}', [ShelfController::class, 'destroy']);
+            Route::patch('/shelves/{id}', [ShelfController::class, 'update']);
+            Route::get('/shelves/{id}/items', [ShelfController::class, 'items']);
+            Route::post('/shelves/{id}/slots', [ShelfController::class, 'storeSlot']);
+            Route::patch('/shelves/{id}/position', [ShelfController::class, 'updatePosition']);
+            Route::patch('/shelf-slots/{id}', [ShelfController::class, 'updateSlot']);
+            Route::delete('/shelf-slots/{id}', [ShelfController::class, 'destroySlot']);
+            Route::patch('/shelf-slots/{id}/position', [ShelfController::class, 'moveSlot']);
+        });
         Route::get('erp/purchasing/suppliers', [ERPPurchasingController::class, 'suppliers'])->name('erp.purchasing.suppliers');
         Route::post('erp/purchasing/suppliers', [ERPPurchasingController::class, 'storeSupplier'])->name('erp.purchasing.suppliers.store');
         Route::get('erp/purchasing/suppliers/{supplier}', [ERPPurchasingController::class, 'supplierShow'])->name('erp.purchasing.suppliers.show');

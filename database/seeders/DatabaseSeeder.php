@@ -311,5 +311,6 @@ class DatabaseSeeder extends Seeder
         $this->call(MasterProductSeeder::class);
         $this->call(LabelProfileSeeder::class);
         $this->call(ProjectFlowSeeder::class);
+        $this->call(ShelfSeeder::class);
     }
 }

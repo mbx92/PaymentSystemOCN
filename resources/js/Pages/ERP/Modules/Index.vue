@@ -33,6 +33,7 @@ import {
   ShareIcon,
   Cog6ToothIcon,
   WrenchScrewdriverIcon,
+  MapIcon,
 } from '@heroicons/vue/24/outline';
 import { computed, ref, watch } from 'vue';
 
@@ -73,6 +74,7 @@ const iconMap = {
   share: ShareIcon,
   'cog-6-tooth': Cog6ToothIcon,
   wrench: WrenchScrewdriverIcon,
+  map: MapIcon,
 };
 
 const iconFor = (menu) => iconMap[menu.icon] ?? Squares2X2Icon;

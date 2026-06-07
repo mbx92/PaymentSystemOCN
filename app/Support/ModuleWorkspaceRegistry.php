@@ -68,6 +68,7 @@ final class ModuleWorkspaceRegistry
                     ['key' => 'stock-movement', 'title' => 'Stock Movement', 'description' => 'Lihat histori pergerakan stok per produk dan warehouse.', 'route' => 'erp.inventory.stock-movements', 'icon' => 'arrows-up-down'],
                     ['key' => 'stok-opname', 'title' => 'Stok Opname', 'description' => 'Penyesuaian stok fisik berkala untuk akurasi inventory.', 'route' => 'erp.inventory.stock-opname', 'icon' => 'clipboard-check'],
                     ['key' => 'report-stok', 'title' => 'Report Stok', 'description' => 'Grafik stok, alert stok rendah, dan top selling produk.', 'route' => 'erp.inventory.stock-report', 'icon' => 'presentation-chart-line'],
+                    ['key' => 'peta-rak', 'title' => 'Peta Rak', 'description' => 'Visualisasi denah rak toko, status stok per slot, dan manajemen isi rak.', 'route' => 'erp.inventory.shelf-map', 'icon' => 'map'],
                 ],
             ],
             'projects' => [
