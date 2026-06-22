@@ -1,16 +1,15 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import CurrencyInput from '@/Components/CurrencyInput.vue';
 import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, useForm, router } from '@inertiajs/vue3';
 import { computed, reactive, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
-import {ArrowLeftIcon,
-  MagnifyingGlassIcon} from '@heroicons/vue/24/outline';
+import { ArrowLeftIcon, MagnifyingGlassIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({
     budgets: Object,
     project_types: { type: Array, default: () => [] },
+    crm_customers: { type: Array, default: () => [] },
     filters: { type: Object, default: () => ({}) },
 });
 const { format } = useCurrency();
@@ -56,28 +55,29 @@ const statusBadgeClass = (status) => ({
 
 const form = useForm({
     name: '',
+    crm_customer_id: '',
     client_name: '',
     client_contact: '',
     project_type: defaultProjectTypeKey.value,
-    estimated_value: 0,
     description: '',
 });
 
-watch(
-    () => form.project_type,
-    (type) => {
-        if (projectTypeSupportsBudgetItems(type)) {
-            form.estimated_value = 0;
-        }
-    },
-);
+const syncSelectedCustomer = () => {
+    if (!form.crm_customer_id) return;
+    const customer = props.crm_customers.find((row) => Number(row.id) === Number(form.crm_customer_id));
+    if (!customer) return;
+    form.client_name = customer.display_name ?? '';
+    form.client_contact = customer.contact ?? '';
+};
+
+watch(() => form.crm_customer_id, syncSelectedCustomer);
 
 const openAddModal = () => document.getElementById('modal-add-budget')?.showModal();
 const submit = () => {
     form.post(route('erp.projects.budgets.store'), {
         preserveScroll: true,
         onSuccess: () => {
-            form.reset('name', 'client_name', 'client_contact', 'estimated_value', 'description');
+            form.reset('name', 'crm_customer_id', 'client_name', 'client_contact', 'description');
             form.project_type = defaultProjectTypeKey.value;
             document.getElementById('modal-add-budget')?.close();
         },
@@ -158,24 +158,24 @@ const submit = () => {
                     <h2 class="ocn-panel__title">Filter budget</h2>
                 </div>
                 <div class="card-body">
-                    <div class="flex flex-wrap gap-3 items-center">
-                        <label class="input input-bordered input-sm flex items-center gap-2 max-w-xs">
-                            <MagnifyingGlassIcon class="w-4 h-4 opacity-50" />
-                            <input v-model="filters.q" type="text" placeholder="Cari nama project / klien..." class="grow" />
-                        </label>
-                        <select v-model="filters.status" class="select select-bordered select-sm">
-                            <option value="">Semua Status</option>
-                            <option value="draft">Draft</option>
-                            <option value="deal">Deal</option>
-                            <option value="converted">Converted</option>
-                        </select>
-                        <select v-model="filters.project_type" class="select select-bordered select-sm">
-                            <option value="">Semua Tipe</option>
-                            <option v-for="type in project_types" :key="type.key" :value="type.key">{{ type.label }}</option>
-                        </select>
-                        <div class="ml-auto">
-                            <button class="btn btn-primary btn-sm" @click="openAddModal">+ Tambah Budget</button>
+                    <div class="flex flex-nowrap gap-2 items-center justify-between">
+                        <div class="flex flex-nowrap gap-2 items-center">
+                            <label class="input input-bordered input-sm flex items-center gap-1.5 w-44">
+                                <MagnifyingGlassIcon class="w-3.5 h-3.5 opacity-50 shrink-0" />
+                                <input v-model="filters.q" type="text" placeholder="Cari..." class="grow min-w-0" />
+                            </label>
+                            <select v-model="filters.status" class="select select-bordered select-sm w-32">
+                                <option value="">Semua</option>
+                                <option value="draft">Draft</option>
+                                <option value="deal">Deal</option>
+                                <option value="converted">Converted</option>
+                            </select>
+                            <select v-model="filters.project_type" class="select select-bordered select-sm min-w-32 max-w-40">
+                                <option value="">Semua Tipe</option>
+                                <option v-for="type in project_types" :key="type.key" :value="type.key">{{ type.label }}</option>
+                            </select>
                         </div>
+                        <button class="btn btn-primary btn-sm shrink-0" @click="openAddModal">+ Tambah Budget</button>
                     </div>
                 </div>
             </div>
@@ -216,15 +216,21 @@ const submit = () => {
                 <h3 class="font-bold text-lg">Tambah Budget Project</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
                     <div><label class="label"><span class="label-text">Nama Project</span></label><input v-model="form.name" type="text" class="input input-bordered w-full" /><p v-if="form.errors.name" class="text-error text-xs mt-1">{{ form.errors.name }}</p></div>
-                    <div><label class="label"><span class="label-text">Nama Klien</span></label><input v-model="form.client_name" type="text" class="input input-bordered w-full" /><p v-if="form.errors.client_name" class="text-error text-xs mt-1">{{ form.errors.client_name }}</p></div>
-                    <div><label class="label"><span class="label-text">Kontak Klien</span></label><input v-model="form.client_contact" type="text" class="input input-bordered w-full" /></div>
-                    <div><label class="label"><span class="label-text">Tipe Project</span></label><select v-model="form.project_type" class="select select-bordered w-full"><option v-for="type in project_types" :key="type.key" :value="type.key">{{ type.label }}</option></select></div>
-                    <div v-if="!projectTypeSupportsBudgetItems(form.project_type)">
-                        <CurrencyInput v-model="form.estimated_value" label="Estimasi Nilai Budget" :required="true" :error="form.errors.estimated_value" />
+                    <div>
+                        <label class="label"><span class="label-text">Customer CRM</span></label>
+                        <select v-model="form.crm_customer_id" class="select select-bordered w-full" :class="form.errors.crm_customer_id ? 'select-error' : ''">
+                            <option value="">Input manual</option>
+                            <option v-for="customer in crm_customers" :key="customer.id" :value="customer.id">
+                                {{ customer.code }} - {{ customer.display_name }}
+                            </option>
+                        </select>
+                        <p v-if="form.errors.crm_customer_id" class="text-error text-xs mt-1">{{ form.errors.crm_customer_id }}</p>
                     </div>
-                    <div v-else class="rounded-lg border border-base-300 bg-base-200/40 p-3 text-sm text-base-content/70">
-                        Nilai budget untuk tipe ini dihitung dari rincian item di halaman detail setelah budget dibuat.
-                        <p v-if="form.errors.estimated_value" class="text-error text-xs mt-1">{{ form.errors.estimated_value }}</p>
+                    <div><label class="label"><span class="label-text">Nama Klien</span></label><input v-model="form.client_name" type="text" class="input input-bordered w-full" :class="form.crm_customer_id ? 'bg-base-200' : ''" :readonly="!!form.crm_customer_id" placeholder="Pilih customer atau ketik manual" /><p v-if="form.errors.client_name" class="text-error text-xs mt-1">{{ form.errors.client_name }}</p></div>
+                    <div><label class="label"><span class="label-text">Kontak Klien</span></label><input v-model="form.client_contact" type="text" class="input input-bordered w-full" :class="form.crm_customer_id ? 'bg-base-200' : ''" :readonly="!!form.crm_customer_id" placeholder="Telepon / email" /></div>
+                    <div><label class="label"><span class="label-text">Tipe Project</span></label><select v-model="form.project_type" class="select select-bordered w-full"><option v-for="type in project_types" :key="type.key" :value="type.key">{{ type.label }}</option></select></div>
+                    <div class="md:col-span-2 rounded-lg border border-base-300 bg-base-200/40 p-3 text-sm text-base-content/70">
+                        Nilai estimasi budget dihitung otomatis setelah item dan jasa diinput di halaman detail budget.
                     </div>
                     <div class="md:col-span-2"><label class="label"><span class="label-text">Deskripsi</span></label><textarea v-model="form.description" class="textarea textarea-bordered w-full" rows="3" /></div>
                 </div>

@@ -56,7 +56,7 @@ use App\Http\Controllers\RndPurchaseController;
 use App\Http\Controllers\RndReportController;
 use App\Http\Controllers\RndResearchNoteController;
 use App\Http\Controllers\ShelfController;
-use App\Http\Controllers\TeamDistributionController;
+use App\Http\Controllers\SupplierCatalogController;
 use App\Http\Controllers\UiPreferenceController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\UserRolePermissionController;
@@ -319,6 +319,9 @@ Route::middleware(['auth', 'throttle:120,1'])->group(function () {
         Route::patch('erp/projects/budgets/{budget}/deal', [ProjectBudgetController::class, 'markDeal'])->name('erp.projects.budgets.deal');
         Route::post('erp/projects/budgets/{budget}/convert', [ProjectBudgetController::class, 'convert'])->name('erp.projects.budgets.convert');
         Route::get('erp/projects/budgets/{budget}/pdf', [ProjectBudgetController::class, 'pdf'])->name('erp.projects.budgets.pdf');
+        Route::get('erp/projects/supplier-catalog', [SupplierCatalogController::class, 'page'])->name('erp.projects.supplier-catalog');
+        Route::get('api/supplier-catalog/sheets', [SupplierCatalogController::class, 'sheets']);
+        Route::get('api/supplier-catalog/{sheetKey}/items', [SupplierCatalogController::class, 'items']);
         Route::get('erp/projects/project-types', [ProjectTypeController::class, 'index'])->name('erp.projects.project-types.index');
         Route::post('erp/projects/project-types', [ProjectTypeController::class, 'store'])->name('erp.projects.project-types.store');
         Route::patch('erp/projects/project-types/{projectType}', [ProjectTypeController::class, 'update'])->name('erp.projects.project-types.update');

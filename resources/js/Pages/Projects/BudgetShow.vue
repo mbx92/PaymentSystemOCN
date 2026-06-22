@@ -2,6 +2,7 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
 import ProductPickerModal from '@/Components/ProductPickerModal.vue';
+import SupplierCatalogPickerModal from '@/Components/SupplierCatalogPickerModal.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { computed, reactive, ref, watch } from 'vue';
@@ -12,6 +13,7 @@ const props = defineProps({
     budget: Object,
     cctv_products: Array,
     project_types: { type: Array, default: () => [] },
+    crm_customers: { type: Array, default: () => [] },
 });
 const projectTypeByKey = computed(() => Object.fromEntries((props.project_types ?? []).map((type) => [type.key, type])));
 const projectTypeSupportsBudgetItems = (value) => !!projectTypeByKey.value[value]?.supports_budget_items;
@@ -19,10 +21,29 @@ const projectTypeSupportsBudgetItems = (value) => !!projectTypeByKey.value[value
 const { formatDate } = useDateFormat();
 const { format } = useCurrency();
 
+function emptyItemRow() {
+    return {
+        master_product_id: null,
+        catalog_sheet: null,
+        catalog_ref: null,
+        catalog_category: null,
+        item_type: 'material',
+        name: '',
+        uom: 'unit',
+        qty: 1,
+        unit_cost: 0,
+        unit_price: 0,
+        notes: '',
+    };
+}
+
 function normalizeCctvItems(raw) {
     const list = Array.isArray(raw) && raw.length
         ? raw.map((i) => ({
             master_product_id: i.master_product_id ?? null,
+            catalog_sheet: i.catalog_sheet ?? null,
+            catalog_ref: i.catalog_ref ?? null,
+            catalog_category: i.catalog_category ?? null,
             item_type: i.item_type ?? 'material',
             name: i.name ?? '',
             uom: i.uom ?? 'unit',
@@ -31,12 +52,13 @@ function normalizeCctvItems(raw) {
             unit_price: i.unit_price ?? 0,
             notes: i.notes ?? '',
         }))
-        : [{ master_product_id: null, item_type: 'material', name: '', uom: 'unit', qty: 1, unit_cost: 0, unit_price: 0, notes: '' }];
+        : [emptyItemRow()];
     return list;
 }
 
 const budgetForm = useForm({
     name: props.budget.name,
+    crm_customer_id: props.budget.crm_customer_id ?? '',
     client_name: props.budget.client_name,
     client_contact: props.budget.client_contact ?? '',
     project_type: props.budget.project_type,
@@ -45,11 +67,22 @@ const budgetForm = useForm({
     description: props.budget.description ?? '',
 });
 
+const syncSelectedCustomer = () => {
+    if (!budgetForm.crm_customer_id) return;
+    const customer = props.crm_customers.find((row) => Number(row.id) === Number(budgetForm.crm_customer_id));
+    if (!customer) return;
+    budgetForm.client_name = customer.display_name ?? '';
+    budgetForm.client_contact = customer.contact ?? '';
+};
+
+watch(() => budgetForm.crm_customer_id, syncSelectedCustomer);
+
 watch(
     () => props.budget,
     (b) => {
         if (budgetForm.processing) return;
         budgetForm.name = b.name;
+        budgetForm.crm_customer_id = b.crm_customer_id ?? '';
         budgetForm.client_name = b.client_name;
         budgetForm.client_contact = b.client_contact ?? '';
         budgetForm.project_type = b.project_type;
@@ -65,65 +98,185 @@ const totalCctvItems = computed(() => (budgetForm.cctv_items ?? []).reduce((s, r
 const totalCctvCost = computed(() => (budgetForm.cctv_items ?? []).reduce((s, r) => s + ((Number(r.qty) || 0) * (Number(r.unit_cost) || 0)), 0));
 const totalCctvMargin = computed(() => totalCctvItems.value - totalCctvCost.value);
 
-/** Estimasi tampilan: untuk CCTV aktif, ikuti total item secara live; jika belum ada subtotal, pakai nilai form/server. */
+/** Estimasi tampilan: untuk budget itemized, selalu dari total item/jasa. */
 const displayedEstimated = computed(() => {
     if (props.budget.status === 'converted') {
         return Number(props.budget.estimated_value);
     }
-    if (!isItemizedBudget.value) {
-        return Number(props.budget.estimated_value);
+    if (isItemizedBudget.value) {
+        return totalCctvItems.value > 0 ? totalCctvItems.value : Number(props.budget.estimated_value);
     }
-    const t = totalCctvItems.value;
-    if (t > 0) return t;
     return Number(budgetForm.estimated_value);
 });
 
 const canEditCctvItems = computed(() => props.budget.supports_budget_items && props.budget.status !== 'converted');
 const showProductPicker = ref(false);
+const showCatalogPicker = ref(false);
 const productPicker = reactive({ lineIndex: null });
+const catalogPicker = reactive({ lineIndex: null });
 const suppressProductPickerOpen = ref(false);
+const suppressCatalogPickerOpen = ref(false);
 
 const openEditModal = () => document.getElementById('modal-edit-budget')?.showModal();
-const addCctvItem = () => budgetForm.cctv_items.push({ master_product_id: null, item_type: 'material', name: '', uom: 'unit', qty: 1, unit_cost: 0, unit_price: 0, notes: '' });
+const addCctvItem = () => budgetForm.cctv_items.push(emptyItemRow());
 const productLabel = (item) => {
+    if (item.catalog_ref) return `[${item.catalog_ref}] ${item.name ?? ''}`.trim();
     if (item.master_product_id && item.notes) return `${item.notes.replace(/^SKU:\s*/, '')} - ${item.name}`.trim();
     return item.name ?? '';
 };
 const applyProductToItem = (item, product) => {
     if (!item || !product) return;
     item.master_product_id = product.id ?? null;
+    item.catalog_sheet = null;
+    item.catalog_ref = null;
+    item.catalog_category = null;
     item.item_type = product.product_type === 'service' ? 'service' : 'material';
     item.name = product.name ?? '';
     item.uom = product.uom ?? 'unit';
+    item.unit_cost = Number(product.unit_cost ?? 0);
     item.unit_price = Number(product.selling_price ?? product.price ?? 0);
     item.notes = product.sku ? `SKU: ${product.sku}` : '';
+};
+const applyCatalogToItem = (item, catalogItem) => {
+    if (!item || !catalogItem) return;
+    item.master_product_id = null;
+    item.catalog_sheet = catalogItem.sheet_key;
+    item.catalog_ref = catalogItem.code;
+    item.catalog_category = catalogItem.category;
+    item.name = catalogItem.name ?? '';
+    item.uom = 'unit';
+    item.unit_cost = Number(catalogItem.supplier_price) || 0;
+    item.unit_price = Number(catalogItem.supplier_price) || 0;
+    item.item_type = /jasa|service/i.test(String(catalogItem.category)) ? 'service' : 'material';
+    item.notes = `Katalog: ${catalogItem.supplier_name} / ${catalogItem.sheet_label}`;
+};
+const findMatchingItemIndex = (candidate, excludeIndex = null) => {
+    const items = budgetForm.cctv_items ?? [];
+    if (candidate.catalog_ref) {
+        return items.findIndex(
+            (row, idx) => idx !== excludeIndex
+                && row.catalog_ref === candidate.catalog_ref
+                && row.catalog_sheet === candidate.catalog_sheet,
+        );
+    }
+    if (candidate.master_product_id) {
+        return items.findIndex(
+            (row, idx) => idx !== excludeIndex && row.master_product_id === candidate.master_product_id,
+        );
+    }
+    const name = String(candidate.name ?? '').trim().toLowerCase();
+    if (!name) return -1;
+
+    return items.findIndex(
+        (row, idx) => idx !== excludeIndex
+            && !row.catalog_ref
+            && !row.master_product_id
+            && String(row.name ?? '').trim().toLowerCase() === name,
+    );
+};
+const cleanupPickerLine = (lineIndex, mergedIndex) => {
+    if (lineIndex === null || lineIndex === mergedIndex) return;
+    const line = budgetForm.cctv_items[lineIndex];
+    const isBlank = !String(line.name ?? '').trim() && !line.catalog_ref && !line.master_product_id;
+    if (isBlank && budgetForm.cctv_items.length > 1) {
+        budgetForm.cctv_items.splice(lineIndex, 1);
+        return;
+    }
+    Object.assign(line, emptyItemRow());
+};
+const mergeCatalogItem = (catalogItem, lineIndex = null) => {
+    if (lineIndex !== null) {
+        const current = budgetForm.cctv_items[lineIndex];
+        if (
+            current?.catalog_ref === catalogItem.code
+            && current?.catalog_sheet === catalogItem.sheet_key
+        ) {
+            current.qty = (Number(current.qty) || 0) + 1;
+            return;
+        }
+    }
+
+    const probe = { ...emptyItemRow(), catalog_sheet: catalogItem.sheet_key, catalog_ref: catalogItem.code };
+    const existingIdx = findMatchingItemIndex(probe, lineIndex);
+    if (existingIdx >= 0) {
+        budgetForm.cctv_items[existingIdx].qty = (Number(budgetForm.cctv_items[existingIdx].qty) || 0) + 1;
+        cleanupPickerLine(lineIndex, existingIdx);
+        return;
+    }
+    if (lineIndex !== null) {
+        applyCatalogToItem(budgetForm.cctv_items[lineIndex], catalogItem);
+        return;
+    }
+    budgetForm.cctv_items.push({ ...emptyItemRow(), ...mapCatalogToRow(catalogItem) });
+};
+const mergeProductItem = (product, lineIndex = null) => {
+    if (lineIndex !== null) {
+        const current = budgetForm.cctv_items[lineIndex];
+        if (current?.master_product_id && current.master_product_id === product.id) {
+            current.qty = (Number(current.qty) || 0) + 1;
+            return;
+        }
+    }
+
+    const probe = { ...emptyItemRow(), master_product_id: product.id ?? null };
+    const existingIdx = findMatchingItemIndex(probe, lineIndex);
+    if (existingIdx >= 0) {
+        budgetForm.cctv_items[existingIdx].qty = (Number(budgetForm.cctv_items[existingIdx].qty) || 0) + 1;
+        cleanupPickerLine(lineIndex, existingIdx);
+        return;
+    }
+    if (lineIndex !== null) {
+        applyProductToItem(budgetForm.cctv_items[lineIndex], product);
+        return;
+    }
+    const row = emptyItemRow();
+    applyProductToItem(row, product);
+    row.qty = 1;
+    budgetForm.cctv_items.push(row);
+};
+const openCatalogPickerForLine = (idx) => {
+    if (suppressCatalogPickerOpen.value) return;
+    catalogPicker.lineIndex = idx;
+    showCatalogPicker.value = true;
+};
+const closeCatalogPicker = () => {
+    suppressCatalogPickerOpen.value = true;
+    showCatalogPicker.value = false;
+    catalogPicker.lineIndex = null;
+    document.activeElement?.blur?.();
+    window.setTimeout(() => {
+        suppressCatalogPickerOpen.value = false;
+    }, 250);
+};
+const addCatalogItemFromPicker = (catalogItem) => {
+    mergeCatalogItem(catalogItem);
+};
+function mapCatalogToRow(catalogItem) {
+    const row = emptyItemRow();
+    applyCatalogToItem(row, catalogItem);
+    return row;
+}
+const chooseCatalogItem = (catalogItem) => {
+    mergeCatalogItem(catalogItem, catalogPicker.lineIndex);
+    closeCatalogPicker();
+};
+const openAddCatalogPicker = () => {
+    if (suppressCatalogPickerOpen.value) return;
+    catalogPicker.lineIndex = null;
+    showCatalogPicker.value = true;
+};
+const addCctvItemFromProduct = (product) => {
+    mergeProductItem(product);
 };
 const openProductPickerForLine = (idx) => {
     if (suppressProductPickerOpen.value) return;
     productPicker.lineIndex = idx;
     showProductPicker.value = true;
 };
-const addCctvItemFromProduct = (product) => {
-    const row = {
-        master_product_id: product.id ?? null,
-        item_type: product.product_type === 'service' ? 'service' : 'material',
-        name: product.name ?? '',
-        uom: product.uom ?? 'unit',
-        qty: 1,
-        unit_cost: 0,
-        unit_price: Number(product.selling_price ?? product.price ?? 0),
-        notes: product.sku ? `SKU: ${product.sku}` : '',
-    };
-    budgetForm.cctv_items.push(row);
-};
 const chooseProduct = (product) => {
     suppressProductPickerOpen.value = true;
-    if (productPicker.lineIndex !== null) {
-        applyProductToItem(budgetForm.cctv_items[productPicker.lineIndex], product);
-        productPicker.lineIndex = null;
-    } else {
-        addCctvItemFromProduct(product);
-    }
+    mergeProductItem(product, productPicker.lineIndex);
+    productPicker.lineIndex = null;
     showProductPicker.value = false;
     window.setTimeout(() => {
         suppressProductPickerOpen.value = false;
@@ -139,7 +292,7 @@ const removeCctvItem = (idx) => {
 };
 
 const submitBudgetPut = (opts = {}) => {
-    if (isCctv.value && totalCctvItems.value > 0) {
+    if (isItemizedBudget.value) {
         budgetForm.estimated_value = totalCctvItems.value;
     }
     budgetForm.put(route('erp.projects.budgets.update', props.budget.id), {
@@ -178,7 +331,7 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
               <div class="flex flex-wrap justify-end gap-2">
                         <span class="badge badge-ghost">{{ budget.status }}</span>
                         <button class="btn btn-outline btn-sm" @click="downloadPdf">PDF</button>
-                        <button v-if="budget.status === 'draft'" class="btn btn-outline btn-sm" @click="markDeal">Tandai Deal</button>
+                        <button v-if="budget.status === 'draft'" class="btn btn-outline btn-sm" title="Setujui customer — item katalog dipromosikan ke master produk" @click="markDeal">Tandai Deal</button>
                         <button v-if="budget.status === 'deal'" class="btn btn-primary btn-sm" @click="convert">Convert ke Project</button>
                         <Link v-if="budget.converted_project_id" :href="route('projects.show', budget.converted_project_id)" class="btn btn-ghost btn-sm">Lihat Project</Link>
                         <button v-if="budget.status !== 'converted'" class="btn btn-primary btn-sm" @click="openEditModal">Edit</button>
@@ -202,7 +355,8 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
                     <div>
                         <span class="text-base-content/60">Estimasi</span>
                         <div class="font-semibold">{{ format(displayedEstimated) }}</div>
-                        <p v-if="canEditCctvItems && totalCctvItems > 0" class="text-xs text-base-content/60 mt-0.5">Total dihitung otomatis dari item CCTV di bawah.</p>
+                        <p v-if="canEditCctvItems && totalCctvItems > 0" class="text-xs text-base-content/60 mt-0.5">Total dihitung otomatis dari item dan jasa di bawah.</p>
+                        <p v-else-if="canEditCctvItems" class="text-xs text-base-content/60 mt-0.5">Tambahkan item/jasa untuk membentuk nilai estimasi.</p>
                     </div>
                     <div v-if="budget.supports_budget_items"><span class="text-base-content/60">Estimasi HPP</span><div>{{ format(budget.total_cost ?? totalCctvCost) }}</div></div>
                     <div v-if="budget.supports_budget_items"><span class="text-base-content/60">Estimasi Margin</span><div class="font-semibold text-success">{{ format(budget.total_margin ?? totalCctvMargin) }}</div></div>
@@ -215,8 +369,10 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
                 <div class="ocn-panel__head flex flex-wrap items-center justify-between gap-2">
                     <h2 class="ocn-panel__title">Item Budget</h2>
                     <div v-if="canEditCctvItems" class="flex flex-wrap items-center gap-2 shrink-0">
+                        <button type="button" class="btn btn-primary btn-sm gap-1" @click="openAddCatalogPicker">Pilih dari katalog</button>
+                        <Link :href="route('erp.projects.supplier-catalog')" class="btn btn-ghost btn-sm">Lihat katalog</Link>
                         <button type="button" class="btn btn-ghost btn-sm gap-1" @click="openAddProductPicker">Pilih dari master</button>
-                        <button type="button" class="btn btn-outline btn-sm gap-1" @click="addCctvItem">+ Tambah item</button>
+                        <button type="button" class="btn btn-outline btn-sm gap-1" @click="addCctvItem">+ Baris kosong</button>
                         <button type="button" class="btn btn-primary btn-sm" :disabled="budgetForm.processing" @click="saveCctvItemsFromDetail">Simpan item &amp; estimasi</button>
                     </div>
                 </div>
@@ -252,10 +408,10 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
                                                 :value="productLabel(item)"
                                                 type="text"
                                                 class="input input-bordered input-sm w-full min-w-[12rem] cursor-pointer"
-                                                placeholder="Klik untuk pilih produk"
+                                                placeholder="Klik untuk pilih dari katalog"
                                                 readonly
-                                                @click="openProductPickerForLine(idx)"
-                                                @focus="openProductPickerForLine(idx)"
+                                                @click="openCatalogPickerForLine(idx)"
+                                                @focus="openCatalogPickerForLine(idx)"
                                             />
                                             <p v-if="budgetForm.errors[`cctv_items.${idx}.name`]" class="text-error text-xs mt-0.5">{{ budgetForm.errors[`cctv_items.${idx}.name`] }}</p>
                                         </td>
@@ -311,23 +467,30 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
                 <h3 class="font-bold text-lg">Edit Budget</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
                     <div><label class="label"><span class="label-text">Nama Project</span></label><input v-model="budgetForm.name" type="text" class="input input-bordered w-full" /><p v-if="budgetForm.errors.name" class="text-error text-xs mt-1">{{ budgetForm.errors.name }}</p></div>
-                    <div><label class="label"><span class="label-text">Nama Klien</span></label><input v-model="budgetForm.client_name" type="text" class="input input-bordered w-full" /></div>
-                    <div><label class="label"><span class="label-text">Kontak Klien</span></label><input v-model="budgetForm.client_contact" type="text" class="input input-bordered w-full" /></div>
+                    <div>
+                        <label class="label"><span class="label-text">Customer CRM</span></label>
+                        <select v-model="budgetForm.crm_customer_id" class="select select-bordered w-full" :class="budgetForm.errors.crm_customer_id ? 'select-error' : ''">
+                            <option value="">Input manual</option>
+                            <option v-for="customer in crm_customers" :key="customer.id" :value="customer.id">
+                                {{ customer.code }} - {{ customer.display_name }}
+                            </option>
+                        </select>
+                        <p v-if="budgetForm.errors.crm_customer_id" class="text-error text-xs mt-1">{{ budgetForm.errors.crm_customer_id }}</p>
+                    </div>
+                    <div><label class="label"><span class="label-text">Nama Klien</span></label><input v-model="budgetForm.client_name" type="text" class="input input-bordered w-full" :class="budgetForm.crm_customer_id ? 'bg-base-200' : ''" :readonly="!!budgetForm.crm_customer_id" placeholder="Pilih customer atau ketik manual" /><p v-if="budgetForm.errors.client_name" class="text-error text-xs mt-1">{{ budgetForm.errors.client_name }}</p></div>
+                    <div><label class="label"><span class="label-text">Kontak Klien</span></label><input v-model="budgetForm.client_contact" type="text" class="input input-bordered w-full" :class="budgetForm.crm_customer_id ? 'bg-base-200' : ''" :readonly="!!budgetForm.crm_customer_id" /></div>
                     <div><label class="label"><span class="label-text">Tipe Project</span></label><select v-model="budgetForm.project_type" class="select select-bordered w-full"><option v-for="type in project_types" :key="type.key" :value="type.key">{{ type.label }}</option></select></div>
                     <div>
                         <CurrencyInput v-if="!isItemizedBudget" v-model="budgetForm.estimated_value" label="Estimasi Nilai Project" :required="true" :error="budgetForm.errors.estimated_value" />
-                        <div v-else-if="totalCctvItems > 0">
-                            <label class="label"><span class="label-text">Total Item Budget (otomatis dari rincian)</span></label>
-                            <div class="input input-bordered w-full flex items-center bg-base-200">{{ format(totalCctvItems) }}</div>
-                        </div>
                         <div v-else>
-                            <CurrencyInput v-model="budgetForm.estimated_value" label="Estimasi Nilai (belum ada item)" :required="true" :error="budgetForm.errors.estimated_value" />
-                            <p class="text-xs text-base-content/60 mt-1">Tambahkan baris item di bawah untuk menghitung total dari produk &amp; qty.</p>
+                            <label class="label"><span class="label-text">Total Estimasi (otomatis dari item &amp; jasa)</span></label>
+                            <div class="input input-bordered w-full flex items-center bg-base-200">{{ format(totalCctvItems) }}</div>
+                            <p class="text-xs text-base-content/60 mt-1">Nilai terbentuk saat item dan jasa diinput di bawah.</p>
                         </div>
                     </div>
                     <div class="md:col-span-2"><label class="label"><span class="label-text">Deskripsi</span></label><textarea v-model="budgetForm.description" class="textarea textarea-bordered w-full" rows="3" /></div>
                 </div>
-                <div v-if="isCctv" class="mt-4 space-y-2">
+                <div v-if="isItemizedBudget" class="mt-4 space-y-2">
                     <div class="flex items-center justify-between"><h3 class="font-semibold">Item CCTV</h3><div class="flex items-center gap-2"><button class="btn btn-ghost btn-xs" type="button" @click="openAddProductPicker">Pilih dari master</button><button class="btn btn-outline btn-xs" type="button" @click="addCctvItem">+ Tambah item</button></div></div>
                     <p v-if="budgetForm.errors.cctv_items" class="text-error text-xs">{{ budgetForm.errors.cctv_items }}</p>
                     <div class="overflow-x-auto rounded-xl border border-base-300"><table class="table table-sm"><thead><tr><th>Produk</th><th>Qty</th><th>Harga Satuan</th><th>Subtotal</th><th></th></tr></thead><tbody><tr v-for="(item, idx) in budgetForm.cctv_items" :key="idx"><td><input :value="productLabel(item)" type="text" class="input input-bordered input-sm w-full cursor-pointer" placeholder="Klik untuk pilih produk" readonly @click="openProductPickerForLine(idx)" @focus="openProductPickerForLine(idx)" /></td><td><input v-model.number="item.qty" type="number" min="0.01" step="0.01" class="input input-bordered input-sm w-24" /></td><td><input v-model.number="item.unit_price" type="number" min="0" step="1000" class="input input-bordered input-sm w-36" /></td><td>{{ format((Number(item.qty) || 0) * (Number(item.unit_price) || 0)) }}</td><td><button type="button" class="btn btn-ghost btn-xs text-error" @click="removeCctvItem(idx)">Hapus</button></td></tr></tbody></table></div>
@@ -338,6 +501,12 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
                 </div>
             </div>
         </dialog>
+
+        <SupplierCatalogPickerModal
+            :show="showCatalogPicker"
+            @close="closeCatalogPicker"
+            @confirm="chooseCatalogItem"
+        />
 
         <ProductPickerModal
             :show="showProductPicker"

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\ERP\CRM\Models\CrmCustomer;
 use App\ERP\Inventory\Models\Warehouse;
 use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
@@ -10,6 +11,7 @@ use App\Models\ProjectBudget;
 use App\Models\ProjectBudgetItem;
 use App\Models\ProjectMaterial;
 use App\Models\ProjectType;
+use App\Services\BudgetCatalogPromotionService;
 use App\Services\PdfThemeResolver;
 use App\Services\ProjectMaterialReservationService;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -29,6 +31,9 @@ class ProjectBudgetController extends Controller
         $mappedItems = $items->map(fn (ProjectBudgetItem $item): array => [
             'id' => $item->id,
             'master_product_id' => $item->master_product_id,
+            'catalog_sheet' => $item->catalog_sheet,
+            'catalog_ref' => $item->catalog_ref,
+            'catalog_category' => $item->catalog_category,
             'item_type' => $item->item_type,
             'name' => $item->name,
             'uom' => $item->uom,
@@ -44,6 +49,7 @@ class ProjectBudgetController extends Controller
         return [
             'id' => $budget->id,
             'name' => $budget->name,
+            'crm_customer_id' => $budget->crm_customer_id,
             'client_name' => $budget->client_name,
             'client_contact' => $budget->client_contact,
             'project_type' => $budget->project_type,
@@ -64,17 +70,19 @@ class ProjectBudgetController extends Controller
 
     private function validateStorePayload(Request $request): array
     {
-        return $request->validate([
+        $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'client_name' => 'required|string|max:255',
+            'crm_customer_id' => 'nullable|exists:crm_customers,id',
+            'client_name' => 'required_without:crm_customer_id|nullable|string|max:255',
             'client_contact' => 'nullable|string|max:255',
             'project_type' => [
                 'required',
                 Rule::exists('project_types', 'key')->where('is_active', true),
             ],
-            'estimated_value' => 'required|numeric|min:0',
             'description' => 'nullable|string',
         ]);
+
+        return $this->mergeBudgetClientSnapshot($validated);
     }
 
     /**
@@ -97,19 +105,28 @@ class ProjectBudgetController extends Controller
 
     private function validateUpdatePayload(Request $request): array
     {
-        return $request->validate([
+        $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'client_name' => 'required|string|max:255',
+            'crm_customer_id' => 'nullable|exists:crm_customers,id',
+            'client_name' => 'required_without:crm_customer_id|nullable|string|max:255',
             'client_contact' => 'nullable|string|max:255',
             'project_type' => [
                 'required',
                 Rule::exists('project_types', 'key')->where('is_active', true),
             ],
-            'estimated_value' => 'required|numeric|min:0',
+            'estimated_value' => [
+                Rule::requiredIf(fn () => ! $this->projectTypeSupportsBudgetItems($request->input('project_type'))),
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
             'description' => 'nullable|string',
             'cctv_items' => 'nullable|array',
             'cctv_items.*.name' => 'required|string|max:255',
             'cctv_items.*.master_product_id' => 'nullable|exists:master_products,id',
+            'cctv_items.*.catalog_sheet' => 'nullable|string|max:50',
+            'cctv_items.*.catalog_ref' => 'nullable|string|max:100',
+            'cctv_items.*.catalog_category' => 'nullable|string|max:100',
             'cctv_items.*.item_type' => 'nullable|in:product,material,service',
             'cctv_items.*.uom' => 'nullable|string|max:30',
             'cctv_items.*.qty' => 'required|numeric|min:0.01',
@@ -117,11 +134,16 @@ class ProjectBudgetController extends Controller
             'cctv_items.*.unit_price' => 'required|numeric|min:0',
             'cctv_items.*.notes' => 'nullable|string|max:1000',
         ]);
+
+        return $this->mergeBudgetClientSnapshot($validated);
     }
 
     private function normalizeStorePayload(array $validated): array
     {
-        return $validated + ['cctv_items' => []];
+        return $validated + [
+            'estimated_value' => 0,
+            'cctv_items' => [],
+        ];
     }
 
     private function normalizeUpdatePayload(array $validated): array
@@ -134,6 +156,9 @@ class ProjectBudgetController extends Controller
             ->filter(fn (array $row) => ! empty($row['name']) && (float) ($row['qty'] ?? 0) > 0)
             ->map(fn (array $row) => [
                 'master_product_id' => $row['master_product_id'] ?? null,
+                'catalog_sheet' => $row['catalog_sheet'] ?? null,
+                'catalog_ref' => $row['catalog_ref'] ?? null,
+                'catalog_category' => $row['catalog_category'] ?? null,
                 'item_type' => $row['item_type'] ?? 'material',
                 'name' => $row['name'],
                 'uom' => $row['uom'] ?? null,
@@ -147,6 +172,8 @@ class ProjectBudgetController extends Controller
 
         if (! empty($cctvItems)) {
             $validated['estimated_value'] = collect($cctvItems)->sum(fn (array $row) => $row['qty'] * $row['unit_price']);
+        } elseif ($this->projectTypeSupportsBudgetItems($validated['project_type'] ?? null)) {
+            $validated['estimated_value'] = 0;
         }
 
         return $validated + ['cctv_items' => $cctvItems];
@@ -182,6 +209,7 @@ class ProjectBudgetController extends Controller
         return Inertia::render('Projects/Budgets', [
             'budgets' => $budgets,
             'project_types' => ProjectType::activeOptions(),
+            'crm_customers' => $this->crmCustomerOptions(),
             'filters' => $this->filtersWithPerPage($request, ['q', 'status', 'project_type']),
         ]);
     }
@@ -206,6 +234,7 @@ class ProjectBudgetController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'sku', 'barcode', 'name', 'uom', 'selling_price', 'product_type']),
             'project_types' => ProjectType::activeOptions(),
+            'crm_customers' => $this->crmCustomerOptions(),
         ]);
     }
 
@@ -242,12 +271,23 @@ class ProjectBudgetController extends Controller
             ]);
         }
 
-        $budget->update([
-            'status' => 'deal',
-            'deal_at' => now(),
-        ]);
+        $promoted = 0;
 
-        return back()->with('flash', ['type' => 'success', 'message' => 'Budget ditandai deal.']);
+        DB::transaction(function () use ($budget, &$promoted): void {
+            $promoted = app(BudgetCatalogPromotionService::class)->promoteCatalogItems($budget);
+
+            $budget->update([
+                'status' => 'deal',
+                'deal_at' => now(),
+            ]);
+        });
+
+        $message = 'Budget ditandai deal.';
+        if ($promoted > 0) {
+            $message .= " {$promoted} item katalog dipromosikan ke master produk.";
+        }
+
+        return back()->with('flash', ['type' => 'success', 'message' => $message]);
     }
 
     public function convert(ProjectBudget $budget)
@@ -269,17 +309,23 @@ class ProjectBudgetController extends Controller
         }
 
         DB::transaction(function () use ($budget): void {
+            $promotion = app(BudgetCatalogPromotionService::class);
+            $promotion->promoteCatalogItems($budget);
+            $promotion->ensureAllItemsHaveMasterProduct($budget->fresh('items'));
+
             $project = Project::query()->create([
                 'name' => $budget->name,
+                'crm_customer_id' => $budget->crm_customer_id,
                 'client_name' => $budget->client_name,
                 'client_contact' => $budget->client_contact,
                 'project_type' => $budget->project_type,
                 'total_value' => $budget->estimated_value,
-                'status' => 'negosiasi',
+                'status' => 'berjalan',
+                'started_at' => ($budget->deal_at ?? now())->toDateString(),
                 'description' => $budget->description,
             ]);
 
-            $this->syncProjectMaterialsFromBudget($budget, $project);
+            $this->syncProjectMaterialsFromBudget($budget->fresh('items'), $project);
 
             $budget->update([
                 'status' => 'converted',
@@ -287,7 +333,7 @@ class ProjectBudgetController extends Controller
             ]);
         });
 
-        return back()->with('flash', ['type' => 'success', 'message' => 'Budget berhasil di-convert menjadi project negosiasi.']);
+        return back()->with('flash', ['type' => 'success', 'message' => 'Budget berhasil di-convert menjadi project berjalan.']);
     }
 
     public function pdf(ProjectBudget $budget)
@@ -295,7 +341,8 @@ class ProjectBudgetController extends Controller
         $budget->load('items');
         $mapped = $this->mapBudget($budget);
         $lineItems = $this->pdfLineItems($budget, $mapped['budget_items']);
-        $grandTotal = (float) collect($lineItems)->sum('line_total');
+        $lineItemsSubtotal = (float) collect($lineItems)->sum('subtotal');
+        $grandTotal = $lineItemsSubtotal;
         if ($grandTotal <= 0) {
             $grandTotal = (float) $budget->estimated_value;
         }
@@ -304,15 +351,28 @@ class ProjectBudgetController extends Controller
         $generatedAt = $budget->updated_at ?? $budget->created_at ?? now();
 
         $themeResolver = app(PdfThemeResolver::class);
+        $resolvedBrand = $themeResolver->brand();
+        $company = $themeResolver->companyContact();
+
+        $brand = [
+            'name' => $resolvedBrand['use_title_placeholder']
+                ? $resolvedBrand['title_placeholder']
+                : ($resolvedBrand['title'] ?? config('app.name', 'OCN ERP Suite')),
+            'tagline' => $resolvedBrand['use_tagline_placeholder']
+                ? $resolvedBrand['tagline_placeholder']
+                : ($resolvedBrand['tagline'] ?? 'Integrated Business Platform'),
+            'logo_data_uri' => $resolvedBrand['logo_data_uri'],
+            'address' => $company['use_address_placeholder'] ? $company['address_placeholder'] : $company['address'],
+            'phone' => $company['use_phone_placeholder'] ? $company['phone_placeholder'] : $company['phone'],
+        ];
 
         $pdf = Pdf::loadView('pdf.project-budget', [
             'budget' => $budget,
             'lineItems' => $lineItems,
+            'lineItemsSubtotal' => $lineItemsSubtotal,
             'grandTotal' => $grandTotal,
             'budgetNumber' => $budgetNumber,
-            'brand' => $themeResolver->brand(),
-            'company' => $themeResolver->companyContact(),
-            'theme' => $themeResolver->theme(),
+            'brand' => $brand,
             'generatedAt' => $generatedAt,
         ])->setPaper('a4');
 
@@ -328,7 +388,7 @@ class ProjectBudgetController extends Controller
 
     /**
      * @param  iterable<int, array<string, mixed>>  $items
-     * @return list<array{name: string, qty: float, uom: string, unit_price: float, line_total: float}>
+     * @return list<array{name: string, description: string|null, qty: float, uom: string, unit_price: float, subtotal: float}>
      */
     private function pdfLineItems(ProjectBudget $budget, iterable $items): array
     {
@@ -337,14 +397,19 @@ class ProjectBudgetController extends Controller
             ->map(function (array $item): array {
                 $qty = (float) ($item['qty'] ?? 0);
                 $unitPrice = (float) ($item['unit_price'] ?? 0);
-                $lineTotal = (float) ($item['subtotal_price'] ?? ($qty * $unitPrice));
+                $subtotal = (float) ($item['subtotal_price'] ?? ($qty * $unitPrice));
+                $description = trim((string) ($item['catalog_category'] ?? ''));
+                if ($description === '' && ! empty($item['item_type'])) {
+                    $description = ucfirst((string) $item['item_type']);
+                }
 
                 return [
                     'name' => (string) $item['name'],
+                    'description' => $description !== '' ? $description : null,
                     'qty' => $qty,
                     'uom' => (string) ($item['uom'] ?? 'unit'),
                     'unit_price' => $unitPrice,
-                    'line_total' => $lineTotal,
+                    'subtotal' => $subtotal,
                 ];
             })
             ->values();
@@ -358,10 +423,11 @@ class ProjectBudgetController extends Controller
                 'name' => $budget->description
                     ? trim((string) $budget->description)
                     : 'Estimasi project '.$budget->name,
+                'description' => $budget->projectTypeLabel() ?: null,
                 'qty' => 1,
                 'uom' => 'paket',
                 'unit_price' => (float) $budget->estimated_value,
-                'line_total' => (float) $budget->estimated_value,
+                'subtotal' => (float) $budget->estimated_value,
             ]];
         }
 
@@ -375,6 +441,9 @@ class ProjectBudgetController extends Controller
         foreach ($items as $index => $item) {
             $budget->items()->create([
                 'master_product_id' => $item['master_product_id'] ?? null,
+                'catalog_sheet' => $item['catalog_sheet'] ?? null,
+                'catalog_ref' => $item['catalog_ref'] ?? null,
+                'catalog_category' => $item['catalog_category'] ?? null,
                 'item_type' => $item['item_type'] ?? 'material',
                 'name' => $item['name'],
                 'uom' => $item['uom'] ?? null,
@@ -389,7 +458,9 @@ class ProjectBudgetController extends Controller
 
     private function syncProjectMaterialsFromBudget(ProjectBudget $budget, Project $project): void
     {
-        $budgetItems = $budget->items()->with('product')->get();
+        $budgetItems = $budget->relationLoaded('items')
+            ? $budget->items
+            : $budget->items()->with('product')->get();
 
         if ($budgetItems->isEmpty()) {
             $budgetItems = collect($budget->cctv_items ?? [])
@@ -402,14 +473,22 @@ class ProjectBudgetController extends Controller
         }
 
         $budgetItems
-            ->filter(fn (ProjectBudgetItem $item): bool => (int) $item->master_product_id > 0 && (float) $item->qty > 0)
+            ->filter(fn (ProjectBudgetItem $item): bool => trim((string) $item->name) !== '' && (float) $item->qty > 0)
             ->each(function (ProjectBudgetItem $item) use ($project): void {
+                if (! $item->master_product_id) {
+                    return;
+                }
+
                 $product = $item->relationLoaded('product')
                     ? $item->product
                     : MasterProduct::query()->find($item->master_product_id);
 
-                if (! $product || ! in_array($product->sales_channel, ['project', 'both'], true)) {
+                if (! $product) {
                     return;
+                }
+
+                if (! in_array($product->sales_channel, ['project', 'both'], true)) {
+                    $product->update(['sales_channel' => 'project']);
                 }
 
                 $warehouse = $this->warehouseForBudgetMaterial($product);
@@ -503,6 +582,54 @@ class ProjectBudgetController extends Controller
         }
 
         return 'planned';
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @return array<string, mixed>
+     */
+    private function mergeBudgetClientSnapshot(array $validated): array
+    {
+        if (empty($validated['crm_customer_id'])) {
+            $validated['crm_customer_id'] = null;
+
+            return $validated;
+        }
+
+        return array_merge($validated, $this->budgetClientSnapshot((int) $validated['crm_customer_id']));
+    }
+
+    /**
+     * @return array{client_name: string, client_contact: string|null}
+     */
+    private function budgetClientSnapshot(int $customerId): array
+    {
+        $customer = CrmCustomer::query()->findOrFail($customerId);
+
+        return [
+            'client_name' => $customer->company ?: $customer->name,
+            'client_contact' => collect([$customer->phone, $customer->email])->filter()->implode(' / ') ?: null,
+        ];
+    }
+
+    private function crmCustomerOptions()
+    {
+        return CrmCustomer::query()
+            ->where('is_active', true)
+            ->orderBy('company')
+            ->orderBy('name')
+            ->get(['id', 'code', 'name', 'company', 'email', 'phone'])
+            ->map(fn (CrmCustomer $customer): array => [
+                'id' => $customer->id,
+                'code' => $customer->code,
+                'name' => $customer->name,
+                'company' => $customer->company,
+                'email' => $customer->email,
+                'phone' => $customer->phone,
+                'display_name' => $customer->company ?: $customer->name,
+                'contact' => collect([$customer->phone, $customer->email])->filter()->implode(' / '),
+            ])
+            ->values();
     }
 
     private function projectTypeSupportsBudgetItems(?string $key): bool

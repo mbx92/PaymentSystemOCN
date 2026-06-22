@@ -2,11 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\ERP\CRM\Models\CrmCustomer;
 use App\ERP\Inventory\Models\Warehouse;
 use App\Http\Middleware\ErpMaintenanceMode;
 use App\Http\Middleware\LogErpActivity;
 use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
+use App\Models\Project;
 use App\Models\ProjectBudget;
 use App\Models\ProjectMaterial;
 use App\Models\User;
@@ -89,6 +91,40 @@ class ProjectBudgetItemsTest extends TestCase
                 ->etc());
     }
 
+    public function test_budget_store_can_use_crm_customer_for_client_fields(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $customer = CrmCustomer::query()->create([
+            'code' => 'CUST-BDG1',
+            'name' => 'Ani Wijaya',
+            'company' => 'PT Budget Client',
+            'email' => 'ani@budget.test',
+            'phone' => '0811111111',
+            'source' => 'manual',
+            'is_active' => true,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->post(route('erp.projects.budgets.store'), [
+                'name' => 'Budget CCTV Baru',
+                'crm_customer_id' => $customer->id,
+                'project_type' => 'cctv_installation',
+                'description' => null,
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('project_budgets', [
+            'name' => 'Budget CCTV Baru',
+            'crm_customer_id' => $customer->id,
+            'client_name' => 'PT Budget Client',
+            'client_contact' => '0811111111 / ani@budget.test',
+        ]);
+    }
+
     public function test_convert_cctv_budget_creates_project_materials_from_budget_items(): void
     {
         $this->disableErpMiddleware();
@@ -142,6 +178,10 @@ class ProjectBudgetItemsTest extends TestCase
         $budget->refresh();
 
         $this->assertNotNull($budget->converted_project_id);
+        $this->assertDatabaseHas('projects', [
+            'id' => $budget->converted_project_id,
+            'status' => 'berjalan',
+        ]);
         $this->assertDatabaseHas('project_materials', [
             'project_id' => $budget->converted_project_id,
             'master_product_id' => $camera->id,
@@ -157,8 +197,84 @@ class ProjectBudgetItemsTest extends TestCase
         $this->assertDatabaseHas('master_product_warehouse_stocks', [
             'master_product_id' => $camera->id,
             'warehouse_id' => $warehouse->id,
-            'reserved_qty' => '5.00',
+            'reserved_qty' => '4.00',
         ]);
+    }
+
+    public function test_convert_creates_project_material_for_each_budget_item_including_services(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $warehouse = Warehouse::query()->create([
+            'code' => 'WH-MAIN',
+            'name' => 'Gudang Utama',
+            'is_active' => true,
+        ]);
+        $camera = MasterProduct::query()->create([
+            'sku' => 'CAM-00002',
+            'name' => 'IP Camera Bullet',
+            'category' => 'CCTV',
+            'uom' => 'unit',
+            'sales_channel' => 'project',
+            'product_type' => 'project_material',
+            'status' => 'active',
+        ]);
+        MasterProductWarehouseStock::query()->create([
+            'master_product_id' => $camera->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 5,
+            'reserved_qty' => 0,
+        ]);
+        $budget = ProjectBudget::query()->create([
+            'name' => 'Budget CCTV Lengkap',
+            'client_name' => 'PT ABC',
+            'project_type' => 'cctv_installation',
+            'estimated_value' => 5000000,
+            'status' => 'deal',
+            'deal_at' => now(),
+        ]);
+        $budget->items()->createMany([
+            [
+                'master_product_id' => $camera->id,
+                'item_type' => 'material',
+                'name' => 'IP Camera Bullet',
+                'uom' => 'unit',
+                'qty' => 2,
+                'unit_cost' => 400000,
+                'unit_price' => 600000,
+                'sort_order' => 1,
+            ],
+            [
+                'item_type' => 'service',
+                'name' => 'Jasa instalasi',
+                'uom' => 'paket',
+                'qty' => 1,
+                'unit_cost' => 0,
+                'unit_price' => 1500000,
+                'sort_order' => 2,
+            ],
+            [
+                'item_type' => 'material',
+                'name' => 'Kabel LAN 100m',
+                'uom' => 'roll',
+                'qty' => 3,
+                'unit_cost' => 250000,
+                'unit_price' => 350000,
+                'sort_order' => 3,
+            ],
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->post(route('erp.projects.budgets.convert', $budget))
+            ->assertSessionHasNoErrors()
+            ->assertRedirect();
+
+        $budget->refresh();
+
+        $this->assertSame(3, ProjectMaterial::query()->where('project_id', $budget->converted_project_id)->count());
+        $this->assertSame('berjalan', Project::query()->find($budget->converted_project_id)?->status);
     }
 
     private function disableErpMiddleware(): void
