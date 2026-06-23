@@ -2,7 +2,8 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\Cache;
+use App\Models\SupplierCatalogItem;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -36,6 +37,8 @@ class SupplierCatalogService
      *     name: string,
      *     category: string,
      *     supplier_price: float,
+     *     last_price: float|null,
+     *     last_synced_at: string|null,
      *     sheet_key: string,
      *     sheet_label: string,
      *     supplier_name: string
@@ -43,31 +46,87 @@ class SupplierCatalogService
      */
     public function itemsForSheet(string $sheetKey, ?string $search = null): array
     {
-        $sheet = $this->findSheet($sheetKey);
-        if (! $sheet) {
+        if (! $this->findSheet($sheetKey)) {
             return [];
         }
 
-        $cacheKey = 'supplier_catalog_items_v2:'.$sheetKey;
+        $query = SupplierCatalogItem::query()
+            ->where('sheet_key', $sheetKey)
+            ->orderBy('code');
 
-        $items = Cache::remember(
-            $cacheKey,
-            config('supplier_catalog.cache_ttl_seconds', 300),
-            fn (): array => $this->fetchAndParseSheet($sheet),
-        );
-
-        if ($search === null || trim($search) === '') {
-            return $items;
+        if ($search !== null && trim($search) !== '') {
+            $term = '%'.trim($search).'%';
+            $query->where(function ($builder) use ($term): void {
+                $builder->where('code', 'like', $term)
+                    ->orWhere('name', 'like', $term)
+                    ->orWhere('category', 'like', $term);
+            });
         }
 
-        $term = Str::lower(trim($search));
+        return $query
+            ->get()
+            ->map(fn (SupplierCatalogItem $item): array => $this->mapStoredItem($item))
+            ->values()
+            ->all();
+    }
 
-        return array_values(array_filter(
-            $items,
-            fn (array $item): bool => Str::contains(Str::lower($item['code']), $term)
-                || Str::contains(Str::lower($item['name']), $term)
-                || Str::contains(Str::lower($item['category']), $term),
-        ));
+    public function lastSyncedAt(): ?Carbon
+    {
+        $value = SupplierCatalogItem::query()->max('last_synced_at');
+
+        return $value ? Carbon::parse($value) : null;
+    }
+
+    /**
+     * @return list<array{
+     *     ref: string,
+     *     code: string,
+     *     name: string,
+     *     category: string,
+     *     supplier_price: float,
+     *     sheet_key: string,
+     *     sheet_label: string,
+     *     supplier_name: string
+     * }>
+     */
+    public function fetchRemoteItemsForSheet(string $sheetKey): array
+    {
+        $sheet = $this->findSheet($sheetKey);
+        if (! $sheet) {
+            throw new RuntimeException("Tab katalog \"{$sheetKey}\" tidak dikenali.");
+        }
+
+        return $this->fetchAndParseSheet($sheet);
+    }
+
+    /**
+     * @return array{
+     *     ref: string,
+     *     code: string,
+     *     name: string,
+     *     category: string,
+     *     supplier_price: float,
+     *     last_price: float|null,
+     *     last_synced_at: string|null,
+     *     sheet_key: string,
+     *     sheet_label: string,
+     *     supplier_name: string
+     * }
+     */
+    public function mapStoredItem(SupplierCatalogItem $item): array
+    {
+        return [
+            'ref' => $item->ref,
+            'code' => $item->code,
+            'name' => $item->name,
+            'category' => (string) ($item->category ?? ''),
+            'supplier_price' => (float) $item->supplier_price,
+            'last_price' => $item->last_price !== null ? (float) $item->last_price : null,
+            'last_synced_at' => $item->last_synced_at?->toIso8601String(),
+            'sheet_key' => $item->sheet_key,
+            'sheet_label' => $item->sheet_label,
+            'supplier_name' => $item->supplier_name,
+        ];
     }
 
     /**
@@ -75,9 +134,13 @@ class SupplierCatalogService
      */
     public function findSheet(string $sheetKey): ?array
     {
-        foreach ($this->sheets() as $sheet) {
+        foreach (config('supplier_catalog.sheets', []) as $sheet) {
             if (($sheet['key'] ?? '') === $sheetKey) {
-                return $sheet;
+                return [
+                    'key' => (string) $sheet['key'],
+                    'label' => (string) $sheet['label'],
+                    'sheet_name' => (string) $sheet['sheet_name'],
+                ];
             }
         }
 
@@ -244,7 +307,6 @@ class SupplierCatalogService
         $nameIdx = $columnMap['name'] ?? ($codeIdx + 1);
         $headerNameGap = $nameIdx - $codeIdx;
 
-        // Some brand sheets (e.g. HIKVISION) have an empty header column between code and name.
         if ($headerNameGap > 1 && isset($row[$codeIdx + 1]) && ! $this->looksLikePrice($row[$codeIdx + 1])) {
             $nameIdx = $codeIdx + 1;
         }

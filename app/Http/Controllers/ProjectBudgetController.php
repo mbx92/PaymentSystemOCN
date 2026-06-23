@@ -14,7 +14,9 @@ use App\Models\ProjectType;
 use App\Services\BudgetCatalogPromotionService;
 use App\Services\PdfThemeResolver;
 use App\Services\ProjectMaterialReservationService;
+use App\Services\SupplierCatalogService;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +27,8 @@ use Inertia\Response;
 
 class ProjectBudgetController extends Controller
 {
+    private const CUSTOMER_MARKUP_PERCENT = 40;
+
     private function mapBudget(ProjectBudget $budget): array
     {
         $items = $budget->relationLoaded('items') ? $budget->items : $budget->items()->get();
@@ -236,6 +240,120 @@ class ProjectBudgetController extends Controller
             'project_types' => ProjectType::activeOptions(),
             'crm_customers' => $this->crmCustomerOptions(),
         ]);
+    }
+
+    public function builder(ProjectBudget $budget): Response|RedirectResponse
+    {
+        $budget->load(['items', 'projectTypeDefinition']);
+
+        if (! $budget->supportsBudgetItems()) {
+            return redirect()
+                ->route('erp.projects.budgets.show', $budget)
+                ->with('flash', ['type' => 'error', 'message' => 'Tipe project ini tidak mendukung RAB itemized.']);
+        }
+
+        return Inertia::render('Projects/BudgetBuilder', [
+            'budget' => $this->mapBudget($budget),
+            'cctv_products' => MasterProduct::query()
+                ->where('status', 'active')
+                ->whereIn('sales_channel', ['project', 'both'])
+                ->orderBy('name')
+                ->get(['id', 'sku', 'barcode', 'name', 'uom', 'selling_price', 'unit_cost', 'product_type']),
+            'catalog_sheets' => app(SupplierCatalogService::class)->sheets(),
+            'can_edit' => $budget->status !== 'converted',
+        ]);
+    }
+
+    public function customerView(ProjectBudget $budget): Response|RedirectResponse
+    {
+        $budget->load(['items', 'projectTypeDefinition']);
+
+        if (! $budget->supportsBudgetItems()) {
+            return redirect()
+                ->route('erp.projects.budgets.show', $budget)
+                ->with('flash', ['type' => 'error', 'message' => 'Tipe project ini tidak mendukung tampilan RAB customer.']);
+        }
+
+        $customerPayload = $this->mapBudgetForCustomerView($budget);
+        $themeResolver = app(PdfThemeResolver::class);
+        $resolvedBrand = $themeResolver->brand();
+
+        return Inertia::render('Projects/BudgetCustomerView', [
+            'budget' => $customerPayload['budget'],
+            'items' => $customerPayload['items'],
+            'markup_percent' => self::CUSTOMER_MARKUP_PERCENT,
+            'total' => $customerPayload['total'],
+            'brand' => [
+                'name' => $resolvedBrand['use_title_placeholder']
+                    ? $resolvedBrand['title_placeholder']
+                    : ($resolvedBrand['title'] ?? config('app.name', 'OCN ERP Suite')),
+                'tagline' => $resolvedBrand['use_tagline_placeholder']
+                    ? $resolvedBrand['tagline_placeholder']
+                    : ($resolvedBrand['tagline'] ?? ''),
+                'logo_data_uri' => $resolvedBrand['logo_data_uri'],
+            ],
+        ]);
+    }
+
+    /**
+     * @return array{
+     *     budget: array{id: int, name: string, client_name: string, project_type_label: string, description: string|null},
+     *     items: list<array{name: string, uom: string, qty: float, unit_price: float, subtotal: float}>,
+     *     total: float
+     * }
+     */
+    private function mapBudgetForCustomerView(ProjectBudget $budget): array
+    {
+        $mapped = $this->mapBudget($budget);
+
+        $items = collect($mapped['cctv_items'] ?? [])
+            ->filter(fn ($item) => is_array($item) && trim((string) ($item['name'] ?? '')) !== '')
+            ->map(function (array $item): array {
+                $qty = (float) ($item['qty'] ?? 0);
+                $unitPrice = $this->customerUnitPrice($item);
+
+                return [
+                    'name' => (string) $item['name'],
+                    'uom' => (string) ($item['uom'] ?? 'unit'),
+                    'qty' => $qty,
+                    'unit_price' => $unitPrice,
+                    'subtotal' => round($qty * $unitPrice),
+                    'from_catalog' => trim((string) ($item['catalog_ref'] ?? '')) !== '',
+                ];
+            })
+            ->values()
+            ->all();
+
+        return [
+            'budget' => [
+                'id' => $budget->id,
+                'name' => $budget->name,
+                'client_name' => $budget->client_name,
+                'project_type_label' => $budget->projectTypeLabel(),
+                'description' => $budget->description,
+            ],
+            'items' => $items,
+            'total' => (float) collect($items)->sum('subtotal'),
+        ];
+    }
+
+    /**
+     * Master produk & baris manual memakai harga jual; katalog supplier = harga beli (+ markup).
+     *
+     * @param  array<string, mixed>  $item
+     */
+    private function customerUnitPrice(array $item): float
+    {
+        $base = (float) ($item['unit_price'] ?? 0);
+        $isCatalog = trim((string) ($item['catalog_ref'] ?? '')) !== '';
+
+        if ($isCatalog) {
+            $multiplier = 1 + (self::CUSTOMER_MARKUP_PERCENT / 100);
+
+            return round($base * $multiplier);
+        }
+
+        return round($base);
     }
 
     public function update(Request $request, ProjectBudget $budget)

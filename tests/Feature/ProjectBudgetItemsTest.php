@@ -277,6 +277,135 @@ class ProjectBudgetItemsTest extends TestCase
         $this->assertSame('berjalan', Project::query()->find($budget->converted_project_id)?->status);
     }
 
+    public function test_budget_builder_page_loads_for_itemized_budget(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $budget = ProjectBudget::query()->create([
+            'name' => 'Budget RAB Builder',
+            'client_name' => 'PT Builder',
+            'project_type' => 'cctv_installation',
+            'estimated_value' => 0,
+            'status' => 'draft',
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.projects.budgets.builder', $budget))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Projects/BudgetBuilder')
+                ->where('budget.id', $budget->id)
+                ->where('can_edit', true)
+                ->has('cctv_products')
+                ->has('catalog_sheets')
+                ->etc());
+    }
+
+    public function test_budget_builder_redirects_for_non_itemized_project_type(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $budget = ProjectBudget::query()->create([
+            'name' => 'Budget Software',
+            'client_name' => 'PT Software',
+            'project_type' => 'software_development',
+            'estimated_value' => 10000000,
+            'status' => 'draft',
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.projects.budgets.builder', $budget))
+            ->assertRedirect(route('erp.projects.budgets.show', $budget));
+    }
+
+    public function test_budget_customer_view_applies_markup_only_to_catalog_items(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $budget = ProjectBudget::query()->create([
+            'name' => 'Budget Customer View',
+            'client_name' => 'PT Customer',
+            'project_type' => 'cctv_installation',
+            'estimated_value' => 380000,
+            'status' => 'draft',
+        ]);
+
+        $budget->items()->create([
+            'catalog_sheet' => 'tiandy',
+            'catalog_ref' => 'IPCTIA001',
+            'item_type' => 'material',
+            'name' => 'IP Camera Katalog',
+            'uom' => 'unit',
+            'qty' => 2,
+            'unit_cost' => 100000,
+            'unit_price' => 100000,
+            'sort_order' => 1,
+        ]);
+
+        $masterProduct = MasterProduct::query()->create([
+            'sku' => 'CAM-MASTER-01',
+            'name' => 'IP Camera Master Product',
+            'category' => 'CCTV',
+            'uom' => 'unit',
+            'sales_channel' => 'project',
+            'product_type' => 'project_material',
+            'status' => 'active',
+            'selling_price' => 150000,
+            'unit_cost' => 80000,
+        ]);
+
+        $budget->items()->create([
+            'master_product_id' => $masterProduct->id,
+            'item_type' => 'material',
+            'name' => 'IP Camera Master',
+            'uom' => 'unit',
+            'qty' => 1,
+            'unit_cost' => 80000,
+            'unit_price' => 150000,
+            'sort_order' => 2,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.projects.budgets.customer-view', $budget))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Projects/BudgetCustomerView')
+                ->where('markup_percent', 40)
+                ->where('items.0.unit_price', 140000)
+                ->where('items.0.subtotal', 280000)
+                ->where('items.0.from_catalog', true)
+                ->where('items.1.unit_price', 150000)
+                ->where('items.1.subtotal', 150000)
+                ->where('items.1.from_catalog', false)
+                ->where('total', 430000)
+                ->etc());
+    }
+
+    public function test_budget_customer_view_redirects_for_non_itemized_project_type(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $budget = ProjectBudget::query()->create([
+            'name' => 'Budget Software Customer',
+            'client_name' => 'PT Software',
+            'project_type' => 'software_development',
+            'estimated_value' => 10000000,
+            'status' => 'draft',
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.projects.budgets.customer-view', $budget))
+            ->assertRedirect(route('erp.projects.budgets.show', $budget));
+    }
+
     private function disableErpMiddleware(): void
     {
         $this->withoutMiddleware([

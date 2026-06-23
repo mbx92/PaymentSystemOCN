@@ -1,13 +1,15 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { Head, Link } from '@inertiajs/vue3';
-import { ArrowLeftIcon, ArrowPathIcon, MagnifyingGlassIcon } from '@heroicons/vue/24/outline';
+import { ArrowDownTrayIcon, ArrowLeftIcon, ArrowPathIcon, MagnifyingGlassIcon } from '@heroicons/vue/24/outline';
 import { computed, onMounted, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 
 const props = defineProps({
     supplier_name: { type: String, default: '' },
     sheets: { type: Array, default: () => [] },
+    last_synced_at: { type: String, default: null },
+    sync_schedule: { type: String, default: '02:00' },
 });
 
 const { format } = useCurrency();
@@ -16,9 +18,17 @@ const activeSheet = ref(props.sheets[0]?.key ?? '');
 const search = ref('');
 const items = ref([]);
 const loading = ref(false);
+const syncing = ref(false);
 const error = ref('');
+const syncMessage = ref('');
+const lastSyncedAt = ref(props.last_synced_at);
 
 const activeSheetLabel = computed(() => props.sheets.find((s) => s.key === activeSheet.value)?.label ?? activeSheet.value);
+
+function formatDateTime(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+}
 
 async function fetchItems() {
     if (!activeSheet.value) return;
@@ -28,11 +38,33 @@ async function fetchItems() {
         const params = search.value.trim() ? { q: search.value.trim() } : {};
         const { data } = await axios.get(`/api/supplier-catalog/${activeSheet.value}/items`, { params });
         items.value = data.items ?? [];
+        if (data.last_synced_at) {
+            lastSyncedAt.value = data.last_synced_at;
+        }
     } catch (err) {
-        error.value = err?.response?.data?.message ?? 'Gagal memuat katalog. Pastikan Google Sheet dapat diakses (view publik).';
+        error.value = err?.response?.data?.message ?? 'Gagal memuat katalog dari database.';
         items.value = [];
     } finally {
         loading.value = false;
+    }
+}
+
+async function runSync() {
+    if (syncing.value) return;
+    syncing.value = true;
+    error.value = '';
+    syncMessage.value = '';
+    try {
+        const { data } = await axios.post('/api/supplier-catalog/sync', {}, { timeout: 300000 });
+        if (data.last_synced_at) {
+            lastSyncedAt.value = data.last_synced_at;
+        }
+        syncMessage.value = data.message ?? 'Sync selesai.';
+        await fetchItems();
+    } catch (err) {
+        error.value = err?.response?.data?.message ?? 'Gagal sync katalog dari Google Sheets.';
+    } finally {
+        syncing.value = false;
     }
 }
 
@@ -60,13 +92,24 @@ onMounted(fetchItems);
                             <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Projects Workspace</p>
                             <h1 class="ocn-panel__title mt-1">Katalog Supplier</h1>
                             <p class="ocn-panel__desc mt-1">
-                                Data live dari Google Sheets — {{ supplier_name }}. Tidak di-import; selalu mengikuti update sheet supplier.
+                                {{ supplier_name }} — data disimpan lokal dan di-sync dari Google Sheets setiap hari
+                                ({{ sync_schedule }} WIB). Terakhir sync: {{ formatDateTime(lastSyncedAt) }}.
                             </p>
                         </div>
                         <div class="flex items-center gap-2">
-                            <button class="btn btn-outline btn-sm" :disabled="loading" @click="fetchItems">
+                            <button class="btn btn-outline btn-sm" :disabled="loading || syncing" @click="fetchItems">
                                 <ArrowPathIcon class="size-4" />
                                 Refresh
+                            </button>
+                            <button
+                                class="btn btn-primary btn-sm"
+                                :disabled="loading || syncing"
+                                title="Tarik semua brand dari Google Sheets"
+                                @click="runSync"
+                            >
+                                <span v-if="syncing" class="loading loading-spinner loading-xs"></span>
+                                <ArrowDownTrayIcon v-else class="size-4" />
+                                Sync
                             </button>
                             <Link class="btn btn-ghost btn-sm gap-1.5" :href="route('erp.projects')">
                                 <ArrowLeftIcon class="size-4" />
@@ -76,6 +119,8 @@ onMounted(fetchItems);
                     </div>
                 </div>
             </div>
+
+            <div v-if="syncMessage" class="alert alert-success alert-soft">{{ syncMessage }}</div>
 
             <div class="ocn-panel">
                 <div class="ocn-panel__head">
@@ -108,7 +153,9 @@ onMounted(fetchItems);
                                 <th>Kode</th>
                                 <th>Nama Item</th>
                                 <th>Jenis</th>
+                                <th class="text-right">Harga Sebelumnya</th>
                                 <th class="text-right">Harga Supplier</th>
+                                <th>Last Update</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -116,10 +163,16 @@ onMounted(fetchItems);
                                 <td class="font-mono text-xs">{{ item.code }}</td>
                                 <td>{{ item.name }}</td>
                                 <td><span class="badge badge-ghost badge-sm">{{ item.category }}</span></td>
+                                <td class="text-right tabular-nums text-base-content/60">
+                                    {{ item.last_price != null ? format(item.last_price) : '—' }}
+                                </td>
                                 <td class="text-right font-medium tabular-nums">{{ format(item.supplier_price) }}</td>
+                                <td class="text-xs text-base-content/70 whitespace-nowrap">{{ formatDateTime(item.last_synced_at) }}</td>
                             </tr>
                             <tr v-if="!items.length">
-                                <td colspan="4" class="text-center py-8 text-base-content/50">Tidak ada item yang cocok.</td>
+                                <td colspan="6" class="text-center py-8 text-base-content/50">
+                                    Tidak ada item. Jalankan <code class="text-xs">php artisan supplier-catalog:sync</code> untuk mengisi data.
+                                </td>
                             </tr>
                         </tbody>
                     </table>
@@ -132,7 +185,7 @@ onMounted(fetchItems);
                 </div>
                 <div class="card-body text-sm text-base-content/70 space-y-2">
                     <p>1. Buat budget project, lalu buka halaman detail budget.</p>
-                    <p>2. Pilih item dari <strong>Katalog Supplier</strong> — harga beli (HPP) terisi otomatis dari sheet.</p>
+                    <p>2. Pilih item dari <strong>Katalog Supplier</strong> — harga beli (HPP) terisi otomatis dari katalog.</p>
                     <p>3. Atur harga jual per item untuk margin, lalu simpan.</p>
                     <p>4. Saat customer setuju (<strong>Tandai Deal</strong>), item katalog otomatis dipromosikan ke Master Produk.</p>
                 </div>

@@ -105,7 +105,7 @@ class DashboardController extends Controller
             ],
             'overduePayments' => $overduePayments,
             'filters' => [
-                'company_id' => $request->query('company_id', $companyId ?? ErpCompanyResolver::ALL_COMPANIES),
+                'company_id' => (string) ($request->query('company_id') ?? $companyId ?? ErpCompanyResolver::ALL_COMPANIES),
             ],
             'selectedYear' => (int) $year,
             'years' => range(now()->year, now()->year - 4),

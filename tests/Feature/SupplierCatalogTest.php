@@ -6,8 +6,10 @@ use App\Http\Middleware\ErpMaintenanceMode;
 use App\Http\Middleware\LogErpActivity;
 use App\Models\MasterProduct;
 use App\Models\ProjectBudget;
+use App\Models\SupplierCatalogItem;
 use App\Models\User;
 use App\Services\SupplierCatalogService;
+use App\Services\SupplierCatalogSyncService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Middleware\RoleMiddleware;
 use Tests\TestCase;
@@ -86,23 +88,18 @@ CSV;
     {
         $this->disableErpMiddleware();
 
-        $this->mock(SupplierCatalogService::class, function ($mock): void {
-            $mock->shouldReceive('itemsForSheet')
-                ->once()
-                ->with('tiandy', null)
-                ->andReturn([
-                    [
-                        'ref' => 'tiandy:IPCTIA001',
-                        'code' => 'IPCTIA001',
-                        'name' => 'IPCAM TEST',
-                        'category' => 'IP CAMERA',
-                        'supplier_price' => 100000,
-                        'sheet_key' => 'tiandy',
-                        'sheet_label' => 'TIANDY',
-                        'supplier_name' => 'PL TUNAS JAYA ELEKTRONIK',
-                    ],
-                ]);
-        });
+        SupplierCatalogItem::query()->create([
+            'ref' => 'tiandy:IPCTIA001',
+            'sheet_key' => 'tiandy',
+            'sheet_label' => 'TIANDY',
+            'supplier_name' => 'PL TUNAS JAYA ELEKTRONIK',
+            'code' => 'IPCTIA001',
+            'name' => 'IPCAM TEST',
+            'category' => 'IP CAMERA',
+            'supplier_price' => 100000,
+            'last_price' => null,
+            'last_synced_at' => now(),
+        ]);
 
         $user = User::factory()->create();
 
@@ -111,7 +108,73 @@ CSV;
             ->getJson('/api/supplier-catalog/tiandy/items')
             ->assertOk()
             ->assertJsonPath('items.0.code', 'IPCTIA001')
-            ->assertJsonPath('items.0.supplier_price', 100000);
+            ->assertJsonPath('items.0.supplier_price', 100000)
+            ->assertJsonPath('items.0.last_price', null);
+    }
+
+    public function test_catalog_sync_upserts_items_and_tracks_last_price(): void
+    {
+        $remoteItem = [
+            'ref' => 'tiandy:IPCTIA001',
+            'code' => 'IPCTIA001',
+            'name' => 'IPCAM TEST',
+            'category' => 'IP CAMERA',
+            'supplier_price' => 100000.0,
+            'sheet_key' => 'tiandy',
+            'sheet_label' => 'TIANDY',
+            'supplier_name' => 'PL TUNAS JAYA ELEKTRONIK',
+        ];
+
+        $this->mock(SupplierCatalogService::class, function ($mock) use ($remoteItem): void {
+            $mock->shouldReceive('fetchRemoteItemsForSheet')
+                ->twice()
+                ->with('tiandy')
+                ->andReturn([$remoteItem], [
+                    array_merge($remoteItem, ['supplier_price' => 120000.0]),
+                ]);
+        });
+
+        $sync = app(SupplierCatalogSyncService::class);
+
+        $sync->syncSheet('tiandy');
+
+        $this->assertDatabaseHas('supplier_catalog_items', [
+            'ref' => 'tiandy:IPCTIA001',
+            'supplier_price' => '100000.00',
+            'last_price' => null,
+        ]);
+
+        $sync->syncSheet('tiandy');
+
+        $this->assertDatabaseHas('supplier_catalog_items', [
+            'ref' => 'tiandy:IPCTIA001',
+            'supplier_price' => '120000.00',
+            'last_price' => '100000.00',
+        ]);
+    }
+
+    public function test_items_for_sheet_reads_from_database(): void
+    {
+        SupplierCatalogItem::query()->create([
+            'ref' => 'tiandy:IPCTIA002',
+            'sheet_key' => 'tiandy',
+            'sheet_label' => 'TIANDY',
+            'supplier_name' => 'PL TUNAS JAYA ELEKTRONIK',
+            'code' => 'IPCTIA002',
+            'name' => 'IPCAM DB',
+            'category' => 'IP CAMERA',
+            'supplier_price' => 440000,
+            'last_price' => 400000,
+            'last_synced_at' => now(),
+        ]);
+
+        $items = app(SupplierCatalogService::class)->itemsForSheet('tiandy');
+
+        $this->assertCount(1, $items);
+        $this->assertSame('IPCTIA002', $items[0]['code']);
+        $this->assertSame(440000.0, $items[0]['supplier_price']);
+        $this->assertSame(400000.0, $items[0]['last_price']);
+        $this->assertNotNull($items[0]['last_synced_at']);
     }
 
     public function test_sheet_rows_parser_handles_hikvision_column_layout(): void
@@ -143,6 +206,33 @@ CSV;
             ->assertJsonPath('sheets.0.key', 'hikvision')
             ->assertJsonPath('sheets.4.key', 'tiandy')
             ->assertJsonFragment(['label' => 'TIANDY']);
+    }
+
+    public function test_catalog_sync_endpoint_syncs_all_sheets(): void
+    {
+        $this->disableErpMiddleware();
+
+        $this->mock(SupplierCatalogSyncService::class, function ($mock): void {
+            $mock->shouldReceive('syncAll')
+                ->once()
+                ->andReturn([
+                    'sheets' => 3,
+                    'created' => 2,
+                    'updated' => 1,
+                    'removed' => 0,
+                    'failed' => [],
+                ]);
+        });
+
+        $user = User::factory()->create();
+
+        $this
+            ->actingAs($user)
+            ->postJson('/api/supplier-catalog/sync')
+            ->assertOk()
+            ->assertJsonPath('sheets', 3)
+            ->assertJsonPath('created', 2)
+            ->assertJsonPath('updated', 1);
     }
 
     private function disableErpMiddleware(): void

@@ -331,6 +331,21 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
               <div class="flex flex-wrap justify-end gap-2">
                         <span class="badge badge-ghost">{{ budget.status }}</span>
                         <button class="btn btn-outline btn-sm" @click="downloadPdf">PDF</button>
+                        <Link
+                            v-if="budget.supports_budget_items"
+                            :href="route('erp.projects.budgets.builder', budget.id)"
+                            class="btn btn-secondary btn-sm"
+                        >
+                            RAB Builder
+                        </Link>
+                        <Link
+                            v-if="budget.supports_budget_items"
+                            :href="route('erp.projects.budgets.customer-view', budget.id)"
+                            target="_blank"
+                            class="btn btn-accent btn-sm"
+                        >
+                            Tampilan Customer
+                        </Link>
                         <button v-if="budget.status === 'draft'" class="btn btn-outline btn-sm" title="Setujui customer — item katalog dipromosikan ke master produk" @click="markDeal">Tandai Deal</button>
                         <button v-if="budget.status === 'deal'" class="btn btn-primary btn-sm" @click="convert">Convert ke Project</button>
                         <Link v-if="budget.converted_project_id" :href="route('projects.show', budget.converted_project_id)" class="btn btn-ghost btn-sm">Lihat Project</Link>

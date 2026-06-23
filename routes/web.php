@@ -315,12 +315,15 @@ Route::middleware(['auth', 'throttle:120,1'])->group(function () {
         Route::get('erp/projects/budgets', [ProjectBudgetController::class, 'index'])->name('erp.projects.budgets.index');
         Route::post('erp/projects/budgets', [ProjectBudgetController::class, 'store'])->name('erp.projects.budgets.store');
         Route::get('erp/projects/budgets/{budget}', [ProjectBudgetController::class, 'show'])->name('erp.projects.budgets.show');
+        Route::get('erp/projects/budgets/{budget}/builder', [ProjectBudgetController::class, 'builder'])->name('erp.projects.budgets.builder');
+        Route::get('erp/projects/budgets/{budget}/customer-view', [ProjectBudgetController::class, 'customerView'])->name('erp.projects.budgets.customer-view');
         Route::put('erp/projects/budgets/{budget}', [ProjectBudgetController::class, 'update'])->name('erp.projects.budgets.update');
         Route::patch('erp/projects/budgets/{budget}/deal', [ProjectBudgetController::class, 'markDeal'])->name('erp.projects.budgets.deal');
         Route::post('erp/projects/budgets/{budget}/convert', [ProjectBudgetController::class, 'convert'])->name('erp.projects.budgets.convert');
         Route::get('erp/projects/budgets/{budget}/pdf', [ProjectBudgetController::class, 'pdf'])->name('erp.projects.budgets.pdf');
         Route::get('erp/projects/supplier-catalog', [SupplierCatalogController::class, 'page'])->name('erp.projects.supplier-catalog');
         Route::get('api/supplier-catalog/sheets', [SupplierCatalogController::class, 'sheets']);
+        Route::post('api/supplier-catalog/sync', [SupplierCatalogController::class, 'sync']);
         Route::get('api/supplier-catalog/{sheetKey}/items', [SupplierCatalogController::class, 'items']);
         Route::get('erp/projects/project-types', [ProjectTypeController::class, 'index'])->name('erp.projects.project-types.index');
         Route::post('erp/projects/project-types', [ProjectTypeController::class, 'store'])->name('erp.projects.project-types.store');

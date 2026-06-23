@@ -4,11 +4,12 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Katalog harga supplier (Google Sheets — live, tidak di-import)
+    | Katalog harga supplier (Google Sheets → database lokal)
     |--------------------------------------------------------------------------
     |
     | Spreadsheet harus bisa diakses "Anyone with the link can view".
-    | Data di-fetch per tab via gviz CSV (tanpa export workbook penuh).
+    | Data di-sync ke tabel supplier_catalog_items via artisan supplier-catalog:sync
+    | (dijadwalkan harian). UI/API membaca dari database, bukan langsung ke sheet.
     |
     | sheet_name harus persis sama dengan nama tab di Google Sheets.
     |
@@ -18,7 +19,7 @@ return [
 
     'supplier_name' => env('SUPPLIER_CATALOG_SUPPLIER_NAME', 'PL TUNAS JAYA ELEKTRONIK'),
 
-    'cache_ttl_seconds' => (int) env('SUPPLIER_CATALOG_CACHE_TTL', 300),
+    'sync_time' => env('SUPPLIER_CATALOG_SYNC_TIME', '02:00'),
 
     'sheets' => [
         ['key' => 'hikvision', 'label' => 'HIKVISION', 'sheet_name' => 'HIKVISION.'],
