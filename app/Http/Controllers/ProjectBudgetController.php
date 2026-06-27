@@ -12,6 +12,7 @@ use App\Models\ProjectBudgetItem;
 use App\Models\ProjectMaterial;
 use App\Models\ProjectType;
 use App\Services\BudgetCatalogPromotionService;
+use App\Services\GeneratedFileArchiveService;
 use App\Services\PdfThemeResolver;
 use App\Services\ProjectMaterialReservationService;
 use App\Services\SupplierCatalogService;
@@ -494,7 +495,7 @@ class ProjectBudgetController extends Controller
             'generatedAt' => $generatedAt,
         ])->setPaper('a4');
 
-        return $pdf->download($budgetNumber.'.pdf');
+        return app(GeneratedFileArchiveService::class)->downloadPdf($pdf, $budgetNumber.'.pdf');
     }
 
     private function budgetNumber(ProjectBudget $budget): string

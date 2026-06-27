@@ -78,9 +78,17 @@ return [
         [
             'key' => 'project_invoice_revenue_account',
             'label' => 'Invoice Project - Akun Pendapatan',
-            'description' => 'Credit untuk pendapatan invoice project.',
-            'amount_source' => 'CashIn.amount dari pembayaran project',
+            'description' => 'Credit pendapatan dari kas masuk invoice project (jumlah bayar setelah diskon).',
+            'amount_source' => 'CashIn.amount (jumlah bayar)',
             'default_account_code' => '4003',
+            'source_module' => 'project_invoice_payment',
+        ],
+        [
+            'key' => 'project_invoice_discount_account',
+            'label' => 'Invoice Project - Akun Potongan/Diskon',
+            'description' => 'Debit potongan invoice untuk customer. Dicatat berpasangan di jurnal agar tidak masuk pendapatan.',
+            'amount_source' => 'CashIn.discount_amount',
+            'default_account_code' => '4020',
             'source_module' => 'project_invoice_payment',
         ],
     ],
@@ -96,6 +104,7 @@ return [
         'stock_opname_adjustment_account' => '5013',
         'project_invoice_cash_account' => '1001',
         'project_invoice_revenue_account' => '4003',
+        'project_invoice_discount_account' => '4020',
     ],
 
     'apply_defaults' => [
@@ -113,6 +122,7 @@ return [
             'stock_opname_adjustment_account' => '5013',
             'project_invoice_cash_account' => '1001',
             'project_invoice_revenue_account' => '4003',
+            'project_invoice_discount_account' => '4020',
         ],
         'category_defaults' => [
             ['domain' => 'cash_in', 'category' => 'pendapatan_project', 'account_code' => '4003'],

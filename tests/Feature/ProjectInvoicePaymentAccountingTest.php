@@ -138,6 +138,128 @@ class ProjectInvoicePaymentAccountingTest extends TestCase
         ]);
     }
 
+    public function test_project_invoice_payment_posts_discount_to_coa_account(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $cash = $this->cashAccount('1002', 'Bank BCA');
+        $revenue = $this->account('4003', 'Pendapatan Project', 'revenue', 'credit');
+        $discount = $this->account('4020', 'Diskon Invoice Project', 'revenue', 'debit');
+
+        CoaSetting::query()->updateOrCreate(['key' => 'project_invoice_cash_account'], ['account_id' => $cash->id]);
+        CoaSetting::query()->updateOrCreate(['key' => 'project_invoice_revenue_account'], ['account_id' => $revenue->id]);
+        CoaSetting::query()->updateOrCreate(['key' => 'project_invoice_discount_account'], ['account_id' => $discount->id]);
+
+        $paymentMethod = PaymentMethod::query()->create([
+            'code' => 'transfer',
+            'name' => 'Transfer',
+            'status' => 'active',
+        ]);
+
+        $project = Project::query()->create([
+            'name' => 'Project Invoice Discount',
+            'client_name' => 'Client',
+            'total_value' => 1000000,
+            'status' => 'selesai',
+            'finished_at' => '2026-05-17',
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->post(route('erp.sales.project-invoices.payments.store', $project), [
+                'amount' => 450000,
+                'discount_amount' => 50000,
+                'date' => '2026-05-17',
+                'payment_method_id' => $paymentMethod->id,
+                'cash_account_id' => $cash->id,
+                'note' => 'Bayar dengan diskon',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $cashIn = CashIn::query()->where('project_id', $project->id)->firstOrFail();
+        $this->assertSame('450000.00', (string) $cashIn->amount);
+        $this->assertSame('50000.00', (string) $cashIn->discount_amount);
+
+        $entry = JournalEntry::query()->with('lines')->findOrFail($cashIn->journal_entry_id);
+        $this->assertDatabaseHas('journal_lines', [
+            'journal_entry_id' => $entry->id,
+            'account_id' => $cash->id,
+            'debit' => '450000.00',
+            'credit' => '0.00',
+        ]);
+        $this->assertDatabaseHas('journal_lines', [
+            'journal_entry_id' => $entry->id,
+            'account_id' => $discount->id,
+            'debit' => '50000.00',
+            'credit' => '0.00',
+        ]);
+        $this->assertDatabaseHas('journal_lines', [
+            'journal_entry_id' => $entry->id,
+            'account_id' => $revenue->id,
+            'debit' => '0.00',
+            'credit' => '450000.00',
+        ]);
+        $this->assertDatabaseHas('journal_lines', [
+            'journal_entry_id' => $entry->id,
+            'account_id' => $discount->id,
+            'debit' => '50000.00',
+            'credit' => '0.00',
+        ]);
+        $this->assertDatabaseHas('journal_lines', [
+            'journal_entry_id' => $entry->id,
+            'account_id' => $discount->id,
+            'debit' => '0.00',
+            'credit' => '50000.00',
+        ]);
+        $this->assertDatabaseMissing('journal_lines', [
+            'journal_entry_id' => $entry->id,
+            'account_id' => $revenue->id,
+            'credit' => '500000.00',
+        ]);
+
+        $project->refresh();
+        $this->assertSame(500000.0, $project->invoicePaymentSettledTotal());
+
+        $cashIn->load('paymentMethod');
+        $project->load('cashIns');
+        $invoice = [
+            'number' => 'INV-PRJ-000001',
+            'amount' => 1000000.0,
+            'status' => 'partial',
+            'remaining_amount' => 500000.0,
+        ];
+        $brand = ['name' => 'Test ERP', 'tagline' => '', 'logo_data_uri' => null];
+
+        $salesNoteHtml = view('pdf.project-sales-note', [
+            'project' => $project,
+            'invoice' => $invoice,
+            'items' => collect(),
+            'itemsSubtotal' => 1000000,
+            'totalDiscount' => 50000.0,
+            'cashReceived' => 450000.0,
+            'brand' => $brand,
+            'generatedAt' => now(),
+        ])->render();
+
+        $this->assertStringContainsString('Diskon (Potongan)', $salesNoteHtml);
+        $this->assertStringContainsString('Rp 50.000', $salesNoteHtml);
+
+        $receiptHtml = view('pdf.project-receipt', [
+            'project' => $project,
+            'cashIn' => $cashIn,
+            'invoice' => $invoice,
+            'settledAmount' => 500000.0,
+            'discountAmount' => 50000.0,
+            'brand' => $brand,
+            'generatedAt' => now(),
+        ])->render();
+
+        $this->assertStringContainsString('Tagihan Dilunasi', $receiptHtml);
+        $this->assertStringContainsString('Diskon (Potongan)', $receiptHtml);
+    }
+
     public function test_accounting_payments_page_lists_cash_bank_accounts(): void
     {
         $this->disableErpMiddleware();

@@ -38,25 +38,43 @@ const paymentItems = computed(() => {
   );
 });
 const paymentForm = useForm({
-  amount: props.invoice.remaining_amount || 0,
+  settlement_amount: props.invoice.remaining_amount || 0,
+  discount_amount: 0,
   date: new Date().toISOString().slice(0, 10),
   payment_method_id: props.paymentMethods?.[0]?.id ?? '',
   cash_account_id: props.cashAccounts?.[0]?.id ?? '',
   note: '',
 });
+
+function cashToPay(form) {
+  return Math.max(0, Number(form.settlement_amount || 0) - Number(form.discount_amount || 0));
+}
+
+function submitPaymentPayload(form) {
+  return {
+    amount: cashToPay(form),
+    discount_amount: Number(form.discount_amount || 0),
+    date: form.date,
+    payment_method_id: form.payment_method_id,
+    cash_account_id: form.cash_account_id,
+    note: form.note,
+  };
+}
+
 const submitPayment = () => {
-  paymentForm.post(route('erp.sales.project-invoices.payments.store', props.invoice.id), {
+  paymentForm.transform(() => submitPaymentPayload(paymentForm)).post(route('erp.sales.project-invoices.payments.store', props.invoice.id), {
     preserveScroll: true,
     onSuccess: () => {
-      paymentForm.reset('note');
-      paymentForm.amount = 0;
+      paymentForm.reset('note', 'discount_amount');
+      paymentForm.settlement_amount = 0;
       document.getElementById('modal-add-invoice-payment')?.close();
     },
   });
 };
 
 const editPaymentForm = useForm({
-  amount: 0,
+  settlement_amount: 0,
+  discount_amount: 0,
   date: new Date().toISOString().slice(0, 10),
   payment_method_id: '',
   cash_account_id: '',
@@ -65,7 +83,10 @@ const editPaymentForm = useForm({
 
 const openEditPaymentModal = (payment) => {
   editingPayment.value = payment;
-  editPaymentForm.amount = Number(payment.amount || 0);
+  const cash = Number(payment.amount || 0);
+  const discount = Number(payment.discount_amount || 0);
+  editPaymentForm.settlement_amount = cash + discount;
+  editPaymentForm.discount_amount = discount;
   editPaymentForm.date = payment.date || new Date().toISOString().slice(0, 10);
   editPaymentForm.payment_method_id = payment.payment_method_id || props.paymentMethods?.[0]?.id || '';
   editPaymentForm.cash_account_id = payment.cash_account_id || props.cashAccounts?.[0]?.id || '';
@@ -75,7 +96,7 @@ const openEditPaymentModal = (payment) => {
 
 const submitEditPayment = () => {
   if (!editingPayment.value) return;
-  editPaymentForm.patch(route('erp.sales.project-invoices.payments.update', {
+  editPaymentForm.transform(() => submitPaymentPayload(editPaymentForm)).patch(route('erp.sales.project-invoices.payments.update', {
     project: props.invoice.id,
     cashIn: editingPayment.value.id,
   }), {
@@ -88,7 +109,8 @@ const submitEditPayment = () => {
 };
 
 const openPaymentModal = () => {
-  paymentForm.amount = props.invoice.remaining_amount || props.invoice.amount || 0;
+  paymentForm.settlement_amount = props.invoice.remaining_amount || props.invoice.amount || 0;
+  paymentForm.discount_amount = 0;
   paymentForm.date = new Date().toISOString().slice(0, 10);
   paymentForm.payment_method_id = props.paymentMethods?.[0]?.id ?? '';
   paymentForm.cash_account_id = props.cashAccounts?.[0]?.id ?? '';
@@ -101,6 +123,10 @@ const downloadReceipt = (payment) => window.open(route('erp.sales.project-invoic
   project: props.invoice.id,
   cashIn: payment.id,
 }), '_blank');
+
+function settledAmount(form) {
+  return Number(form.settlement_amount || 0);
+}
 </script>
 
 <template>
@@ -263,7 +289,10 @@ const downloadReceipt = (payment) => window.open(route('erp.sales.project-invoic
                   <p class="text-xs text-base-content/60">Dicatat oleh: {{ payment.creator_name || '-' }}</p>
                 </div>
                 <div class="text-right">
-                  <p class="text-lg font-bold text-success">{{ format(payment.amount) }}</p>
+                  <p class="text-lg font-bold text-success">{{ format(payment.settled_amount ?? payment.amount) }}</p>
+                  <p v-if="Number(payment.discount_amount || 0) > 0" class="text-xs text-base-content/60 mt-0.5">
+                    Tagihan {{ format(payment.settled_amount ?? payment.amount) }} · Diskon {{ format(payment.discount_amount) }} · Bayar {{ format(payment.amount) }}
+                  </p>
                   <button class="btn btn-ghost btn-xs mt-1" @click="downloadReceipt(payment)">Download Kwitansi</button>
                   <button class="btn btn-ghost btn-xs mt-1" @click="openEditPaymentModal(payment)">Edit Pembayaran</button>
                 </div>
@@ -288,12 +317,25 @@ const downloadReceipt = (payment) => window.open(route('erp.sales.project-invoic
             <p v-if="paymentForm.errors.date" class="text-error text-xs mt-1">{{ paymentForm.errors.date }}</p>
           </div>
           <CurrencyInput
-            v-model="paymentForm.amount"
-            label="Jumlah"
+            v-model="paymentForm.settlement_amount"
+            label="Tagihan Dilunasi"
             :required="true"
             :error="paymentForm.errors.amount"
           />
-          <p class="text-xs text-base-content/60 -mt-1">Sisa tagihan: {{ format(invoice.remaining_amount) }}</p>
+          <CurrencyInput
+            v-model="paymentForm.discount_amount"
+            label="Diskon (potongan invoice)"
+            :error="paymentForm.errors.discount_amount"
+          />
+          <div class="rounded-lg border border-base-300 bg-base-200/40 px-3 py-2 text-sm">
+            <div class="flex justify-between gap-3">
+              <span class="text-base-content/70">Jumlah bayar</span>
+              <strong class="tabular-nums">{{ format(cashToPay(paymentForm)) }}</strong>
+            </div>
+          </div>
+          <p class="text-xs text-base-content/60 -mt-1">
+            Sisa tagihan: {{ format(invoice.remaining_amount) }} · Pelunasan: {{ format(settledAmount(paymentForm)) }}
+          </p>
           <div>
             <label class="label"><span class="label-text">Akun Kas/Bank</span></label>
             <select v-model="paymentForm.cash_account_id" class="select select-bordered w-full" :disabled="!(cashAccounts || []).length">
@@ -337,11 +379,24 @@ const downloadReceipt = (payment) => window.open(route('erp.sales.project-invoic
           </div>
           <div>
             <CurrencyInput
-              v-model="editPaymentForm.amount"
-              label="Jumlah"
+              v-model="editPaymentForm.settlement_amount"
+              label="Tagihan Dilunasi"
               :required="true"
               :error="editPaymentForm.errors.amount"
             />
+          </div>
+          <div>
+            <CurrencyInput
+              v-model="editPaymentForm.discount_amount"
+              label="Diskon (potongan invoice)"
+              :error="editPaymentForm.errors.discount_amount"
+            />
+            <div class="rounded-lg border border-base-300 bg-base-200/40 px-3 py-2 text-sm mt-2">
+              <div class="flex justify-between gap-3">
+                <span class="text-base-content/70">Jumlah bayar</span>
+                <strong class="tabular-nums">{{ format(cashToPay(editPaymentForm)) }}</strong>
+              </div>
+            </div>
           </div>
           <div>
             <label class="label"><span class="label-text">Akun Kas/Bank</span></label>

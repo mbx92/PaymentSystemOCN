@@ -11,6 +11,7 @@ use App\Http\Controllers\CrmActivityController;
 use App\Http\Controllers\CrmCustomerController;
 use App\Http\Controllers\CrmLeadController;
 use App\Http\Controllers\CrmPipelineController;
+use App\Http\Controllers\DocumentTemplateController;
 use App\Http\Controllers\ERPAccountingCoaSettingsController;
 use App\Http\Controllers\ERPAccountingFiscalPeriodController;
 use App\Http\Controllers\ERPAccountingOpeningBalanceController;
@@ -425,8 +426,19 @@ Route::middleware(['auth', 'throttle:120,1'])->group(function () {
         Route::put('users/{user}', [UserController::class, 'update'])->name('users.update');
         Route::delete('users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
         Route::get('erp/administration', [ERPModuleController::class, 'administration'])->name('erp.administration');
+        Route::get('erp/settings/document-templates', [DocumentTemplateController::class, 'index'])->name('erp.settings.document-templates.index');
+        Route::get('erp/settings/document-templates/create', [DocumentTemplateController::class, 'create'])->name('erp.settings.document-templates.create');
+        Route::post('erp/settings/document-templates', [DocumentTemplateController::class, 'store'])->name('erp.settings.document-templates.store');
+        Route::get('erp/settings/document-templates/{documentTemplate}/edit', [DocumentTemplateController::class, 'edit'])->name('erp.settings.document-templates.edit');
+        Route::put('erp/settings/document-templates/{documentTemplate}', [DocumentTemplateController::class, 'update'])->name('erp.settings.document-templates.update');
+        Route::delete('erp/settings/document-templates/{documentTemplate}', [DocumentTemplateController::class, 'destroy'])->name('erp.settings.document-templates.destroy');
+        Route::post('erp/settings/document-templates/{documentTemplate}/activate', [DocumentTemplateController::class, 'activate'])->name('erp.settings.document-templates.activate');
+        Route::post('erp/settings/document-templates/{documentTemplate}/duplicate', [DocumentTemplateController::class, 'duplicate'])->name('erp.settings.document-templates.duplicate');
+        Route::post('erp/settings/document-templates/preview', [DocumentTemplateController::class, 'preview'])->name('erp.settings.document-templates.preview');
+
         Route::get('erp/admin/erp-settings', [ERPAdministrationMasterDataController::class, 'erpSettings'])->name('erp.admin.erp-settings');
         Route::post('erp/admin/erp-settings', [ERPAdministrationMasterDataController::class, 'updateErpSettings'])->name('erp.admin.erp-settings.update');
+        Route::post('erp/admin/erp-settings/object-storage/test', [ERPAdministrationMasterDataController::class, 'testObjectStorageConnection'])->name('erp.admin.erp-settings.object-storage.test');
         Route::get('erp/admin/maintenance-mode', [ERPAdministrationMasterDataController::class, 'maintenanceMode'])->name('erp.admin.maintenance-mode');
         Route::post('erp/admin/maintenance-mode', [ERPAdministrationMasterDataController::class, 'updateMaintenanceMode'])->name('erp.admin.maintenance-mode.update');
         Route::get('erp/admin/server-monitoring', [ERPAdministrationMasterDataController::class, 'serverMonitoring'])->name('erp.admin.server-monitoring');

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\GeneratedFileArchiveService;
 use App\Services\InvoiceService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Barryvdh\DomPDF\PDF as DompdfWrapper;
@@ -12,6 +13,7 @@ class InvoiceController extends Controller
 {
     public function __construct(
         private readonly InvoiceService $invoiceService,
+        private readonly GeneratedFileArchiveService $generatedFileArchiveService,
     ) {}
 
     public function show(string|int $id): Response
@@ -32,8 +34,10 @@ class InvoiceController extends Controller
         $payload = $this->invoiceService->getInvoiceDocument($id);
         $invoice = $payload['invoice'];
 
-        return $this->makePdf('pdf.invoice', $payload)
-            ->download('invoice-'.$invoice['number'].'.pdf');
+        return $this->generatedFileArchiveService->downloadPdf(
+            $this->makePdf('pdf.invoice', $payload),
+            'invoice-'.$invoice['number'].'.pdf',
+        );
     }
 
     public function showSalesNote(string|int $id): Response
@@ -54,8 +58,10 @@ class InvoiceController extends Controller
         $payload = $this->invoiceService->getInvoiceDocument($id);
         $invoice = $payload['invoice'];
 
-        return $this->makePdf('pdf.sales-note', $payload)
-            ->download('nota-'.$invoice['number'].'.pdf');
+        return $this->generatedFileArchiveService->downloadPdf(
+            $this->makePdf('pdf.sales-note', $payload),
+            'nota-'.$invoice['number'].'.pdf',
+        );
     }
 
     private function makePdf(string $view, array $data): DompdfWrapper

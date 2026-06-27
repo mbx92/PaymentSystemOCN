@@ -1017,12 +1017,16 @@ class ProjectController extends Controller
 
             while ($cashIndex < $cashIns->count() && $paidRunning + 0.00001 < $requiredRunning) {
                 $cash = $cashIns[$cashIndex];
-                $paidRunning += (float) $cash->amount;
+                $paidRunning += (float) $cash->amount + (float) ($cash->discount_amount ?? 0);
                 $coveredAt = $cash->date?->format('Y-m-d');
                 $cashIndex++;
             }
 
             $isPaid = $payment->paid_at !== null || $paidRunning + 0.00001 >= $requiredRunning;
+
+            if ($isPaid && $coveredAt === null && $cashIndex > 0) {
+                $coveredAt = $cashIns[$cashIndex - 1]->date?->format('Y-m-d');
+            }
 
             return [
                 'id' => $payment->id,

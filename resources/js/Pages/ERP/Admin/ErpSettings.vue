@@ -2,6 +2,7 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
+import { ref } from 'vue';
 
 const props = defineProps({
   setting: Object,
@@ -15,7 +16,60 @@ const form = useForm({
   module_menu_layout: props.setting?.module_menu_layout ?? 'grid',
   screen_mode: props.setting?.screen_mode ?? 'auto',
   screen_density: props.setting?.screen_density ?? 'comfortable',
+  object_storage_enabled: props.setting?.object_storage_enabled ?? false,
+  object_storage_access_key: props.setting?.object_storage_access_key ?? '',
+  object_storage_secret_key: '',
+  object_storage_bucket: props.setting?.object_storage_bucket ?? '',
+  object_storage_region: props.setting?.object_storage_region ?? 'us-east-1',
+  object_storage_endpoint: props.setting?.object_storage_endpoint ?? '',
+  object_storage_use_path_style: props.setting?.object_storage_use_path_style ?? false,
+  object_storage_prefix: props.setting?.object_storage_prefix ?? 'erp-archive',
+  object_storage_archive_pdf: props.setting?.object_storage_archive_pdf ?? true,
+  object_storage_archive_excel: props.setting?.object_storage_archive_excel ?? true,
+  object_storage_archive_database: props.setting?.object_storage_archive_database ?? true,
 });
+
+const objectStorageTestLoading = ref(false);
+const objectStorageTestMessage = ref('');
+const objectStorageTestSuccess = ref(null);
+
+const testObjectStorageConnection = async () => {
+  objectStorageTestLoading.value = true;
+  objectStorageTestMessage.value = '';
+  objectStorageTestSuccess.value = null;
+
+  try {
+    const raw = document.cookie.match(/(?:^|; )XSRF-TOKEN=([^;]+)/)?.[1];
+    const token = raw ? decodeURIComponent(raw) : '';
+    const res = await fetch(route('erp.admin.erp-settings.object-storage.test'), {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-XSRF-TOKEN': token,
+      },
+      body: JSON.stringify({
+        object_storage_access_key: form.object_storage_access_key,
+        object_storage_secret_key: form.object_storage_secret_key,
+        object_storage_bucket: form.object_storage_bucket,
+        object_storage_region: form.object_storage_region,
+        object_storage_endpoint: form.object_storage_endpoint,
+        object_storage_use_path_style: form.object_storage_use_path_style,
+        object_storage_prefix: form.object_storage_prefix,
+      }),
+    });
+
+    const payload = await res.json();
+    objectStorageTestSuccess.value = !!payload.success;
+    objectStorageTestMessage.value = payload.message || (payload.success ? 'Koneksi berhasil.' : 'Koneksi gagal.');
+  } catch {
+    objectStorageTestSuccess.value = false;
+    objectStorageTestMessage.value = 'Gagal menguji koneksi object storage.';
+  } finally {
+    objectStorageTestLoading.value = false;
+  }
+};
 
 const onFileChange = (event) => {
   form.app_logo = event.target.files?.[0] ?? null;
@@ -307,6 +361,147 @@ const submit = () => {
           </div>
 
           <div class="flex justify-end">
+            <button class="btn btn-primary" :disabled="form.processing" @click="submit">
+              Simpan ERP Setting
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Object Storage (MinIO / S3)</h2>
+          <p class="ocn-panel__desc">
+            Archive otomatis file yang digenerate sistem ke bucket S3-compatible, termasuk PDF, Excel, dan backup database.
+          </p>
+        </div>
+        <div class="card-body space-y-5">
+          <label class="label cursor-pointer justify-start gap-3 rounded-xl border border-base-300 bg-base-100 p-4">
+            <input v-model="form.object_storage_enabled" type="checkbox" class="toggle toggle-primary">
+            <div>
+              <span class="label-text font-semibold">Aktifkan archive ke bucket</span>
+              <p class="mt-1 text-sm text-base-content/65">
+                File tetap diunduh/dikirim seperti biasa, sekaligus disalin ke bucket sesuai kategori di bawah.
+              </p>
+            </div>
+          </label>
+
+          <div class="grid gap-4 md:grid-cols-2" :class="{ 'opacity-60': !form.object_storage_enabled }">
+            <div class="space-y-2">
+              <label class="label p-0"><span class="label-text">Access Key</span></label>
+              <input
+                v-model="form.object_storage_access_key"
+                type="text"
+                class="input input-bordered w-full"
+                placeholder="minioadmin"
+                :disabled="!form.object_storage_enabled"
+              >
+              <p v-if="form.errors.object_storage_access_key" class="text-xs text-error">{{ form.errors.object_storage_access_key }}</p>
+            </div>
+            <div class="space-y-2">
+              <label class="label p-0"><span class="label-text">Secret Key</span></label>
+              <input
+                v-model="form.object_storage_secret_key"
+                type="password"
+                class="input input-bordered w-full"
+                :placeholder="setting?.object_storage_secret_key_configured ? 'Sudah tersimpan — kosongkan jika tidak diubah' : 'Secret key bucket'"
+                :disabled="!form.object_storage_enabled"
+              >
+              <p v-if="form.errors.object_storage_secret_key" class="text-xs text-error">{{ form.errors.object_storage_secret_key }}</p>
+            </div>
+            <div class="space-y-2">
+              <label class="label p-0"><span class="label-text">Bucket</span></label>
+              <input
+                v-model="form.object_storage_bucket"
+                type="text"
+                class="input input-bordered w-full"
+                placeholder="ocn-erp-archive"
+                :disabled="!form.object_storage_enabled"
+              >
+              <p v-if="form.errors.object_storage_bucket" class="text-xs text-error">{{ form.errors.object_storage_bucket }}</p>
+            </div>
+            <div class="space-y-2">
+              <label class="label p-0"><span class="label-text">Region</span></label>
+              <input
+                v-model="form.object_storage_region"
+                type="text"
+                class="input input-bordered w-full"
+                placeholder="us-east-1"
+                :disabled="!form.object_storage_enabled"
+              >
+            </div>
+            <div class="space-y-2 md:col-span-2">
+              <label class="label p-0"><span class="label-text">Endpoint (MinIO / S3 custom)</span></label>
+              <input
+                v-model="form.object_storage_endpoint"
+                type="url"
+                class="input input-bordered w-full"
+                placeholder="https://minio.example.com"
+                :disabled="!form.object_storage_enabled"
+              >
+              <p class="text-xs text-base-content/60">Kosongkan untuk AWS S3 standar. Untuk MinIO, isi URL server MinIO.</p>
+            </div>
+            <div class="space-y-2 md:col-span-2">
+              <label class="label p-0"><span class="label-text">Prefix folder di bucket</span></label>
+              <input
+                v-model="form.object_storage_prefix"
+                type="text"
+                class="input input-bordered w-full"
+                placeholder="erp-archive"
+                :disabled="!form.object_storage_enabled"
+              >
+              <p class="text-xs text-base-content/60">Contoh path: <code>erp-archive/pdf/2026/06/27/invoice.pdf</code></p>
+            </div>
+          </div>
+
+          <label
+            class="label cursor-pointer justify-start gap-2 rounded-xl border border-base-300 bg-base-100 p-3"
+            :class="{ 'opacity-60': !form.object_storage_enabled }"
+          >
+            <input
+              v-model="form.object_storage_use_path_style"
+              type="checkbox"
+              class="checkbox checkbox-sm"
+              :disabled="!form.object_storage_enabled"
+            >
+            <span class="label-text">Gunakan path-style endpoint (disarankan untuk MinIO)</span>
+          </label>
+
+          <div class="rounded-2xl border border-base-300 bg-base-200/40 p-4 space-y-3" :class="{ 'opacity-60': !form.object_storage_enabled }">
+            <p class="text-sm font-semibold text-base-content">Kategori file yang di-archive</p>
+            <div class="grid gap-2 md:grid-cols-3">
+              <label class="label cursor-pointer justify-start gap-2 p-0">
+                <input v-model="form.object_storage_archive_pdf" type="checkbox" class="checkbox checkbox-sm" :disabled="!form.object_storage_enabled">
+                <span class="label-text">PDF (invoice, kwitansi, laporan)</span>
+              </label>
+              <label class="label cursor-pointer justify-start gap-2 p-0">
+                <input v-model="form.object_storage_archive_excel" type="checkbox" class="checkbox checkbox-sm" :disabled="!form.object_storage_enabled">
+                <span class="label-text">Excel export</span>
+              </label>
+              <label class="label cursor-pointer justify-start gap-2 p-0">
+                <input v-model="form.object_storage_archive_database" type="checkbox" class="checkbox checkbox-sm" :disabled="!form.object_storage_enabled">
+                <span class="label-text">Backup database</span>
+              </label>
+            </div>
+          </div>
+
+          <div
+            v-if="objectStorageTestMessage"
+            class="rounded-xl border p-3 text-sm"
+            :class="objectStorageTestSuccess ? 'border-success/30 bg-success/10 text-success-content' : 'border-error/30 bg-error/10 text-error-content'"
+          >
+            {{ objectStorageTestMessage }}
+          </div>
+
+          <div class="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              class="btn btn-outline"
+              :disabled="!form.object_storage_enabled || objectStorageTestLoading"
+              @click="testObjectStorageConnection"
+            >
+              {{ objectStorageTestLoading ? 'Menguji...' : 'Uji Koneksi Bucket' }}
+            </button>
             <button class="btn btn-primary" :disabled="form.processing" @click="submit">
               Simpan ERP Setting
             </button>

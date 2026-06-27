@@ -30,6 +30,7 @@
         "daisyui": "^5.5.19",
         "dompurify": "^3.4.7",
         "pinia": "^3.0.4",
-        "vue-chartjs": "^5.3.3"
+        "vue-chartjs": "^5.3.3",
+        "vuedraggable": "^4.1.0"
     }
 }

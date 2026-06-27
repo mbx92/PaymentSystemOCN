@@ -151,8 +151,6 @@
         }
 
         .signature {
-            margin-top: 10px;
-            border-top: 1px solid #cbd5e1;
             padding-top: 22px;
             text-align: center;
             font-size: 9px;
@@ -209,20 +207,12 @@
 
 <table class="mt-sm">
     <tr>
-        <td style="width: 58%; padding-right: 5mm;">
+        <td>
             <div class="card">
-                <div class="section-title">Pembeli</div>
+                <div class="section-title">Customer</div>
                 <div class="small-text">
                     <strong style="font-size: 11px; color: #243447;">{{ $project->client_name }}</strong><br>
-                    {{ $project->client_contact ?: 'Kontak klien belum diisi' }}
-                </div>
-            </div>
-        </td>
-        <td style="width: 44%;">
-            <div class="card">
-                <div class="section-title">Keterangan</div>
-                <div class="small-text">
-                    Lampiran item penjualan untuk invoice project.
+                    {{ $project->client_contact ?: '-' }}
                 </div>
             </div>
         </td>
@@ -279,15 +269,39 @@
                     <td>PPN</td>
                     <td class="text-right">{{ $rupiah($taxAmount) }}</td>
                 </tr>
-                <tr>
-                    <td>Total Dokumen</td>
-                    <td class="text-right">{{ $rupiah($invoice['amount']) }}</td>
-                </tr>
+                @if (($totalDiscount ?? 0) > 0)
+                    <tr>
+                        <td>Total Tagihan</td>
+                        <td class="text-right">{{ $rupiah($invoice['amount']) }}</td>
+                    </tr>
+                    <tr>
+                        <td>Diskon (Potongan)</td>
+                        <td class="text-right">− {{ $rupiah($totalDiscount) }}</td>
+                    </tr>
+                    <tr>
+                        <td>Jumlah Bayar (Kas)</td>
+                        <td class="text-right">{{ $rupiah($cashReceived ?? 0) }}</td>
+                    </tr>
+                @else
+                    <tr>
+                        <td>Total Dokumen</td>
+                        <td class="text-right">{{ $rupiah($invoice['amount']) }}</td>
+                    </tr>
+                @endif
             </table>
-            <div class="signature">
-                Disiapkan oleh,<br><br>
-                {{ $brand['name'] }}
-            </div>
+        </td>
+    </tr>
+</table>
+
+<table style="width:100%;margin-top:10px;border-collapse:collapse;">
+    <tr>
+        <td colspan="2" style="border-top:1px solid #cbd5e1;padding:0;line-height:0;font-size:0;">&nbsp;</td>
+    </tr>
+    <tr>
+        <td style="width:58%;"></td>
+        <td style="width:42%;" class="signature">
+            Disiapkan oleh,<br><br>
+            {{ $brand['name'] }}
         </td>
     </tr>
 </table>

@@ -6,6 +6,7 @@ use App\Http\Middleware\ErpMaintenanceMode;
 use App\Http\Middleware\LogErpActivity;
 use App\Models\User;
 use App\Services\DatabaseBackupService;
+use App\Services\GeneratedFileArchiveService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
 use Spatie\Permission\Middleware\RoleMiddleware;
@@ -25,7 +26,7 @@ class DataImportDatabaseBackupTest extends TestCase
         ]);
 
         $user = User::factory()->create();
-        $this->instance(DatabaseBackupService::class, new class extends DatabaseBackupService
+        $this->instance(DatabaseBackupService::class, new class(app(GeneratedFileArchiveService::class)) extends DatabaseBackupService
         {
             public function downloadPostgresDump(?string $connectionName = null): BinaryFileResponse
             {
@@ -60,7 +61,7 @@ class DataImportDatabaseBackupTest extends TestCase
         ]);
 
         $user = User::factory()->create();
-        $this->instance(DatabaseBackupService::class, new class extends DatabaseBackupService
+        $this->instance(DatabaseBackupService::class, new class(app(GeneratedFileArchiveService::class)) extends DatabaseBackupService
         {
             public function downloadPostgresDump(?string $connectionName = null): BinaryFileResponse
             {

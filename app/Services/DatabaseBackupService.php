@@ -13,7 +13,30 @@ use Symfony\Component\Process\Process;
 
 class DatabaseBackupService
 {
+    public function __construct(
+        private readonly GeneratedFileArchiveService $generatedFileArchiveService,
+    ) {}
+
     public function downloadPostgresDump(?string $connectionName = null): BinaryFileResponse
+    {
+        $dump = $this->createPostgresDump($connectionName);
+
+        $this->generatedFileArchiveService->archiveLocalFile(
+            $dump['path'],
+            GeneratedFileArchiveService::CATEGORY_DATABASE,
+            $dump['filename'],
+            'application/sql; charset=UTF-8',
+        );
+
+        return response()->download($dump['path'], $dump['filename'], [
+            'Content-Type' => 'application/sql; charset=UTF-8',
+        ])->deleteFileAfterSend(true);
+    }
+
+    /**
+     * @return array{path: string, filename: string}
+     */
+    public function createPostgresDump(?string $connectionName = null): array
     {
         $config = $this->postgresConfig($connectionName);
         if (! $this->binaryAvailable($config['binary'])) {
@@ -51,9 +74,10 @@ class DatabaseBackupService
             throw new RuntimeException('pg_dump gagal dijalankan. '.$detail);
         }
 
-        return response()->download($tempPath, $filename, [
-            'Content-Type' => 'application/sql; charset=UTF-8',
-        ])->deleteFileAfterSend(true);
+        return [
+            'path' => $tempPath,
+            'filename' => $filename,
+        ];
     }
 
     public function backupMeta(?string $connectionName = null): array
