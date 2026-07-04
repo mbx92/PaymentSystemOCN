@@ -85,6 +85,12 @@ Route::get('/', [PublicHomeController::class, 'index'])
 Route::post('/landing/track', [PublicHomeController::class, 'track'])
     ->middleware('throttle:landing-track')
     ->name('landing.track');
+Route::get('budget-share/{budget}', [ProjectBudgetController::class, 'publicCustomerView'])
+    ->middleware(['signed', 'throttle:30,1'])
+    ->name('erp.projects.budgets.customer-view.signed');
+Route::get('budget-share/{budget}/pdf', [ProjectBudgetController::class, 'publicPdf'])
+    ->middleware(['signed', 'throttle:30,1'])
+    ->name('erp.projects.budgets.customer-pdf.signed');
 
 Route::middleware(['auth', 'throttle:120,1'])->group(function () {
     // Profile (Breeze default)
@@ -320,6 +326,7 @@ Route::middleware(['auth', 'throttle:120,1'])->group(function () {
         Route::get('erp/projects/budgets/{budget}/customer-view', [ProjectBudgetController::class, 'customerView'])->name('erp.projects.budgets.customer-view');
         Route::put('erp/projects/budgets/{budget}', [ProjectBudgetController::class, 'update'])->name('erp.projects.budgets.update');
         Route::patch('erp/projects/budgets/{budget}/deal', [ProjectBudgetController::class, 'markDeal'])->name('erp.projects.budgets.deal');
+        Route::patch('erp/projects/budgets/{budget}/cancel', [ProjectBudgetController::class, 'cancel'])->name('erp.projects.budgets.cancel');
         Route::post('erp/projects/budgets/{budget}/convert', [ProjectBudgetController::class, 'convert'])->name('erp.projects.budgets.convert');
         Route::get('erp/projects/budgets/{budget}/pdf', [ProjectBudgetController::class, 'pdf'])->name('erp.projects.budgets.pdf');
         Route::get('erp/projects/supplier-catalog', [SupplierCatalogController::class, 'page'])->name('erp.projects.supplier-catalog');

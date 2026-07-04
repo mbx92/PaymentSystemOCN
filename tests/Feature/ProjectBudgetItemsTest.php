@@ -13,6 +13,7 @@ use App\Models\ProjectBudget;
 use App\Models\ProjectMaterial;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\URL;
 use Inertia\Testing\AssertableInertia as Assert;
 use Spatie\Permission\Middleware\RoleMiddleware;
 use Tests\TestCase;
@@ -322,6 +323,59 @@ class ProjectBudgetItemsTest extends TestCase
             ->assertRedirect(route('erp.projects.budgets.show', $budget));
     }
 
+    public function test_budget_can_be_cancelled_and_clears_deal_date(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $budget = ProjectBudget::query()->create([
+            'name' => 'Budget Batal',
+            'client_name' => 'PT Batal',
+            'project_type' => 'cctv_installation',
+            'estimated_value' => 2500000,
+            'status' => 'deal',
+            'deal_at' => now(),
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->patch(route('erp.projects.budgets.cancel', $budget))
+            ->assertSessionHasNoErrors()
+            ->assertRedirect();
+
+        $budget->refresh();
+
+        $this->assertSame('cancelled', $budget->status);
+        $this->assertNull($budget->deal_at);
+    }
+
+    public function test_cancelled_budget_cannot_be_updated(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $budget = ProjectBudget::query()->create([
+            'name' => 'Budget Terkunci',
+            'client_name' => 'PT Locked',
+            'project_type' => 'cctv_installation',
+            'estimated_value' => 0,
+            'status' => 'cancelled',
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->put(route('erp.projects.budgets.update', $budget), [
+                'name' => 'Budget Terkunci Edit',
+                'client_name' => 'PT Locked',
+                'client_contact' => null,
+                'project_type' => 'cctv_installation',
+                'estimated_value' => 0,
+                'description' => null,
+                'cctv_items' => [],
+            ])
+            ->assertSessionHasErrors('budget');
+    }
+
     public function test_budget_customer_view_applies_markup_only_to_catalog_items(): void
     {
         $this->disableErpMiddleware();
@@ -404,6 +458,54 @@ class ProjectBudgetItemsTest extends TestCase
             ->actingAs($user)
             ->get(route('erp.projects.budgets.customer-view', $budget))
             ->assertRedirect(route('erp.projects.budgets.show', $budget));
+    }
+
+    public function test_signed_budget_customer_view_is_accessible_without_login(): void
+    {
+        $budget = ProjectBudget::query()->create([
+            'name' => 'Budget Signed Share',
+            'client_name' => 'PT Signed',
+            'project_type' => 'cctv_installation',
+            'estimated_value' => 1000000,
+            'status' => 'draft',
+        ]);
+
+        $signedUrl = URL::temporarySignedRoute(
+            'erp.projects.budgets.customer-view.signed',
+            now()->addMinutes(30),
+            ['budget' => $budget->getKey()]
+        );
+
+        $this
+            ->get($signedUrl)
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Projects/BudgetCustomerView')
+                ->where('budget.id', $budget->id)
+                ->where('budget.client_name', 'PT Signed')
+                ->etc());
+    }
+
+    public function test_signed_budget_pdf_is_accessible_without_login(): void
+    {
+        $budget = ProjectBudget::query()->create([
+            'name' => 'Budget Signed PDF',
+            'client_name' => 'PT Signed PDF',
+            'project_type' => 'cctv_installation',
+            'estimated_value' => 1200000,
+            'status' => 'draft',
+        ]);
+
+        $signedUrl = URL::temporarySignedRoute(
+            'erp.projects.budgets.customer-pdf.signed',
+            now()->addMinutes(30),
+            ['budget' => $budget->getKey()]
+        );
+
+        $this
+            ->get($signedUrl)
+            ->assertOk()
+            ->assertHeader('content-type', 'application/pdf');
     }
 
     private function disableErpMiddleware(): void

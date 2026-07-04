@@ -21,6 +21,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -29,6 +30,13 @@ use Inertia\Response;
 class ProjectBudgetController extends Controller
 {
     private const CUSTOMER_MARKUP_PERCENT = 40;
+
+    private const CUSTOMER_SHARE_TTL_DAYS = 30;
+
+    private function isLockedBudget(ProjectBudget $budget): bool
+    {
+        return in_array($budget->status, ['converted', 'cancelled'], true);
+    }
 
     private function mapBudget(ProjectBudget $budget): array
     {
@@ -261,15 +269,29 @@ class ProjectBudgetController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'sku', 'barcode', 'name', 'uom', 'selling_price', 'unit_cost', 'product_type']),
             'catalog_sheets' => app(SupplierCatalogService::class)->sheets(),
-            'can_edit' => $budget->status !== 'converted',
+            'can_edit' => ! $this->isLockedBudget($budget),
         ]);
     }
 
     public function customerView(ProjectBudget $budget): Response|RedirectResponse
     {
+        return $this->renderCustomerView($budget);
+    }
+
+    public function publicCustomerView(ProjectBudget $budget): Response
+    {
+        return $this->renderCustomerView($budget, true);
+    }
+
+    private function renderCustomerView(ProjectBudget $budget, bool $public = false): Response|RedirectResponse
+    {
         $budget->load(['items', 'projectTypeDefinition']);
 
         if (! $budget->supportsBudgetItems()) {
+            if ($public) {
+                abort(404);
+            }
+
             return redirect()
                 ->route('erp.projects.budgets.show', $budget)
                 ->with('flash', ['type' => 'error', 'message' => 'Tipe project ini tidak mendukung tampilan RAB customer.']);
@@ -284,6 +306,8 @@ class ProjectBudgetController extends Controller
             'items' => $customerPayload['items'],
             'markup_percent' => self::CUSTOMER_MARKUP_PERCENT,
             'total' => $customerPayload['total'],
+            'share_url' => $this->signedCustomerViewUrl($budget),
+            'pdf_url' => $this->signedCustomerPdfUrl($budget),
             'brand' => [
                 'name' => $resolvedBrand['use_title_placeholder']
                     ? $resolvedBrand['title_placeholder']
@@ -359,9 +383,11 @@ class ProjectBudgetController extends Controller
 
     public function update(Request $request, ProjectBudget $budget)
     {
-        if ($budget->status === 'converted') {
+        if ($this->isLockedBudget($budget)) {
             throw ValidationException::withMessages([
-                'budget' => 'Budget yang sudah di-convert tidak bisa diedit.',
+                'budget' => $budget->status === 'cancelled'
+                    ? 'Budget yang sudah dibatalkan tidak bisa diedit.'
+                    : 'Budget yang sudah di-convert tidak bisa diedit.',
             ]);
         }
 
@@ -390,6 +416,18 @@ class ProjectBudgetController extends Controller
             ]);
         }
 
+        if ($budget->status === 'cancelled') {
+            throw ValidationException::withMessages([
+                'budget' => 'Budget yang sudah dibatalkan tidak bisa ditandai deal.',
+            ]);
+        }
+
+        if ($budget->status !== 'draft') {
+            throw ValidationException::withMessages([
+                'budget' => 'Hanya budget draft yang bisa ditandai deal.',
+            ]);
+        }
+
         $promoted = 0;
 
         DB::transaction(function () use ($budget, &$promoted): void {
@@ -407,6 +445,26 @@ class ProjectBudgetController extends Controller
         }
 
         return back()->with('flash', ['type' => 'success', 'message' => $message]);
+    }
+
+    public function cancel(ProjectBudget $budget): RedirectResponse
+    {
+        if ($budget->status === 'converted') {
+            throw ValidationException::withMessages([
+                'budget' => 'Budget yang sudah di-convert tidak bisa dibatalkan.',
+            ]);
+        }
+
+        if ($budget->status === 'cancelled') {
+            return back()->with('flash', ['type' => 'info', 'message' => 'Budget sudah berstatus dibatalkan.']);
+        }
+
+        $budget->update([
+            'status' => 'cancelled',
+            'deal_at' => null,
+        ]);
+
+        return back()->with('flash', ['type' => 'success', 'message' => 'Budget berhasil dibatalkan.']);
     }
 
     public function convert(ProjectBudget $budget)
@@ -457,11 +515,43 @@ class ProjectBudgetController extends Controller
 
     public function pdf(ProjectBudget $budget)
     {
-        $budget->load('items');
-        $mapped = $this->mapBudget($budget);
-        $lineItems = $this->pdfLineItems($budget, $mapped['budget_items']);
+        return $this->downloadBudgetPdf($budget);
+    }
+
+    public function publicPdf(ProjectBudget $budget)
+    {
+        return $this->downloadBudgetPdf($budget);
+    }
+
+    private function downloadBudgetPdf(ProjectBudget $budget)
+    {
+        $budget->load(['items', 'projectTypeDefinition']);
+
+        if ($budget->supportsBudgetItems()) {
+            $customerPayload = $this->mapBudgetForCustomerView($budget);
+            $lineItems = collect($customerPayload['items'])
+                ->map(fn (array $item): array => [
+                    'name' => $item['name'],
+                    'description' => null,
+                    'qty' => $item['qty'],
+                    'uom' => $item['uom'],
+                    'unit_price' => $item['unit_price'],
+                    'subtotal' => $item['subtotal'],
+                ])
+                ->all();
+            $grandTotal = (float) ($customerPayload['total'] ?? 0);
+        } else {
+            $mapped = $this->mapBudget($budget);
+            $lineItems = $this->pdfLineItems($budget, $mapped['budget_items']);
+            $grandTotal = 0;
+        }
+
         $lineItemsSubtotal = (float) collect($lineItems)->sum('subtotal');
-        $grandTotal = $lineItemsSubtotal;
+
+        if ($grandTotal <= 0) {
+            $grandTotal = $lineItemsSubtotal;
+        }
+
         if ($grandTotal <= 0) {
             $grandTotal = (float) $budget->estimated_value;
         }
@@ -496,6 +586,24 @@ class ProjectBudgetController extends Controller
         ])->setPaper('a4');
 
         return app(GeneratedFileArchiveService::class)->downloadPdf($pdf, $budgetNumber.'.pdf');
+    }
+
+    private function signedCustomerViewUrl(ProjectBudget $budget): string
+    {
+        return URL::temporarySignedRoute(
+            'erp.projects.budgets.customer-view.signed',
+            now()->addDays(self::CUSTOMER_SHARE_TTL_DAYS),
+            ['budget' => $budget->getKey()]
+        );
+    }
+
+    private function signedCustomerPdfUrl(ProjectBudget $budget): string
+    {
+        return URL::temporarySignedRoute(
+            'erp.projects.budgets.customer-pdf.signed',
+            now()->addDays(self::CUSTOMER_SHARE_TTL_DAYS),
+            ['budget' => $budget->getKey()]
+        );
     }
 
     private function budgetNumber(ProjectBudget $budget): string

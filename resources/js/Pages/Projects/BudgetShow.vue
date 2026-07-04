@@ -2,7 +2,6 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
 import ProductPickerModal from '@/Components/ProductPickerModal.vue';
-import SupplierCatalogPickerModal from '@/Components/SupplierCatalogPickerModal.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { computed, reactive, ref, watch } from 'vue';
@@ -109,13 +108,24 @@ const displayedEstimated = computed(() => {
     return Number(budgetForm.estimated_value);
 });
 
-const canEditCctvItems = computed(() => props.budget.supports_budget_items && props.budget.status !== 'converted');
+const canEditBudget = computed(() => !['converted', 'cancelled'].includes(props.budget.status));
+const canEditCctvItems = computed(() => props.budget.supports_budget_items && canEditBudget.value);
+const canCancelBudget = computed(() => ['draft', 'deal'].includes(props.budget.status));
+const statusLabel = (status) => ({
+    draft: 'Draft',
+    deal: 'Deal',
+    converted: 'Converted',
+    cancelled: 'Dibatalkan',
+}[status] ?? status);
+const statusBadgeClass = (status) => ({
+    draft: 'badge-info',
+    deal: 'badge-warning',
+    converted: 'badge-success',
+    cancelled: 'badge-error',
+}[status] ?? 'badge-ghost');
 const showProductPicker = ref(false);
-const showCatalogPicker = ref(false);
 const productPicker = reactive({ lineIndex: null });
-const catalogPicker = reactive({ lineIndex: null });
 const suppressProductPickerOpen = ref(false);
-const suppressCatalogPickerOpen = ref(false);
 
 const openEditModal = () => document.getElementById('modal-edit-budget')?.showModal();
 const addCctvItem = () => budgetForm.cctv_items.push(emptyItemRow());
@@ -136,19 +146,6 @@ const applyProductToItem = (item, product) => {
     item.unit_cost = Number(product.unit_cost ?? 0);
     item.unit_price = Number(product.selling_price ?? product.price ?? 0);
     item.notes = product.sku ? `SKU: ${product.sku}` : '';
-};
-const applyCatalogToItem = (item, catalogItem) => {
-    if (!item || !catalogItem) return;
-    item.master_product_id = null;
-    item.catalog_sheet = catalogItem.sheet_key;
-    item.catalog_ref = catalogItem.code;
-    item.catalog_category = catalogItem.category;
-    item.name = catalogItem.name ?? '';
-    item.uom = 'unit';
-    item.unit_cost = Number(catalogItem.supplier_price) || 0;
-    item.unit_price = Number(catalogItem.supplier_price) || 0;
-    item.item_type = /jasa|service/i.test(String(catalogItem.category)) ? 'service' : 'material';
-    item.notes = `Katalog: ${catalogItem.supplier_name} / ${catalogItem.sheet_label}`;
 };
 const findMatchingItemIndex = (candidate, excludeIndex = null) => {
     const items = budgetForm.cctv_items ?? [];
@@ -184,31 +181,6 @@ const cleanupPickerLine = (lineIndex, mergedIndex) => {
     }
     Object.assign(line, emptyItemRow());
 };
-const mergeCatalogItem = (catalogItem, lineIndex = null) => {
-    if (lineIndex !== null) {
-        const current = budgetForm.cctv_items[lineIndex];
-        if (
-            current?.catalog_ref === catalogItem.code
-            && current?.catalog_sheet === catalogItem.sheet_key
-        ) {
-            current.qty = (Number(current.qty) || 0) + 1;
-            return;
-        }
-    }
-
-    const probe = { ...emptyItemRow(), catalog_sheet: catalogItem.sheet_key, catalog_ref: catalogItem.code };
-    const existingIdx = findMatchingItemIndex(probe, lineIndex);
-    if (existingIdx >= 0) {
-        budgetForm.cctv_items[existingIdx].qty = (Number(budgetForm.cctv_items[existingIdx].qty) || 0) + 1;
-        cleanupPickerLine(lineIndex, existingIdx);
-        return;
-    }
-    if (lineIndex !== null) {
-        applyCatalogToItem(budgetForm.cctv_items[lineIndex], catalogItem);
-        return;
-    }
-    budgetForm.cctv_items.push({ ...emptyItemRow(), ...mapCatalogToRow(catalogItem) });
-};
 const mergeProductItem = (product, lineIndex = null) => {
     if (lineIndex !== null) {
         const current = budgetForm.cctv_items[lineIndex];
@@ -233,40 +205,6 @@ const mergeProductItem = (product, lineIndex = null) => {
     applyProductToItem(row, product);
     row.qty = 1;
     budgetForm.cctv_items.push(row);
-};
-const openCatalogPickerForLine = (idx) => {
-    if (suppressCatalogPickerOpen.value) return;
-    catalogPicker.lineIndex = idx;
-    showCatalogPicker.value = true;
-};
-const closeCatalogPicker = () => {
-    suppressCatalogPickerOpen.value = true;
-    showCatalogPicker.value = false;
-    catalogPicker.lineIndex = null;
-    document.activeElement?.blur?.();
-    window.setTimeout(() => {
-        suppressCatalogPickerOpen.value = false;
-    }, 250);
-};
-const addCatalogItemFromPicker = (catalogItem) => {
-    mergeCatalogItem(catalogItem);
-};
-function mapCatalogToRow(catalogItem) {
-    const row = emptyItemRow();
-    applyCatalogToItem(row, catalogItem);
-    return row;
-}
-const chooseCatalogItem = (catalogItem) => {
-    mergeCatalogItem(catalogItem, catalogPicker.lineIndex);
-    closeCatalogPicker();
-};
-const openAddCatalogPicker = () => {
-    if (suppressCatalogPickerOpen.value) return;
-    catalogPicker.lineIndex = null;
-    showCatalogPicker.value = true;
-};
-const addCctvItemFromProduct = (product) => {
-    mergeProductItem(product);
 };
 const openProductPickerForLine = (idx) => {
     if (suppressProductPickerOpen.value) return;
@@ -307,9 +245,11 @@ const submitEdit = () => {
     });
 };
 
-const saveCctvItemsFromDetail = () => submitBudgetPut();
-
 const markDeal = () => router.patch(route('erp.projects.budgets.deal', props.budget.id), {}, { preserveScroll: true });
+const cancelBudget = () => {
+    if (!window.confirm('Batalkan budget ini? Status draft/deal akan diakhiri dan budget tidak bisa diedit lagi.')) return;
+    router.patch(route('erp.projects.budgets.cancel', props.budget.id), {}, { preserveScroll: true });
+};
 const convert = () => router.post(route('erp.projects.budgets.convert', props.budget.id), {}, { preserveScroll: true });
 const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.budget.id), '_blank');
 </script>
@@ -329,7 +269,7 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
               <div class="flex flex-wrap justify-end gap-2">
-                        <span class="badge badge-ghost">{{ budget.status }}</span>
+                        <span class="badge" :class="statusBadgeClass(budget.status)">{{ statusLabel(budget.status) }}</span>
                         <button class="btn btn-outline btn-sm" @click="downloadPdf">PDF</button>
                         <Link
                             v-if="budget.supports_budget_items"
@@ -347,9 +287,10 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
                             Tampilan Customer
                         </Link>
                         <button v-if="budget.status === 'draft'" class="btn btn-outline btn-sm" title="Setujui customer — item katalog dipromosikan ke master produk" @click="markDeal">Tandai Deal</button>
+                        <button v-if="canCancelBudget" class="btn btn-error btn-outline btn-sm" @click="cancelBudget">Cancel Budget</button>
                         <button v-if="budget.status === 'deal'" class="btn btn-primary btn-sm" @click="convert">Convert ke Project</button>
                         <Link v-if="budget.converted_project_id" :href="route('projects.show', budget.converted_project_id)" class="btn btn-ghost btn-sm">Lihat Project</Link>
-                        <button v-if="budget.status !== 'converted'" class="btn btn-primary btn-sm" @click="openEditModal">Edit</button>
+                        <button v-if="canEditBudget" class="btn btn-primary btn-sm" @click="openEditModal">Edit</button>
                         <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.projects.budgets.index')">
                       <ArrowLeftIcon class="h-4 w-4" />
                       Back
@@ -383,96 +324,29 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
             <div v-if="budget.supports_budget_items" class="ocn-panel">
                 <div class="ocn-panel__head flex flex-wrap items-center justify-between gap-2">
                     <h2 class="ocn-panel__title">Item Budget</h2>
-                    <div v-if="canEditCctvItems" class="flex flex-wrap items-center gap-2 shrink-0">
-                        <button type="button" class="btn btn-primary btn-sm gap-1" @click="openAddCatalogPicker">Pilih dari katalog</button>
-                        <Link :href="route('erp.projects.supplier-catalog')" class="btn btn-ghost btn-sm">Lihat katalog</Link>
-                        <button type="button" class="btn btn-ghost btn-sm gap-1" @click="openAddProductPicker">Pilih dari master</button>
-                        <button type="button" class="btn btn-outline btn-sm gap-1" @click="addCctvItem">+ Baris kosong</button>
-                        <button type="button" class="btn btn-primary btn-sm" :disabled="budgetForm.processing" @click="saveCctvItemsFromDetail">Simpan item &amp; estimasi</button>
+                    <div class="flex flex-wrap items-center gap-2 shrink-0">
+                        <Link :href="route('erp.projects.budgets.builder', budget.id)" class="btn btn-secondary btn-sm">Buka RAB Builder</Link>
+                        <Link :href="route('erp.projects.budgets.customer-view', budget.id)" target="_blank" class="btn btn-ghost btn-sm">Preview Customer</Link>
                     </div>
                 </div>
-                <div class="card-body p-0">
-                    <template v-if="canEditCctvItems">
-                        <p v-if="budgetForm.errors.cctv_items" class="text-error text-xs px-4 pt-2">{{ budgetForm.errors.cctv_items }}</p>
-                        <div class="overflow-x-auto">
-                            <table class="table table-sm">
-                                <thead>
-                                    <tr>
-                                        <th>Tipe</th>
-                                        <th>Item</th>
-                                        <th>UOM</th>
-                                        <th>Qty</th>
-                                        <th>HPP</th>
-                                        <th>Harga Jual</th>
-                                        <th>Subtotal</th>
-                                        <th>Margin</th>
-                                        <th class="w-16"></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="(item, idx) in budgetForm.cctv_items" :key="idx">
-                                        <td>
-                                            <select v-model="item.item_type" class="select select-bordered select-sm w-28">
-                                                <option value="material">Material</option>
-                                                <option value="product">Produk</option>
-                                                <option value="service">Jasa</option>
-                                            </select>
-                                        </td>
-                                        <td>
-                                            <input
-                                                :value="productLabel(item)"
-                                                type="text"
-                                                class="input input-bordered input-sm w-full min-w-[12rem] cursor-pointer"
-                                                placeholder="Klik untuk pilih dari katalog"
-                                                readonly
-                                                @click="openCatalogPickerForLine(idx)"
-                                                @focus="openCatalogPickerForLine(idx)"
-                                            />
-                                            <p v-if="budgetForm.errors[`cctv_items.${idx}.name`]" class="text-error text-xs mt-0.5">{{ budgetForm.errors[`cctv_items.${idx}.name`] }}</p>
-                                        </td>
-                                        <td><input v-model="item.uom" type="text" class="input input-bordered input-sm w-24" /></td>
-                                        <td>
-                                            <input v-model.number="item.qty" type="number" min="0.01" step="0.01" class="input input-bordered input-sm w-24" />
-                                            <p v-if="budgetForm.errors[`cctv_items.${idx}.qty`]" class="text-error text-xs mt-0.5">{{ budgetForm.errors[`cctv_items.${idx}.qty`] }}</p>
-                                        </td>
-                                        <td><input v-model.number="item.unit_cost" type="number" min="0" step="1000" class="input input-bordered input-sm w-32" /></td>
-                                        <td>
-                                            <input v-model.number="item.unit_price" type="number" min="0" step="1000" class="input input-bordered input-sm w-36" />
-                                            <p v-if="budgetForm.errors[`cctv_items.${idx}.unit_price`]" class="text-error text-xs mt-0.5">{{ budgetForm.errors[`cctv_items.${idx}.unit_price`] }}</p>
-                                        </td>
-                                        <td class="font-medium">{{ format((Number(item.qty) || 0) * (Number(item.unit_price) || 0)) }}</td>
-                                        <td class="font-medium text-success">{{ format(((Number(item.qty) || 0) * (Number(item.unit_price) || 0)) - ((Number(item.qty) || 0) * (Number(item.unit_cost) || 0))) }}</td>
-                                        <td>
-                                            <button type="button" class="btn btn-ghost btn-xs text-error" :disabled="budgetForm.cctv_items.length <= 1" @click="removeCctvItem(idx)">Hapus</button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                <div class="card-body space-y-4">
+                    <p class="text-sm text-base-content/70">
+                        Item budget tidak ditampilkan di halaman detail ini. Kelola rincian item di <strong>RAB Builder</strong> atau buka versi <strong>Tampilan Customer</strong> untuk preview penawaran.
+                    </p>
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <div class="rounded-xl border border-base-200 bg-base-200/30 p-4">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Estimasi Penawaran</p>
+                            <p class="mt-2 text-lg font-semibold">{{ format(displayedEstimated) }}</p>
                         </div>
-                        <div class="flex flex-wrap gap-4 px-4 pb-4 text-sm">
-                            <span>Total jual: <strong>{{ format(totalCctvItems) }}</strong></span>
-                            <span>Total HPP: <strong>{{ format(totalCctvCost) }}</strong></span>
-                            <span>Margin: <strong class="text-success">{{ format(totalCctvMargin) }}</strong></span>
+                        <div class="rounded-xl border border-base-200 bg-base-200/30 p-4">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Estimasi HPP</p>
+                            <p class="mt-2 text-lg font-semibold">{{ format(budget.total_cost ?? totalCctvCost) }}</p>
                         </div>
-                    </template>
-
-                    <template v-else>
-                        <table class="table table-sm">
-                            <thead><tr><th>Tipe</th><th>Item</th><th>Qty</th><th>HPP</th><th>Harga Jual</th><th>Subtotal</th><th>Margin</th></tr></thead>
-                            <tbody>
-                                <tr v-for="(item, idx) in budget.cctv_items" :key="idx">
-                                    <td>{{ item.item_type ?? 'material' }}</td>
-                                    <td>{{ item.name }}</td>
-                                    <td>{{ item.qty }} {{ item.uom ?? 'unit' }}</td>
-                                    <td>{{ format(item.unit_cost ?? 0) }}</td>
-                                    <td>{{ format(item.unit_price) }}</td>
-                                    <td class="font-medium">{{ format((Number(item.qty) || 0) * (Number(item.unit_price) || 0)) }}</td>
-                                    <td class="font-medium text-success">{{ format(item.margin_amount ?? (((Number(item.qty) || 0) * (Number(item.unit_price) || 0)) - ((Number(item.qty) || 0) * (Number(item.unit_cost) || 0)))) }}</td>
-                                </tr>
-                                <tr v-if="!budget.cctv_items?.length"><td colspan="7" class="text-center py-4 text-base-content/50">Tidak ada item.</td></tr>
-                            </tbody>
-                        </table>
-                    </template>
+                        <div class="rounded-xl border border-base-200 bg-base-200/30 p-4">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Estimasi Margin</p>
+                            <p class="mt-2 text-lg font-semibold text-success">{{ format(budget.total_margin ?? totalCctvMargin) }}</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -516,12 +390,6 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
                 </div>
             </div>
         </dialog>
-
-        <SupplierCatalogPickerModal
-            :show="showCatalogPicker"
-            @close="closeCatalogPicker"
-            @confirm="chooseCatalogItem"
-        />
 
         <ProductPickerModal
             :show="showProductPicker"

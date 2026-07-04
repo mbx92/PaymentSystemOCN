@@ -39,6 +39,7 @@ const summary = computed(() => ({
     draft: budgetRows.value.filter((b) => b.status === 'draft').length,
     deal: budgetRows.value.filter((b) => b.status === 'deal').length,
     converted: budgetRows.value.filter((b) => b.status === 'converted').length,
+    cancelled: budgetRows.value.filter((b) => b.status === 'cancelled').length,
     itemCount: budgetRows.value.reduce((sum, b) => sum + (b.supports_budget_items ? (b.cctv_items?.length ?? 0) : 0), 0),
     totalCost: budgetRows.value.reduce((sum, b) => sum + (Number(b.total_cost) || 0), 0),
     totalMargin: budgetRows.value.reduce((sum, b) => sum + (Number(b.total_margin) || 0), 0),
@@ -51,7 +52,14 @@ const statusBadgeClass = (status) => ({
     draft: 'badge-info',
     deal: 'badge-warning',
     converted: 'badge-success',
+    cancelled: 'badge-error',
 }[status] ?? 'badge-ghost');
+const statusLabel = (status) => ({
+    draft: 'Draft',
+    deal: 'Deal',
+    converted: 'Converted',
+    cancelled: 'Dibatalkan',
+}[status] ?? status);
 
 const form = useForm({
     name: '',
@@ -130,7 +138,7 @@ const submit = () => {
                 </article>
             </div>
 
-            <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
                 <article class="rounded-2xl border border-slate-700/40 bg-gradient-to-br from-slate-800 to-slate-950 p-5 text-white shadow-xl ring-1 ring-black/20">
                     <p class="text-xs font-semibold uppercase tracking-wide text-white/55">Total Budget</p>
                     <p class="mt-3 text-2xl font-bold tabular-nums tracking-tight">{{ summary.total }}</p>
@@ -146,6 +154,10 @@ const submit = () => {
                 <article class="rounded-2xl border border-emerald-900/50 bg-gradient-to-br from-emerald-900 to-emerald-950 p-5 text-white shadow-xl ring-1 ring-emerald-950/60">
                     <p class="text-xs font-semibold uppercase tracking-wide text-emerald-100/70">Converted</p>
                     <p class="mt-3 text-2xl font-bold tabular-nums tracking-tight">{{ summary.converted }}</p>
+                </article>
+                <article class="rounded-2xl border border-red-900/50 bg-gradient-to-br from-red-900 to-red-950 p-5 text-white shadow-xl ring-1 ring-red-950/60">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-red-100/70">Dibatalkan</p>
+                    <p class="mt-3 text-2xl font-bold tabular-nums tracking-tight">{{ summary.cancelled }}</p>
                 </article>
                 <article class="rounded-2xl border border-indigo-800/50 bg-gradient-to-br from-indigo-800 to-violet-950 p-5 text-white shadow-xl ring-1 ring-indigo-950/50">
                     <p class="text-xs font-semibold uppercase tracking-wide text-indigo-100/70">Total Nilai Budget</p>
@@ -169,6 +181,7 @@ const submit = () => {
                                 <option value="draft">Draft</option>
                                 <option value="deal">Deal</option>
                                 <option value="converted">Converted</option>
+                                <option value="cancelled">Dibatalkan</option>
                             </select>
                             <select v-model="filters.project_type" class="select select-bordered select-sm min-w-32 max-w-40">
                                 <option value="">Semua Tipe</option>
@@ -201,7 +214,7 @@ const submit = () => {
                                 <td>{{ budget.project_type_label }}</td>
                                 <td>{{ budget.supports_budget_items ? (budget.cctv_items?.length ?? 0) : '-' }}</td>
                                 <td>{{ format(budget.estimated_value) }}</td>
-                                <td><span class="badge badge-sm capitalize" :class="statusBadgeClass(budget.status)">{{ budget.status }}</span></td>
+                                <td><span class="badge badge-sm" :class="statusBadgeClass(budget.status)">{{ statusLabel(budget.status) }}</span></td>
                             </tr>
                             <tr v-if="!budgetRows.length"><td colspan="6" class="text-center py-6 text-base-content/50">Tidak ada budget yang cocok dengan filter.</td></tr>
                         </tbody>
