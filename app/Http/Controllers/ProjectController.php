@@ -524,6 +524,8 @@ class ProjectController extends Controller
             'due_date' => 'nullable|date',
         ]);
 
+        $this->ensureAssignedUserBelongsToProjectTeam($project, $validated['assigned_user_id'] ?? null);
+
         $nextSortOrder = (int) ProjectTask::query()
             ->where('project_id', $project->id)
             ->max('sort_order') + 1;
@@ -555,9 +557,31 @@ class ProjectController extends Controller
             'due_date' => 'nullable|date',
         ]);
 
+        if (array_key_exists('assigned_user_id', $validated)) {
+            $this->ensureAssignedUserBelongsToProjectTeam($project, $validated['assigned_user_id']);
+        }
+
         $task->update($validated);
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Task berhasil diperbarui.']);
+    }
+
+    private function ensureAssignedUserBelongsToProjectTeam(Project $project, mixed $assignedUserId): void
+    {
+        if (! $assignedUserId) {
+            return;
+        }
+
+        $isMember = TeamDistribution::query()
+            ->where('project_id', $project->id)
+            ->where('user_id', $assignedUserId)
+            ->exists();
+
+        if (! $isMember) {
+            throw ValidationException::withMessages([
+                'assigned_user_id' => 'Assignee task harus berasal dari tim project.',
+            ]);
+        }
     }
 
     public function destroyTask(Project $project, ProjectTask $task)
@@ -913,6 +937,57 @@ class ProjectController extends Controller
         return response()->json(['products' => $products]);
     }
 
+    public function toggleMaterialUsage(Request $request, Project $project, ProjectMaterial $material)
+    {
+        if ($material->project_id !== $project->id) {
+            abort(404);
+        }
+
+        $validated = $request->validate([
+            'used' => 'required|boolean',
+        ]);
+
+        DB::transaction(function () use ($material, $validated): void {
+            $material = ProjectMaterial::query()
+                ->with('product')
+                ->lockForUpdate()
+                ->findOrFail($material->id);
+
+            $product = $material->product;
+            if (! $product) {
+                throw ValidationException::withMessages([
+                    'used' => 'Produk material tidak ditemukan.',
+                ]);
+            }
+
+            $markAsUsed = (bool) $validated['used'];
+            $plannedQty = (float) $material->planned_qty;
+            $reservedQty = (float) $material->reserved_qty;
+
+            if ($markAsUsed && $product->isStockTracked() && $reservedQty + 0.00001 < $plannedQty) {
+                throw ValidationException::withMessages([
+                    'used' => 'Material belum ready. Pastikan qty reserve sudah memenuhi planned sebelum dicentang.',
+                ]);
+            }
+
+            $material->issued_qty = $markAsUsed ? $plannedQty : 0;
+            $material->status = $this->projectMaterialStatus($material, $product);
+            $material->save();
+
+            if ($product->isStockTracked() && (int) $material->warehouse_id > 0) {
+                app(ProjectMaterialReservationService::class)
+                    ->syncWarehouseReservation((int) $material->master_product_id, (int) $material->warehouse_id);
+            }
+        });
+
+        return back()->with('flash', [
+            'type' => 'success',
+            'message' => $validated['used']
+                ? 'Penggunaan material berhasil ditandai.'
+                : 'Penggunaan material berhasil dibatalkan.',
+        ]);
+    }
+
     private function caseInsensitiveLikeOperator(): string
     {
         return DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
@@ -981,11 +1056,20 @@ class ProjectController extends Controller
         return back()->with('flash', ['type' => 'success', 'message' => 'Folder dokumen project berhasil dibuat.']);
     }
 
-    private function projectMaterialStatus(ProjectMaterial $material): string
+    private function projectMaterialStatus(ProjectMaterial $material, ?MasterProduct $product = null): string
     {
+        $product ??= $material->relationLoaded('product') ? $material->product : null;
         $plannedQty = (float) $material->planned_qty;
         $reservedQty = (float) $material->reserved_qty;
         $issuedQty = (float) $material->issued_qty;
+
+        if ($product && ! $product->isStockTracked()) {
+            if ($plannedQty > 0 && $issuedQty >= $plannedQty) {
+                return 'issued';
+            }
+
+            return 'ready';
+        }
 
         if ($plannedQty > 0 && $issuedQty >= $plannedQty) {
             return 'issued';

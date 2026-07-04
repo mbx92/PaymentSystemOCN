@@ -338,6 +338,7 @@ Route::middleware(['auth', 'throttle:120,1'])->group(function () {
         Route::patch('erp/projects/project-types/{projectType}', [ProjectTypeController::class, 'update'])->name('erp.projects.project-types.update');
         Route::post('projects/{project}/materials', [ProjectController::class, 'storeMaterial'])->name('projects.materials.store');
         Route::get('projects/{project}/material-products/search', [ProjectController::class, 'materialProductSearch'])->name('projects.material-products.search');
+        Route::patch('projects/{project}/materials/{material}/usage', [ProjectController::class, 'toggleMaterialUsage'])->name('projects.materials.usage');
         Route::delete('projects/{project}/materials/{material}', [ProjectController::class, 'destroyMaterial'])->name('projects.materials.destroy');
         Route::post('projects/{project}/legal-folder', [ProjectController::class, 'createLegalFolder'])->name('projects.legal-folder.create');
         Route::patch('projects/{project}/status', [ProjectController::class, 'updateStatus'])->name('projects.status.update');

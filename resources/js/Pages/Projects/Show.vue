@@ -338,6 +338,21 @@ const deleteTask = (task) => {
 const projectTypeLabel = () => props.project?.project_type_label ?? props.project?.project_type ?? '-';
 
 const roleLabel = (role) => role;
+const assignableTaskMembers = computed(() => {
+    const rows = props.project?.team_distributions ?? [];
+    const unique = new Map();
+
+    for (const row of rows) {
+        if (!row?.user_id || unique.has(row.user_id)) continue;
+        unique.set(row.user_id, {
+            id: row.user_id,
+            name: row.user_name,
+            role: row.role_in_project,
+        });
+    }
+
+    return Array.from(unique.values()).sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')));
+});
 
 const statusLabel = (status) => {
     if (status === 'todo') return 'To Do';
@@ -351,6 +366,85 @@ const taskCardClass = (status) => {
     if (status === 'in_progress') return 'border-amber-300 bg-amber-50';
     if (status === 'done') return 'border-emerald-300 bg-emerald-50';
     return 'border-base-300';
+};
+
+const projectTasks = computed(() => {
+    const tasks = [...(props.project?.tasks ?? [])];
+
+    return tasks.sort((a, b) => {
+        const statusOrder = { in_progress: 0, todo: 1, done: 2 };
+        const statusGap = (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99);
+        if (statusGap !== 0) return statusGap;
+
+        const dateA = a.due_date ?? '9999-12-31';
+        const dateB = b.due_date ?? '9999-12-31';
+        if (dateA !== dateB) return dateA.localeCompare(dateB);
+
+        return String(a.title ?? '').localeCompare(String(b.title ?? ''));
+    });
+});
+
+const taskChecklistSummary = computed(() => {
+    const tasks = projectTasks.value;
+
+    return {
+        total: tasks.length,
+        done: tasks.filter((task) => task.status === 'done').length,
+        active: tasks.filter((task) => task.status === 'in_progress').length,
+        pending: tasks.filter((task) => task.status === 'todo').length,
+    };
+});
+
+const materialUsageChecklist = computed(() => {
+    const materials = props.project?.materials ?? [];
+
+    return materials
+        .map((item) => {
+            const plannedQty = Number(item.planned_qty) || 0;
+            const issuedQty = Number(item.issued_qty) || 0;
+            const reservedQty = Number(item.reserved_qty) || 0;
+            const isFullyUsed = plannedQty > 0 ? issuedQty >= plannedQty : issuedQty > 0;
+            const hasPartialUsage = issuedQty > 0 && !isFullyUsed;
+
+            return {
+                ...item,
+                plannedQty,
+                issuedQty,
+                reservedQty,
+                isFullyUsed,
+                hasPartialUsage,
+                canToggleUsage: item.status === 'ready' || item.status === 'issued',
+                usagePercent: plannedQty > 0 ? Math.min((issuedQty / plannedQty) * 100, 100) : 0,
+            };
+        })
+        .sort((a, b) => {
+            if (a.isFullyUsed !== b.isFullyUsed) return a.isFullyUsed ? -1 : 1;
+            if (a.hasPartialUsage !== b.hasPartialUsage) return a.hasPartialUsage ? -1 : 1;
+            return String(a.product ?? '').localeCompare(String(b.product ?? ''));
+        });
+});
+
+const materialUsageSummary = computed(() => {
+    const items = materialUsageChecklist.value;
+
+    return {
+        total: items.length,
+        used: items.filter((item) => item.isFullyUsed).length,
+        issuedQty: items.reduce((sum, item) => sum + item.issuedQty, 0),
+        reservedQty: items.reduce((sum, item) => sum + item.reservedQty, 0),
+    };
+});
+
+const toggleTaskChecklist = (task, checked) => {
+    updateTaskStatus(task, checked ? 'done' : 'todo');
+};
+
+const toggleMaterialUsage = (item, checked) => {
+    router.patch(
+        route('projects.materials.usage', { project: props.project.id, material: item.id }),
+        { used: checked },
+        { preserveScroll: true, preserveState: true },
+    );
 };
 
 const canShowKanban = computed(() => !!props.project?.supports_project_board);
@@ -675,6 +769,7 @@ const deleteProject = () => {
             <!-- Tabs -->
             <div class="tabs tabs-boxed bg-base-100">
                 <button :class="['tab', activeTab === 'info' ? 'tab-active' : '']" @click="activeTab = 'info'">Info & Termin</button>
+                <button :class="['tab', activeTab === 'work' ? 'tab-active' : '']" @click="activeTab = 'work'">Pekerjaan & Checklist</button>
                 <button :class="['tab', activeTab === 'materials' ? 'tab-active' : '']" @click="activeTab = 'materials'">Material / BOM</button>
                 <button :class="['tab', activeTab === 'kas' ? 'tab-active' : '']" @click="activeTab = 'kas'">Expenses</button>
                 <button :class="['tab', activeTab === 'tim' ? 'tab-active' : '']" @click="activeTab = 'tim'">Tim & Referral</button>
@@ -789,6 +884,150 @@ const deleteProject = () => {
                             </div>
                         </div>
                         <p v-else class="text-sm text-base-content/60">Isi tanggal mulai dan selesai untuk menampilkan Gantt.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="activeTab === 'work'" class="space-y-4">
+                <div class="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+                    <div class="ocn-panel">
+                        <div class="ocn-panel__head flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                                <h2 class="ocn-panel__title">Task pekerjaan project</h2>
+                                <p class="ocn-panel__desc">Pantau pekerjaan aktif, PIC, due date, dan progres penyelesaian.</p>
+                            </div>
+                            <button class="btn btn-primary btn-sm shrink-0" @click="openTaskModal">+ Tambah task</button>
+                        </div>
+                        <div class="card-body space-y-4">
+                            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                <div class="rounded-xl border border-base-200 bg-base-200/30 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Total Task</p>
+                                    <p class="mt-2 text-2xl font-bold tabular-nums">{{ taskChecklistSummary.total }}</p>
+                                </div>
+                                <div class="rounded-xl border border-warning/30 bg-warning/10 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-warning/80">Sedang Jalan</p>
+                                    <p class="mt-2 text-2xl font-bold tabular-nums text-warning">{{ taskChecklistSummary.active }}</p>
+                                </div>
+                                <div class="rounded-xl border border-success/30 bg-success/10 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-success/80">Selesai</p>
+                                    <p class="mt-2 text-2xl font-bold tabular-nums text-success">{{ taskChecklistSummary.done }}</p>
+                                </div>
+                            </div>
+
+                            <div class="space-y-3">
+                                <div
+                                    v-for="task in projectTasks"
+                                    :key="task.id"
+                                    :class="[
+                                        'rounded-xl border p-4 transition-colors',
+                                        taskCardClass(task.status),
+                                    ]"
+                                >
+                                    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                        <label class="flex min-w-0 items-start gap-3">
+                                            <input
+                                                type="checkbox"
+                                                class="checkbox checkbox-sm mt-0.5"
+                                                :checked="task.status === 'done'"
+                                                @change="toggleTaskChecklist(task, $event.target.checked)"
+                                            >
+                                            <div class="min-w-0">
+                                                <p class="font-semibold" :class="task.status === 'done' ? 'line-through text-base-content/60' : ''">{{ task.title }}</p>
+                                                <p v-if="task.description" class="mt-1 text-sm text-base-content/70">{{ task.description }}</p>
+                                                <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-base-content/60">
+                                                    <span class="badge badge-ghost badge-sm">{{ statusLabel(task.status) }}</span>
+                                                    <span>PIC: {{ task.assigned_user_name ?? '-' }}</span>
+                                                    <span>Due: {{ formatDate(task.due_date) }}</span>
+                                                </div>
+                                            </div>
+                                        </label>
+                                        <div class="flex flex-wrap items-center gap-2 shrink-0">
+                                            <select class="select select-bordered select-xs" :value="task.status" @change="updateTaskStatus(task, $event.target.value)">
+                                                <option value="todo">To Do</option>
+                                                <option value="in_progress">In Progress</option>
+                                                <option value="done">Done</option>
+                                            </select>
+                                            <button class="btn btn-ghost btn-xs text-error" @click="deleteTask(task)">Hapus</button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div v-if="!projectTasks.length" class="rounded-xl border border-dashed border-base-300 px-4 py-10 text-center text-sm text-base-content/60">
+                                    Belum ada task pekerjaan untuk project ini.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ocn-panel">
+                        <div class="ocn-panel__head">
+                            <h2 class="ocn-panel__title">Checklist item digunakan</h2>
+                            <p class="ocn-panel__desc">Material yang sudah ready bisa dicentang untuk menandai qty planned sebagai sudah digunakan.</p>
+                        </div>
+                        <div class="card-body space-y-4">
+                            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:grid-cols-1">
+                                <div class="rounded-xl border border-base-200 bg-base-200/30 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Item Dipakai</p>
+                                    <p class="mt-2 text-2xl font-bold tabular-nums">{{ materialUsageSummary.used }} / {{ materialUsageSummary.total }}</p>
+                                </div>
+                                <div class="rounded-xl border border-info/30 bg-info/10 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-info/80">Qty Reserved</p>
+                                    <p class="mt-2 text-2xl font-bold tabular-nums text-info">{{ materialUsageSummary.reservedQty }}</p>
+                                </div>
+                                <div class="rounded-xl border border-primary/30 bg-primary/10 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-primary/80">Qty Used</p>
+                                    <p class="mt-2 text-2xl font-bold tabular-nums text-primary">{{ materialUsageSummary.issuedQty }}</p>
+                                </div>
+                            </div>
+
+                            <div class="space-y-3">
+                                <label
+                                    v-for="item in materialUsageChecklist"
+                                    :key="item.id"
+                                    class="flex items-start gap-3 rounded-xl border border-base-200 bg-base-100 px-4 py-3"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        class="checkbox checkbox-sm mt-0.5"
+                                        :checked="item.isFullyUsed"
+                                        :disabled="!item.canToggleUsage"
+                                        @change="toggleMaterialUsage(item, $event.target.checked)"
+                                    >
+                                    <div class="min-w-0 flex-1">
+                                        <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                            <div class="min-w-0">
+                                                <p class="font-semibold">{{ item.product }}</p>
+                                                <p class="text-xs text-base-content/60">{{ item.sku || '-' }} · {{ item.warehouse || '-' }}</p>
+                                            </div>
+                                            <span
+                                                class="badge badge-sm"
+                                                :class="item.isFullyUsed ? 'badge-success' : item.hasPartialUsage ? 'badge-info' : 'badge-ghost'"
+                                            >
+                                                {{ item.isFullyUsed ? 'Sudah dipakai' : item.hasPartialUsage ? 'Dipakai sebagian' : 'Belum dipakai' }}
+                                            </span>
+                                        </div>
+                                        <div class="mt-3 grid grid-cols-2 gap-3 text-xs text-base-content/70">
+                                            <div>
+                                                <p class="text-base-content/50">Qty digunakan</p>
+                                                <p class="font-semibold text-base-content">{{ item.issuedQty }} {{ item.uom }}</p>
+                                            </div>
+                                            <div>
+                                                <p class="text-base-content/50">Target / planned</p>
+                                                <p class="font-semibold text-base-content">{{ item.plannedQty }} {{ item.uom }}</p>
+                                            </div>
+                                        </div>
+                                        <p v-if="!item.canToggleUsage" class="mt-3 text-xs text-base-content/55">
+                                            Checklist aktif setelah material berstatus ready.
+                                        </p>
+                                        <progress class="progress progress-primary mt-3 h-2 w-full" :value="item.issuedQty" :max="item.plannedQty || 1" />
+                                    </div>
+                                </label>
+
+                                <div v-if="!materialUsageChecklist.length" class="rounded-xl border border-dashed border-base-300 px-4 py-10 text-center text-sm text-base-content/60">
+                                    Belum ada item material untuk project ini.
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1068,8 +1307,14 @@ const deleteProject = () => {
                         <label class="label"><span class="label-text">Assignee</span></label>
                         <select v-model="taskForm.assigned_user_id" class="select select-bordered w-full">
                             <option value="">Unassigned</option>
-                            <option v-for="user in team_members" :key="user.id" :value="user.id">{{ user.name }}</option>
+                            <option v-for="user in assignableTaskMembers" :key="user.id" :value="user.id">
+                                {{ user.name }}<template v-if="user.role"> - {{ user.role }}</template>
+                            </option>
                         </select>
+                        <p v-if="taskForm.errors.assigned_user_id" class="text-error text-xs mt-1">{{ taskForm.errors.assigned_user_id }}</p>
+                        <p v-else-if="!assignableTaskMembers.length" class="text-xs text-base-content/60 mt-1">
+                            Assign tim project dulu agar task bisa punya assignee.
+                        </p>
                     </div>
                     <div>
                         <label class="label"><span class="label-text">Status</span></label>

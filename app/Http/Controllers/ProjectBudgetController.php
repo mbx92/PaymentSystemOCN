@@ -308,6 +308,7 @@ class ProjectBudgetController extends Controller
             'total' => $customerPayload['total'],
             'share_url' => $this->signedCustomerViewUrl($budget),
             'pdf_url' => $this->signedCustomerPdfUrl($budget),
+            'is_public' => $public,
             'brand' => [
                 'name' => $resolvedBrand['use_title_placeholder']
                     ? $resolvedBrand['title_placeholder']

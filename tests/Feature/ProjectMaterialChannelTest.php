@@ -667,6 +667,113 @@ class ProjectMaterialChannelTest extends TestCase
         ]);
     }
 
+    public function test_ready_material_can_be_checked_as_used_from_project_detail(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $project = $this->createProject();
+        $warehouse = Warehouse::create([
+            'code' => 'WH-USE',
+            'name' => 'Gudang Pakai',
+            'is_active' => true,
+        ]);
+        $projectProduct = $this->createProjectProduct('MAT-USE-01');
+
+        ProjectMaterial::create([
+            'project_id' => $project->id,
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'planned_qty' => 5,
+            'reserved_qty' => 5,
+            'issued_qty' => 0,
+            'status' => 'ready',
+        ]);
+
+        MasterProductWarehouseStock::create([
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 5,
+            'reserved_qty' => 5,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->patch(route('projects.materials.usage', [
+                'project' => $project,
+                'material' => ProjectMaterial::query()->firstOrFail(),
+            ]), [
+                'used' => true,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('project_materials', [
+            'project_id' => $project->id,
+            'master_product_id' => $projectProduct->id,
+            'issued_qty' => '5.00',
+            'status' => 'issued',
+        ]);
+        $this->assertDatabaseHas('master_product_warehouse_stocks', [
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'reserved_qty' => '0.00',
+        ]);
+    }
+
+    public function test_material_must_be_ready_before_it_can_be_checked_as_used(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $project = $this->createProject();
+        $warehouse = Warehouse::create([
+            'code' => 'WH-PART',
+            'name' => 'Gudang Partial',
+            'is_active' => true,
+        ]);
+        $projectProduct = $this->createProjectProduct('MAT-PART-01');
+
+        $material = ProjectMaterial::create([
+            'project_id' => $project->id,
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'planned_qty' => 5,
+            'reserved_qty' => 3,
+            'issued_qty' => 0,
+            'status' => 'partial',
+        ]);
+
+        MasterProductWarehouseStock::create([
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 5,
+            'reserved_qty' => 3,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->patch(route('projects.materials.usage', [
+                'project' => $project,
+                'material' => $material,
+            ]), [
+                'used' => true,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('used');
+
+        $this->assertDatabaseHas('project_materials', [
+            'id' => $material->id,
+            'issued_qty' => '0.00',
+            'status' => 'partial',
+        ]);
+        $this->assertDatabaseHas('master_product_warehouse_stocks', [
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'reserved_qty' => '3.00',
+        ]);
+    }
+
     public function test_project_material_shortage_appears_in_reorder_planning(): void
     {
         $this->disableErpMiddleware();

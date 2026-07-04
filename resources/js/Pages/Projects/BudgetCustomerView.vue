@@ -11,6 +11,7 @@ const props = defineProps({
     total: { type: Number, default: 0 },
     share_url: { type: String, default: '' },
     pdf_url: { type: String, default: '' },
+    is_public: { type: Boolean, default: false },
     brand: {
         type: Object,
         default: () => ({ name: '', tagline: '', logo_data_uri: null }),
@@ -73,8 +74,9 @@ onBeforeUnmount(() => {
 
     <div class="customer-rab-shell fixed inset-0 z-[200] flex flex-col bg-base-100 print:static print:inset-auto print:z-auto print:h-auto">
         <header class="shrink-0 border-b border-base-200 bg-base-100 px-5 py-4 print:hidden">
-            <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="flex flex-wrap items-center gap-3" :class="is_public ? 'justify-end' : 'justify-between'">
                 <Link
+                    v-if="!is_public"
                     class="btn btn-ghost btn-sm gap-1.5"
                     :href="route('erp.projects.budgets.show', budget.id)"
                     title="Kembali ke detail budget"
