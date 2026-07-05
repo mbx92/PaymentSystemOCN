@@ -665,45 +665,69 @@ class ERPInventoryController extends Controller
 
     public function stockTransfer(Request $request): Response
     {
-        $warehouses = Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']);
+        $validated = $request->validate([
+            'warehouse_id' => 'nullable|integer|exists:warehouses,id',
+        ]);
 
-        $query = MasterProduct::query()->where('status', 'active');
+        $warehouses = Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']);
+        $selectedWarehouseId = isset($validated['warehouse_id']) ? (int) $validated['warehouse_id'] : null;
+        $searchOperator = $this->caseInsensitiveLikeOperator();
+
+        $query = MasterProduct::query()
+            ->where('status', 'active')
+            ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
+            ->when($selectedWarehouseId, function ($query) use ($selectedWarehouseId): void {
+                $query->whereHas('warehouseStocks', function ($stock) use ($selectedWarehouseId): void {
+                    $stock
+                        ->where('warehouse_id', $selectedWarehouseId)
+                        ->whereRaw('(qty - reserved_qty) > 0');
+                });
+            });
 
         if ($request->filled('q')) {
-            $q = $request->q;
-            $op = DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
-            $query->where(function ($qry) use ($q, $op) {
-                $qry->where('sku', $op, "%{$q}%")
-                    ->orWhere('name', $op, "%{$q}%")
-                    ->orWhere('category', $op, "%{$q}%");
+            $q = $request->string('q')->toString();
+            $query->where(function ($qry) use ($q, $searchOperator): void {
+                $qry->where('sku', $searchOperator, "%{$q}%")
+                    ->orWhere('name', $searchOperator, "%{$q}%")
+                    ->orWhere('category', $searchOperator, "%{$q}%");
             });
         }
 
-        $products = $query->orderBy('name')
+        $products = $query
+            ->orderBy('name')
             ->paginate($this->resolvedPerPage($request))
             ->withQueryString()
-            ->through(fn ($p) => [
-                'id' => $p->id,
-                'sku' => $p->sku,
-                'name' => $p->name,
-                'category' => $p->category,
-                'uom' => $p->uom,
-            ]);
+            ->through(function (MasterProduct $product) use ($selectedWarehouseId): array {
+                $stockRow = null;
+                if ($selectedWarehouseId) {
+                    $stockRow = MasterProductWarehouseStock::query()
+                        ->where('master_product_id', $product->id)
+                        ->where('warehouse_id', $selectedWarehouseId)
+                        ->first(['qty', 'reserved_qty']);
+                }
 
-        $warehouseStocks = MasterProductWarehouseStock::query()
-            ->get(['master_product_id', 'warehouse_id', 'qty', 'reserved_qty'])
-            ->groupBy('master_product_id')
-            ->map(fn ($rows) => $rows->keyBy('warehouse_id')->map(fn ($r) => [
-                'qty' => (float) $r->qty,
-                'reserved' => (float) $r->reserved_qty,
-                'available' => (float) $r->qty - (float) $r->reserved_qty,
-            ]));
+                $qty = (float) ($stockRow?->qty ?? 0);
+                $reservedQty = (float) ($stockRow?->reserved_qty ?? 0);
+
+                return [
+                    'id' => $product->id,
+                    'sku' => $product->sku,
+                    'name' => $product->name,
+                    'category' => $product->category,
+                    'uom' => $product->uom,
+                    'qty' => $qty,
+                    'reserved_qty' => $reservedQty,
+                    'available_qty' => max($qty - $reservedQty, 0),
+                ];
+            });
 
         return Inertia::render('ERP/Inventory/StockTransfer', [
             'warehouses' => $warehouses,
             'products' => $products,
-            'warehouseStocks' => $warehouseStocks,
-            'filters' => $this->filtersWithPerPage($request, ['q', 'warehouse_id']),
+            'filters' => array_merge(
+                $this->filtersWithPerPage($request, ['q', 'warehouse_id']),
+                ['warehouse_id' => $selectedWarehouseId]
+            ),
         ]);
     }
 
@@ -871,6 +895,7 @@ class ERPInventoryController extends Controller
                 'opname_out',
                 'manual_in',
                 'manual_out',
+                'purchase_reopen_out',
                 'transfer_in',
                 'transfer_out',
             ])->map(fn (string $type) => [
@@ -894,6 +919,7 @@ class ERPInventoryController extends Controller
             'opname_out' => 'Penyesuaian Opname Keluar',
             'manual_in' => 'Input Manual Masuk',
             'manual_out' => 'Input Manual Keluar',
+            'purchase_reopen_out' => 'Reopen GR',
             'transfer_in' => 'Transfer Masuk',
             'transfer_out' => 'Transfer Keluar',
             default => str_replace('_', ' ', $type),

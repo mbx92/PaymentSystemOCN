@@ -1,26 +1,15 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import DataTablePagination from '@/Components/DataTablePagination.vue';
-import { Head, Link, router, usePage } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { computed, reactive, ref, watch } from 'vue';
 
 const props = defineProps({
   warehouses: Array,
   products: Object,
-  warehouseStocks: Object,
   filters: Object,
 });
-
-const page = usePage();
-
-const filters = reactive({ q: props.filters?.q ?? '', per_page: props.filters?.per_page ?? props.products?.per_page ?? 25 });
-let timer;
-watch(filters, (val) => {
-  clearTimeout(timer);
-  const payload = { ...val, warehouse_id: sourceWarehouseId.value || undefined };
-  timer = setTimeout(() => router.get(route('erp.inventory.stock-transfer'), payload, { preserveState: true, replace: true }), 250);
-}, { deep: true });
 
 const sourceWarehouseId = ref(props.filters?.warehouse_id ?? '');
 const destWarehouseId = ref('');
@@ -28,6 +17,28 @@ const note = ref('');
 const processing = ref(false);
 
 const selectedIds = reactive(new Set());
+const filters = reactive({
+  q: props.filters?.q ?? '',
+  per_page: props.filters?.per_page ?? props.products?.per_page ?? 25,
+});
+let timer;
+
+watch(
+  [() => sourceWarehouseId.value, () => filters.q, () => filters.per_page],
+  () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      router.get(route('erp.inventory.stock-transfer'), {
+        warehouse_id: sourceWarehouseId.value || undefined,
+        q: filters.q || undefined,
+        per_page: filters.per_page,
+      }, {
+        preserveState: true,
+        replace: true,
+      });
+    }, 250);
+  },
+);
 
 const destWarehouses = computed(() =>
   props.warehouses.filter((wh) => String(wh.id) !== String(sourceWarehouseId.value)),
@@ -40,20 +51,9 @@ watch(sourceWarehouseId, (val) => {
   selectedIds.clear();
 });
 
-const getAvailable = (productId) => {
-  if (!sourceWarehouseId.value) return 0;
-  const productStocks = props.warehouseStocks?.[productId];
-  if (!productStocks) return 0;
-  const entry = productStocks[sourceWarehouseId.value];
-  return entry ? entry.available : 0;
-};
-
 const sourceProducts = computed(() => {
   if (!sourceWarehouseId.value) return [];
-  const items = props.products?.data ?? [];
-  return items
-    .map((p) => ({ ...p, available: getAvailable(p.id) }))
-    .filter((p) => p.available > 0);
+  return (props.products?.data ?? []).filter((p) => Number(p.available_qty ?? 0) > 0);
 });
 
 const toggleAll = () => {
@@ -85,7 +85,7 @@ const canSubmit = computed(() =>
 const submit = () => {
   const items = sourceProducts.value
     .filter((p) => selectedIds.has(p.id))
-    .map((p) => ({ product_id: p.id, qty: p.available }));
+    .map((p) => ({ product_id: p.id, qty: p.available_qty }));
 
   processing.value = true;
   router.post(route('erp.inventory.stock-transfer.store'), {
@@ -207,7 +207,7 @@ const submit = () => {
                   <span class="font-semibold">{{ product.name }}</span>
                 </td>
                 <td class="uppercase">{{ product.uom }}</td>
-                <td class="text-right tabular-nums">{{ product.available }}</td>
+                <td class="text-right tabular-nums">{{ product.available_qty }}</td>
               </tr>
               <tr v-if="sourceProducts.length === 0">
                 <td colspan="5" class="py-10 text-center text-base-content/50">Tidak ada produk dengan stok tersedia di warehouse ini.</td>

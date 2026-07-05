@@ -19,6 +19,12 @@ const postToStock = () => {
   advanceForm.post(route('erp.purchasing.goods-receipts.advance', props.detail.number), { preserveScroll: true });
 };
 
+const reopenReceipt = () => {
+  advanceForm.action = 'reopen';
+  advanceForm.post(route('erp.purchasing.goods-receipts.advance', props.detail.number), { preserveScroll: true });
+  document.getElementById('modal-confirm-reopen-gr')?.close();
+};
+
 const goBack = () => {
   router.visit(route('erp.purchasing'));
 };
@@ -111,7 +117,16 @@ const goBack = () => {
                   </button>
                 </template>
                 <template v-else-if="detail.status === 'posted'">
-                  <p class="text-sm text-base-content/60">Sudah diposting — cek stok &amp; movement di inventory.</p>
+                  <p class="text-sm text-base-content/60">Sudah diposting. Bisa di-reopen selama stoknya masih tersedia dan hutang suppliernya belum dibayar.</p>
+                  <button
+                    v-if="detail.can_reopen"
+                    type="button"
+                    class="btn btn-outline btn-warning btn-sm"
+                    :disabled="advanceForm.processing"
+                    @click="document.getElementById('modal-confirm-reopen-gr')?.showModal()"
+                  >
+                    Reopen GR
+                  </button>
                 </template>
                 <Link class="btn btn-outline btn-sm gap-1.5" :href="route('erp.purchasing.purchase-orders.show', detail.po_number)">
                   <ArrowLeftIcon class="h-4 w-4" />
@@ -124,6 +139,17 @@ const goBack = () => {
           </div>
         </div>
       </div>
+
+      <dialog id="modal-confirm-reopen-gr" class="modal">
+        <div class="modal-box">
+          <h3 class="font-bold text-lg">Konfirmasi Reopen GR</h3>
+          <p class="py-3 text-sm text-base-content/70">Posting stok, hutang supplier, dan jurnal pembelian akan dibalik. Lanjutkan reopen GR ini?</p>
+          <div class="modal-action">
+            <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
+            <button class="btn btn-warning" :disabled="advanceForm.processing" @click="reopenReceipt">Ya, Reopen</button>
+          </div>
+        </div>
+      </dialog>
     </div>
   </AppLayout>
 </template>

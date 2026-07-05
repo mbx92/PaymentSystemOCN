@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\ERP\Accounting\Models\Account;
+use App\ERP\Accounting\Models\JournalEntry;
+use App\ERP\Accounting\Models\JournalLine;
 use App\ERP\Accounting\Models\Payable;
 use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Core\Services\ErpCompanyResolver;
@@ -501,6 +503,7 @@ class ERPPurchasingController extends Controller
                 'warehouse' => $goodsReceipt->warehouse?->name ?? $goodsReceipt->warehouse_name,
                 'warehouse_id' => $goodsReceipt->warehouse_id,
                 'status' => $goodsReceipt->status->value,
+                'can_reopen' => $goodsReceipt->status === DocumentStatus::Posted,
                 'lines' => $goodsReceipt->lines->map(fn ($line) => [
                     'sku' => $line->product?->sku,
                     'name' => $line->product?->name,
@@ -786,7 +789,9 @@ class ERPPurchasingController extends Controller
                         app(ProjectMaterialReservationService::class)
                             ->syncWarehouseReservation($product->id, (int) $warehouseId);
                     }
-                    $product->increment('stock', (float) $line->qty_received);
+                    if (! $warehouseId) {
+                        $product->increment('stock', (float) $line->qty_received);
+                    }
                     $poLine?->increment('received_qty', (float) $line->qty_received);
 
                     if (! $isExpensePo && $poLine) {
@@ -874,6 +879,142 @@ class ERPPurchasingController extends Controller
                 ->with('flash', ['type' => 'success', 'message' => 'Penerimaan diposting ke stok dan hutang usaha.']);
         }
 
+        if ($action === 'reopen' && $status === DocumentStatus::Posted->value) {
+            DB::transaction(function () use ($receipt): void {
+                $receipt->refresh();
+                $receipt->load(['purchaseOrder.lines', 'warehouse', 'lines.product']);
+
+                $payable = Payable::query()
+                    ->withCount('payments')
+                    ->lockForUpdate()
+                    ->where('goods_receipt_id', $receipt->id)
+                    ->first();
+
+                if ($payable && (((int) $payable->payments_count) > 0 || (float) $payable->paid_amount > 0)) {
+                    throw ValidationException::withMessages([
+                        'action' => 'GR tidak bisa di-reopen karena hutang suppliernya sudah memiliki pembayaran.',
+                    ]);
+                }
+
+                foreach ($receipt->lines as $line) {
+                    $product = MasterProduct::query()
+                        ->lockForUpdate()
+                        ->find($line->master_product_id);
+
+                    if (! $product) {
+                        continue;
+                    }
+
+                    $qty = (float) $line->qty_received;
+                    if ($qty <= 0) {
+                        continue;
+                    }
+
+                    if ((float) $product->stock < $qty) {
+                        throw ValidationException::withMessages([
+                            'action' => 'Stok total untuk '.$product->name.' sudah tidak cukup untuk membatalkan GR ini.',
+                        ]);
+                    }
+
+                    $warehouseId = (int) ($receipt->warehouse_id ?? 0);
+                    if ($warehouseId > 0) {
+                        $warehouseStock = MasterProductWarehouseStock::query()
+                            ->where('master_product_id', $product->id)
+                            ->where('warehouse_id', $warehouseId)
+                            ->lockForUpdate()
+                            ->first();
+
+                        if (! $warehouseStock || (float) $warehouseStock->qty < $qty) {
+                            throw ValidationException::withMessages([
+                                'action' => 'Stok warehouse untuk '.$product->name.' sudah tidak cukup untuk membatalkan GR ini.',
+                            ]);
+                        }
+
+                        $this->releaseProjectMaterialReservations(
+                            $product->id,
+                            $warehouseId,
+                            $qty,
+                        );
+
+                        $warehouseStock->refresh();
+                        app(ProjectMaterialReservationService::class)
+                            ->syncWarehouseReservation($product->id, $warehouseId);
+                        $warehouseStock->refresh();
+
+                        $availableAfterRelease = max((float) $warehouseStock->qty - (float) $warehouseStock->reserved_qty, 0);
+                        if ($availableAfterRelease < $qty) {
+                            throw ValidationException::withMessages([
+                                'action' => 'Sebagian stok '.$product->name.' sudah dipakai / direservasi, jadi GR ini belum bisa di-reopen.',
+                            ]);
+                        }
+
+                        $warehouseStock->decrement('qty', $qty);
+                        app(ProjectMaterialReservationService::class)
+                            ->syncWarehouseReservation($product->id, $warehouseId);
+                    }
+
+                    if ($warehouseId <= 0) {
+                        $product->decrement('stock', $qty);
+                    }
+
+                    $poLine = $receipt->purchaseOrder
+                        ->lines()
+                        ->where('master_product_id', $product->id)
+                        ->lockForUpdate()
+                        ->first();
+
+                    if ($poLine) {
+                        $newReceivedQty = max((float) $poLine->received_qty - $qty, 0);
+                        $poLine->update([
+                            'received_qty' => number_format($newReceivedQty, 2, '.', ''),
+                        ]);
+                    }
+
+                    ProductStockMovement::query()->create([
+                        'master_product_id' => $product->id,
+                        'warehouse_id' => $receipt->warehouse_id,
+                        'movement_date' => now()->toDateString(),
+                        'movement_type' => 'purchase_reopen_out',
+                        'qty' => $qty,
+                        'note' => 'Reopen receipt '.$receipt->number,
+                    ]);
+                }
+
+                if ($payable) {
+                    $journalEntryId = $payable->journal_entry_id;
+                    $payable->delete();
+
+                    if ($journalEntryId) {
+                        $this->createReversalJournalEntry(
+                            $journalEntryId,
+                            0,
+                            'Reopen goods receipt '.$receipt->number,
+                            'purchasing_reopen',
+                            $receipt->number,
+                        );
+                    }
+                }
+
+                $receipt->update([
+                    'status' => DocumentStatus::Approved,
+                    'posted_at' => null,
+                    'posted_by' => null,
+                ]);
+            });
+
+            $this->systemLogger->warning('purchasing.grn.reopened', 'Goods receipt reopened', [
+                'user_id' => Auth::id(),
+                'path' => $request->path(),
+                'method' => $request->method(),
+                'receipt_number' => $receipt->number,
+                'purchase_order' => $receipt->purchaseOrder?->number,
+            ]);
+
+            return redirect()
+                ->route('erp.purchasing.goods-receipts.show', $goodsReceipt)
+                ->with('flash', ['type' => 'success', 'message' => 'GR berhasil di-reopen dan efek postingnya sudah dibalik.']);
+        }
+
         return redirect()
             ->route('erp.purchasing.goods-receipts.show', $goodsReceipt)
             ->with('flash', ['type' => 'info', 'message' => 'Tidak ada perubahan status.']);
@@ -914,6 +1055,46 @@ class ERPPurchasingController extends Controller
             });
 
         return $allocated;
+    }
+
+    private function releaseProjectMaterialReservations(int $productId, int $warehouseId, float $qtyToRelease): float
+    {
+        $remaining = $qtyToRelease;
+        $released = 0.0;
+
+        ProjectMaterial::query()
+            ->with('project')
+            ->where('master_product_id', $productId)
+            ->where('warehouse_id', $warehouseId)
+            ->whereHas('project', fn ($q) => $q->whereIn('status', ['negosiasi', 'berjalan']))
+            ->whereRaw('reserved_qty > issued_qty')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->lockForUpdate()
+            ->get()
+            ->each(function (ProjectMaterial $material) use (&$remaining, &$released): void {
+                if ($remaining <= 0) {
+                    return;
+                }
+
+                $outstandingReserved = max((float) $material->reserved_qty - (float) $material->issued_qty, 0);
+                if ($outstandingReserved <= 0) {
+                    return;
+                }
+
+                $toRelease = min($outstandingReserved, $remaining);
+                $material->reserved_qty = max(
+                    (float) $material->issued_qty,
+                    (float) $material->reserved_qty - $toRelease
+                );
+                $material->status = $this->projectMaterialStatus($material);
+                $material->save();
+
+                $remaining -= $toRelease;
+                $released += $toRelease;
+            });
+
+        return $released;
     }
 
     /**
@@ -974,6 +1155,52 @@ class ERPPurchasingController extends Controller
             MasterProduct::PRODUCT_TYPE_FINISHED_GOODS,
             MasterProduct::PRODUCT_TYPE_PROJECT_MATERIAL,
         ];
+    }
+
+    private function createReversalJournalEntry(
+        int $originalEntryId,
+        int $companyId,
+        string $description,
+        string $sourceModule,
+        string $sourceReference,
+    ): ?JournalEntry {
+        $original = JournalEntry::query()
+            ->with('lines')
+            ->find($originalEntryId);
+
+        if (! $original || $original->lines->isEmpty()) {
+            return null;
+        }
+
+        $entryNo = $this->documentNumberService->next('accounting', 'journal_entry_reversal', [
+            'prefix' => 'REV',
+            'padding_length' => 6,
+        ]);
+
+        $reversal = JournalEntry::query()->create([
+            'company_id' => $companyId ?: $original->company_id,
+            'entry_no' => $entryNo,
+            'entry_date' => now()->toDateString(),
+            'description' => $description,
+            'status' => DocumentStatus::Posted,
+            'source_module' => $sourceModule,
+            'source_reference' => $sourceReference,
+            'posted_at' => now(),
+            'posted_by' => Auth::id(),
+            'reversed_entry_id' => $original->id,
+        ]);
+
+        foreach ($original->lines as $line) {
+            JournalLine::query()->create([
+                'journal_entry_id' => $reversal->id,
+                'account_id' => $line->account_id,
+                'description' => $line->description,
+                'debit' => $line->credit,
+                'credit' => $line->debit,
+            ]);
+        }
+
+        return $reversal;
     }
 
     private function projectMaterialStatus(ProjectMaterial $material): string
