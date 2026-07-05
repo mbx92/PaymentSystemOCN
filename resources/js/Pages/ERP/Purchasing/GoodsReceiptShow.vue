@@ -14,6 +14,14 @@ const { formatDate } = useDateFormat();
 
 const advanceForm = useForm({ action: 'post_stock', warehouse_id: props.detail?.warehouse_id ?? '' });
 
+const openModal = (id) => {
+  globalThis.document?.getElementById(id)?.showModal?.();
+};
+
+const closeModal = (id) => {
+  globalThis.document?.getElementById(id)?.close?.();
+};
+
 const postToStock = () => {
   advanceForm.action = 'post_stock';
   advanceForm.post(route('erp.purchasing.goods-receipts.advance', props.detail.number), { preserveScroll: true });
@@ -22,7 +30,7 @@ const postToStock = () => {
 const reopenReceipt = () => {
   advanceForm.action = 'reopen';
   advanceForm.post(route('erp.purchasing.goods-receipts.advance', props.detail.number), { preserveScroll: true });
-  document.getElementById('modal-confirm-reopen-gr')?.close();
+  closeModal('modal-confirm-reopen-gr');
 };
 
 const goBack = () => {
@@ -123,7 +131,7 @@ const goBack = () => {
                     type="button"
                     class="btn btn-outline btn-warning btn-sm"
                     :disabled="advanceForm.processing"
-                    @click="document.getElementById('modal-confirm-reopen-gr')?.showModal()"
+                    @click="openModal('modal-confirm-reopen-gr')"
                   >
                     Reopen GR
                   </button>
