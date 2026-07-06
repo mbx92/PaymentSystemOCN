@@ -19,7 +19,7 @@ const projectTypeByKey = computed(() => Object.fromEntries((props.project_types 
 const projectTypeSupportsBudgetItems = (value) => !!projectTypeByKey.value[value]?.supports_budget_items;
 
 const { formatDate } = useDateFormat();
-const { format } = useCurrency();
+const { format, formatInput } = useCurrency();
 
 function emptyItemRow() {
     return {
@@ -37,6 +37,15 @@ function emptyItemRow() {
     };
 }
 
+function normalizeBudgetQty(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 1) {
+        return 1;
+    }
+
+    return Math.round(parsed);
+}
+
 function normalizeCctvItems(raw) {
     const list = Array.isArray(raw) && raw.length
         ? raw.map((i) => ({
@@ -47,7 +56,7 @@ function normalizeCctvItems(raw) {
             item_type: i.item_type ?? 'material',
             name: i.name ?? '',
             uom: i.uom ?? 'unit',
-            qty: i.qty ?? 1,
+            qty: normalizeBudgetQty(i.qty ?? 1),
             unit_cost: i.unit_cost ?? 0,
             unit_price: i.unit_price ?? 0,
             notes: i.notes ?? '',
@@ -133,6 +142,26 @@ const suppressCatalogPickerOpen = ref(false);
 
 const openEditModal = () => document.getElementById('modal-edit-budget')?.showModal();
 const addCctvItem = () => budgetForm.cctv_items.push(emptyItemRow());
+const sanitizeItemQty = (item) => {
+    if (!item) return;
+    item.qty = normalizeBudgetQty(item.qty);
+};
+const sanitizeAllItemQty = () => {
+    budgetForm.cctv_items = (budgetForm.cctv_items ?? []).map((item) => ({
+        ...item,
+        qty: normalizeBudgetQty(item.qty),
+    }));
+};
+const moneyInputValue = (value) => formatInput(value);
+const updateMoneyField = (item, field, event) => {
+    if (!item || !field) return;
+    const raw = String(event?.target?.value ?? '').replace(/[^\d]/g, '');
+    const amount = raw === '' ? 0 : Number.parseInt(raw, 10);
+    item[field] = Number.isFinite(amount) ? amount : 0;
+    if (event?.target) {
+        event.target.value = moneyInputValue(item[field]);
+    }
+};
 const productLabel = (item) => {
     if (item.catalog_ref) return `[${item.catalog_ref}] ${item.name ?? ''}`.trim();
     if (item.master_product_id && item.notes) return `${item.notes.replace(/^SKU:\s*/, '')} - ${item.name}`.trim();
@@ -205,7 +234,7 @@ const mergeCatalogItem = (catalogItem, lineIndex = null) => {
             current?.catalog_ref === catalogItem.code
             && current?.catalog_sheet === catalogItem.sheet_key
         ) {
-            current.qty = (Number(current.qty) || 0) + 1;
+            current.qty = normalizeBudgetQty((Number(current.qty) || 0) + 1);
             return;
         }
     }
@@ -213,7 +242,7 @@ const mergeCatalogItem = (catalogItem, lineIndex = null) => {
     const probe = { ...emptyItemRow(), catalog_sheet: catalogItem.sheet_key, catalog_ref: catalogItem.code };
     const existingIdx = findMatchingItemIndex(probe, lineIndex);
     if (existingIdx >= 0) {
-        budgetForm.cctv_items[existingIdx].qty = (Number(budgetForm.cctv_items[existingIdx].qty) || 0) + 1;
+        budgetForm.cctv_items[existingIdx].qty = normalizeBudgetQty((Number(budgetForm.cctv_items[existingIdx].qty) || 0) + 1);
         cleanupPickerLine(lineIndex, existingIdx);
         return;
     }
@@ -227,7 +256,7 @@ const mergeProductItem = (product, lineIndex = null) => {
     if (lineIndex !== null) {
         const current = budgetForm.cctv_items[lineIndex];
         if (current?.master_product_id && current.master_product_id === product.id) {
-            current.qty = (Number(current.qty) || 0) + 1;
+            current.qty = normalizeBudgetQty((Number(current.qty) || 0) + 1);
             return;
         }
     }
@@ -235,7 +264,7 @@ const mergeProductItem = (product, lineIndex = null) => {
     const probe = { ...emptyItemRow(), master_product_id: product.id ?? null };
     const existingIdx = findMatchingItemIndex(probe, lineIndex);
     if (existingIdx >= 0) {
-        budgetForm.cctv_items[existingIdx].qty = (Number(budgetForm.cctv_items[existingIdx].qty) || 0) + 1;
+        budgetForm.cctv_items[existingIdx].qty = normalizeBudgetQty((Number(budgetForm.cctv_items[existingIdx].qty) || 0) + 1);
         cleanupPickerLine(lineIndex, existingIdx);
         return;
     }
@@ -308,6 +337,7 @@ const removeCctvItem = (idx) => {
 };
 
 const submitBudgetPut = (opts = {}) => {
+    sanitizeAllItemQty();
     if (isItemizedBudget.value) {
         budgetForm.estimated_value = totalCctvItems.value;
     }
@@ -468,12 +498,32 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
                                         </td>
                                         <td><input v-model="item.uom" type="text" class="input input-bordered input-sm w-24" /></td>
                                         <td>
-                                            <input v-model.number="item.qty" type="number" min="0.01" step="0.01" class="input input-bordered input-sm w-24" />
+                                            <input v-model.number="item.qty" type="number" min="1" step="1" class="input input-bordered input-sm w-16" @change="sanitizeItemQty(item)" />
                                             <p v-if="budgetForm.errors[`cctv_items.${idx}.qty`]" class="text-error text-xs mt-0.5">{{ budgetForm.errors[`cctv_items.${idx}.qty`] }}</p>
                                         </td>
-                                        <td><input v-model.number="item.unit_cost" type="number" min="0" step="1000" class="input input-bordered input-sm w-32" /></td>
                                         <td>
-                                            <input v-model.number="item.unit_price" type="number" min="0" step="1000" class="input input-bordered input-sm w-36" />
+                                            <label class="input input-bordered input-sm w-28">
+                                                <span class="text-base-content/50 text-[11px]">Rp</span>
+                                                <input
+                                                    :value="moneyInputValue(item.unit_cost)"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    class="grow text-right"
+                                                    @input="updateMoneyField(item, 'unit_cost', $event)"
+                                                />
+                                            </label>
+                                        </td>
+                                        <td>
+                                            <label class="input input-bordered input-sm w-32">
+                                                <span class="text-base-content/50 text-[11px]">Rp</span>
+                                                <input
+                                                    :value="moneyInputValue(item.unit_price)"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    class="grow text-right"
+                                                    @input="updateMoneyField(item, 'unit_price', $event)"
+                                                />
+                                            </label>
                                             <p v-if="budgetForm.errors[`cctv_items.${idx}.unit_price`]" class="text-error text-xs mt-0.5">{{ budgetForm.errors[`cctv_items.${idx}.unit_price`] }}</p>
                                         </td>
                                         <td class="font-medium">{{ format((Number(item.qty) || 0) * (Number(item.unit_price) || 0)) }}</td>
@@ -544,7 +594,7 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
                 <div v-if="isItemizedBudget" class="mt-4 space-y-2">
                     <div class="flex items-center justify-between"><h3 class="font-semibold">Item CCTV</h3><div class="flex items-center gap-2"><button class="btn btn-ghost btn-xs" type="button" @click="openAddProductPicker">Pilih dari master</button><button class="btn btn-outline btn-xs" type="button" @click="addCctvItem">+ Tambah item</button></div></div>
                     <p v-if="budgetForm.errors.cctv_items" class="text-error text-xs">{{ budgetForm.errors.cctv_items }}</p>
-                    <div class="overflow-x-auto rounded-xl border border-base-300"><table class="table table-sm"><thead><tr><th>Produk</th><th>Qty</th><th>Harga Satuan</th><th>Subtotal</th><th></th></tr></thead><tbody><tr v-for="(item, idx) in budgetForm.cctv_items" :key="idx"><td><input :value="productLabel(item)" type="text" class="input input-bordered input-sm w-full cursor-pointer" placeholder="Klik untuk pilih produk" readonly @click="openProductPickerForLine(idx)" /></td><td><input v-model.number="item.qty" type="number" min="0.01" step="0.01" class="input input-bordered input-sm w-24" /></td><td><input v-model.number="item.unit_price" type="number" min="0" step="1000" class="input input-bordered input-sm w-36" /></td><td>{{ format((Number(item.qty) || 0) * (Number(item.unit_price) || 0)) }}</td><td><button type="button" class="btn btn-ghost btn-xs text-error" @click="removeCctvItem(idx)">Hapus</button></td></tr></tbody></table></div>
+                    <div class="overflow-x-auto rounded-xl border border-base-300"><table class="table table-sm"><thead><tr><th>Produk</th><th>Qty</th><th>Harga Satuan</th><th>Subtotal</th><th></th></tr></thead><tbody><tr v-for="(item, idx) in budgetForm.cctv_items" :key="idx"><td><input :value="productLabel(item)" type="text" class="input input-bordered input-sm w-full cursor-pointer" placeholder="Klik untuk pilih produk" readonly @click="openProductPickerForLine(idx)" /></td><td><input v-model.number="item.qty" type="number" min="1" step="1" class="input input-bordered input-sm w-16" @change="sanitizeItemQty(item)" /></td><td><label class="input input-bordered input-sm w-32"><span class="text-base-content/50 text-[11px]">Rp</span><input :value="moneyInputValue(item.unit_price)" type="text" inputmode="numeric" class="grow text-right" @input="updateMoneyField(item, 'unit_price', $event)" /></label></td><td>{{ format((Number(item.qty) || 0) * (Number(item.unit_price) || 0)) }}</td><td><button type="button" class="btn btn-ghost btn-xs text-error" @click="removeCctvItem(idx)">Hapus</button></td></tr></tbody></table></div>
                 </div>
                 <div class="modal-action">
                     <form method="dialog"><button class="btn btn-ghost">Batal</button></form>

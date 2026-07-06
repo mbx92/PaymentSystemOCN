@@ -29,8 +29,6 @@ use Inertia\Response;
 
 class ProjectBudgetController extends Controller
 {
-    private const CUSTOMER_MARKUP_PERCENT = 40;
-
     private const CUSTOMER_SHARE_TTL_DAYS = 30;
 
     private function isLockedBudget(ProjectBudget $budget): bool
@@ -304,7 +302,7 @@ class ProjectBudgetController extends Controller
         return Inertia::render('Projects/BudgetCustomerView', [
             'budget' => $customerPayload['budget'],
             'items' => $customerPayload['items'],
-            'markup_percent' => self::CUSTOMER_MARKUP_PERCENT,
+            'markup_percent' => 0,
             'total' => $customerPayload['total'],
             'share_url' => $this->signedCustomerViewUrl($budget),
             'pdf_url' => $this->signedCustomerPdfUrl($budget),
@@ -337,13 +335,14 @@ class ProjectBudgetController extends Controller
             ->map(function (array $item): array {
                 $qty = (float) ($item['qty'] ?? 0);
                 $unitPrice = $this->customerUnitPrice($item);
+                $subtotal = (float) ($item['subtotal_price'] ?? ($qty * $unitPrice));
 
                 return [
                     'name' => (string) $item['name'],
                     'uom' => (string) ($item['uom'] ?? 'unit'),
                     'qty' => $qty,
                     'unit_price' => $unitPrice,
-                    'subtotal' => round($qty * $unitPrice),
+                    'subtotal' => $subtotal,
                     'from_catalog' => trim((string) ($item['catalog_ref'] ?? '')) !== '',
                 ];
             })
@@ -364,22 +363,13 @@ class ProjectBudgetController extends Controller
     }
 
     /**
-     * Master produk & baris manual memakai harga jual; katalog supplier = harga beli (+ markup).
+     * Tampilan customer mengikuti harga jual yang tersimpan di budget.
      *
      * @param  array<string, mixed>  $item
      */
     private function customerUnitPrice(array $item): float
     {
-        $base = (float) ($item['unit_price'] ?? 0);
-        $isCatalog = trim((string) ($item['catalog_ref'] ?? '')) !== '';
-
-        if ($isCatalog) {
-            $multiplier = 1 + (self::CUSTOMER_MARKUP_PERCENT / 100);
-
-            return round($base * $multiplier);
-        }
-
-        return round($base);
+        return (float) ($item['unit_price'] ?? 0);
     }
 
     public function update(Request $request, ProjectBudget $budget)
