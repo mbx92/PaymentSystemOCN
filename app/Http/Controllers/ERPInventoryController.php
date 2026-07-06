@@ -886,6 +886,7 @@ class ERPInventoryController extends Controller
             'types' => collect([
                 'purchase_receipt',
                 'project_issue_out',
+                'project_issue_return_in',
                 'pos_sale_out',
                 'pos_refund_in',
                 'pos_reopen_out',
@@ -910,6 +911,7 @@ class ERPInventoryController extends Controller
         return match ($type) {
             'purchase_receipt' => 'Penerimaan Pembelian',
             'project_issue_out' => 'Pemakaian Project',
+            'project_issue_return_in' => 'Batal Pemakaian Project',
             'pos_sale_out' => 'Penjualan POS',
             'pos_refund_in' => 'Refund POS',
             'pos_reopen_out' => 'Reopen POS',

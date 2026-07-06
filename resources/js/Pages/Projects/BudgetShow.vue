@@ -326,9 +326,21 @@ const submitEdit = () => {
 const saveCctvItemsFromDetail = () => submitBudgetPut();
 
 const markDeal = () => router.patch(route('erp.projects.budgets.deal', props.budget.id), {}, { preserveScroll: true });
+const cancelBudgetSubmitting = ref(false);
+const openCancelBudgetModal = () => document.getElementById('modal-cancel-budget')?.showModal();
+const closeCancelBudgetModal = () => document.getElementById('modal-cancel-budget')?.close();
 const cancelBudget = () => {
-    if (!window.confirm('Batalkan budget ini? Status draft/deal akan diakhiri dan budget tidak bisa diedit lagi.')) return;
-    router.patch(route('erp.projects.budgets.cancel', props.budget.id), {}, { preserveScroll: true });
+    if (cancelBudgetSubmitting.value) return;
+    cancelBudgetSubmitting.value = true;
+    router.patch(route('erp.projects.budgets.cancel', props.budget.id), {}, {
+        preserveScroll: true,
+        onFinish: () => {
+            cancelBudgetSubmitting.value = false;
+        },
+        onSuccess: () => {
+            closeCancelBudgetModal();
+        },
+    });
 };
 const convert = () => router.post(route('erp.projects.budgets.convert', props.budget.id), {}, { preserveScroll: true });
 const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.budget.id), '_blank');
@@ -367,7 +379,7 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
                             Tampilan Customer
                         </Link>
                         <button v-if="budget.status === 'draft'" class="btn btn-outline btn-sm" title="Setujui customer — item katalog dipromosikan ke master produk" @click="markDeal">Tandai Deal</button>
-                        <button v-if="canCancelBudget" class="btn btn-error btn-outline btn-sm" @click="cancelBudget">Cancel Budget</button>
+                        <button v-if="canCancelBudget" class="btn btn-error btn-outline btn-sm" @click="openCancelBudgetModal">Cancel Budget</button>
                         <button v-if="budget.status === 'deal'" class="btn btn-primary btn-sm" @click="convert">Convert ke Project</button>
                         <Link v-if="budget.converted_project_id" :href="route('projects.show', budget.converted_project_id)" class="btn btn-ghost btn-sm">Lihat Project</Link>
                         <button v-if="canEditBudget" class="btn btn-primary btn-sm" @click="openEditModal">Edit</button>
@@ -537,6 +549,24 @@ const downloadPdf = () => window.open(route('erp.projects.budgets.pdf', props.bu
                 <div class="modal-action">
                     <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
                     <button class="btn btn-primary" :disabled="budgetForm.processing" @click="submitEdit">Simpan Perubahan</button>
+                </div>
+            </div>
+        </dialog>
+
+        <dialog id="modal-cancel-budget" class="modal">
+            <div class="modal-box max-w-lg">
+                <h3 class="font-bold text-lg">Batalkan Budget</h3>
+                <p class="mt-3 text-sm text-base-content/70">
+                    Budget <span class="font-semibold">{{ budget.name }}</span> akan diubah ke status dibatalkan.
+                    Setelah itu budget tidak bisa diedit lagi.
+                </p>
+                <div class="modal-action">
+                    <form method="dialog">
+                        <button class="btn btn-ghost" :disabled="cancelBudgetSubmitting">Tutup</button>
+                    </form>
+                    <button class="btn btn-error" :disabled="cancelBudgetSubmitting" @click="cancelBudget">
+                        {{ cancelBudgetSubmitting ? 'Membatalkan...' : 'Ya, batalkan budget' }}
+                    </button>
                 </div>
             </div>
         </dialog>

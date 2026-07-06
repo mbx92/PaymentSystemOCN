@@ -10,6 +10,7 @@ class GoodsReceiptStockCheckService
 {
     private const IN_TYPES = [
         'purchase_receipt',
+        'project_issue_return_in',
         'pos_refund_in',
         'in',
         'opname_in',

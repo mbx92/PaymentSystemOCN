@@ -24,6 +24,14 @@ const { formatDate } = useDateFormat();
 const activeTab = ref('info');
 const deletingMaterialId = ref(null);
 const createFolderForm = useForm({});
+const syncProjectStockForm = useForm({});
+const showProjectStockAudit = ref(false);
+const openProjectStockAudit = () => {
+    showProjectStockAudit.value = true;
+};
+const closeProjectStockAudit = () => {
+    showProjectStockAudit.value = false;
+};
 
 // Mark term paid
 const payForm = useForm({ paid_at: new Date().toISOString().slice(0, 10), cash_account_id: '', note: '' });
@@ -458,6 +466,28 @@ const materialSummary = computed(() => {
         readyQty: materials.reduce((sum, item) => sum + (Number(item.reserved_qty) || 0), 0),
     };
 });
+const projectStockCheck = computed(() => props.project?.stock_check ?? {
+    summary: { line_count: 0, warning_count: 0, total_issued_qty: 0, total_movement_net: 0, total_warehouse_qty: 0, mismatch_count: 0 },
+    lines: [],
+    warnings: [],
+});
+const projectStockCheckSummary = computed(() => projectStockCheck.value.summary ?? {
+    line_count: 0,
+    warning_count: 0,
+    total_issued_qty: 0,
+    total_movement_net: 0,
+    total_warehouse_qty: 0,
+    mismatch_count: 0,
+});
+const projectStockCheckLines = computed(() => projectStockCheck.value.lines ?? []);
+const projectStockCheckWarnings = computed(() => projectStockCheck.value.warnings ?? []);
+const stockCheckBadgeClass = (isSynced) => (isSynced ? 'badge-success' : 'badge-error');
+const syncProjectStock = () => {
+    syncProjectStockForm.patch(route('projects.stock.sync', props.project.id), {
+        preserveScroll: true,
+        preserveState: true,
+    });
+};
 const cctvBudgetSummary = computed(() => props.project?.budget_summary ?? {});
 const cctvProjectValue = computed(() => {
     const summaryPrice = Number(cctvBudgetSummary.value.total_price) || 0;
@@ -1033,8 +1063,11 @@ const deleteProject = () => {
             </div>
 
             <div v-if="activeTab === 'materials'" class="space-y-4">
-                <div class="flex">
+                <div class="flex flex-wrap gap-2">
                     <button class="btn btn-primary btn-sm" onclick="document.getElementById('modal-add-material').showModal()">+ Tambah Material</button>
+                    <button class="btn btn-outline btn-sm" @click="openProjectStockAudit">
+                        Audit stok project
+                    </button>
                 </div>
 
                 <div class="ocn-panel">
@@ -1063,6 +1096,133 @@ const deleteProject = () => {
                     </div>
                 </div>
             </div>
+
+            <teleport to="body">
+                <div
+                    v-if="showProjectStockAudit"
+                    class="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-[1px]"
+                    @click="closeProjectStockAudit"
+                />
+                <aside
+                    class="fixed inset-y-0 right-0 z-50 flex w-full max-w-2xl flex-col border-l border-base-300 bg-base-100 shadow-2xl transition-transform duration-300 ease-out"
+                    :class="showProjectStockAudit ? 'translate-x-0' : 'translate-x-full'"
+                >
+                    <div class="flex items-start justify-between gap-3 border-b border-base-200 px-5 py-4">
+                        <div>
+                            <h2 class="text-lg font-bold">Audit stok project</h2>
+                            <p class="mt-1 text-sm text-base-content/60">Bandingkan issued material project dengan movement stok aktual di gudang.</p>
+                        </div>
+                        <button class="btn btn-ghost btn-sm" @click="closeProjectStockAudit">Tutup</button>
+                    </div>
+
+                    <div class="flex-1 overflow-y-auto px-5 py-4">
+                        <div class="space-y-4">
+                            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div class="rounded-xl border border-base-200 bg-base-200/30 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Item Dicek</p>
+                                    <p class="mt-2 text-2xl font-bold tabular-nums">{{ projectStockCheckSummary.line_count }}</p>
+                                </div>
+                                <div
+                                    class="rounded-xl p-4"
+                                    :class="projectStockCheckSummary.mismatch_count > 0 ? 'border border-error/30 bg-error/10' : 'border border-success/30 bg-success/10'"
+                                >
+                                    <p
+                                        class="text-xs font-semibold uppercase tracking-wide"
+                                        :class="projectStockCheckSummary.mismatch_count > 0 ? 'text-error/80' : 'text-success/80'"
+                                    >
+                                        Mismatch
+                                    </p>
+                                    <p
+                                        class="mt-2 text-2xl font-bold tabular-nums"
+                                        :class="projectStockCheckSummary.mismatch_count > 0 ? 'text-error' : 'text-success'"
+                                    >
+                                        {{ projectStockCheckSummary.mismatch_count }}
+                                    </p>
+                                </div>
+                                <div class="rounded-xl border border-primary/30 bg-primary/10 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-primary/80">Issued Qty</p>
+                                    <p class="mt-2 text-2xl font-bold tabular-nums text-primary">{{ projectStockCheckSummary.total_issued_qty }}</p>
+                                </div>
+                                <div class="rounded-xl border border-info/30 bg-info/10 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-info/80">Movement Net</p>
+                                    <p class="mt-2 text-2xl font-bold tabular-nums text-info">{{ projectStockCheckSummary.total_movement_net }}</p>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-wrap gap-2">
+                                <button
+                                    class="btn btn-outline btn-sm"
+                                    :disabled="syncProjectStockForm.processing || projectStockCheckLines.length === 0"
+                                    @click="syncProjectStock"
+                                >
+                                    {{ syncProjectStockForm.processing ? 'Menyinkronkan...' : 'Sinkronkan stok project' }}
+                                </button>
+                            </div>
+
+                            <div
+                                v-if="projectStockCheckWarnings.length"
+                                class="rounded-xl border border-error/30 bg-error/10 px-4 py-3 text-sm text-error"
+                            >
+                                <p class="font-semibold">Ditemukan selisih stok project.</p>
+                                <ul class="mt-2 list-disc pl-5">
+                                    <li v-for="warning in projectStockCheckWarnings" :key="warning">{{ warning }}</li>
+                                </ul>
+                            </div>
+
+                            <div v-if="projectStockCheckLines.length" class="space-y-3">
+                                <article
+                                    v-for="row in projectStockCheckLines"
+                                    :key="row.material_id"
+                                    class="rounded-2xl border border-base-200 bg-base-100 p-4"
+                                >
+                                    <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                        <div class="min-w-0">
+                                            <p class="font-semibold">{{ row.name }}</p>
+                                            <p class="text-xs text-base-content/60">{{ row.sku || '-' }} · {{ row.warehouse || '-' }}</p>
+                                        </div>
+                                        <span class="badge badge-sm" :class="stockCheckBadgeClass(row.is_synced)">
+                                            {{ row.is_synced ? 'Sinkron' : 'Mismatch' }}
+                                        </span>
+                                    </div>
+
+                                    <div class="mt-4 grid grid-cols-2 gap-3 text-sm md:grid-cols-3">
+                                        <div>
+                                            <p class="text-xs uppercase tracking-wide text-base-content/50">Issued</p>
+                                            <p class="mt-1 font-semibold">{{ row.issued_qty }}</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-xs uppercase tracking-wide text-base-content/50">Movement Net</p>
+                                            <p class="mt-1 font-semibold">{{ row.movement_net }}</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-xs uppercase tracking-wide text-base-content/50">Delta</p>
+                                            <p class="mt-1 font-semibold" :class="Math.abs(Number(row.delta_qty) || 0) > 0.00001 ? 'text-error' : 'text-success'">
+                                                {{ row.delta_qty }}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <p class="text-xs uppercase tracking-wide text-base-content/50">WH Qty</p>
+                                            <p class="mt-1 font-semibold">{{ row.warehouse_qty }}</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-xs uppercase tracking-wide text-base-content/50">WH Reserved</p>
+                                            <p class="mt-1 font-semibold">{{ row.warehouse_reserved }}</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-xs uppercase tracking-wide text-base-content/50">Status Material</p>
+                                            <p class="mt-1 font-semibold">{{ materialStatusLabel(row.status) }}</p>
+                                        </div>
+                                    </div>
+                                </article>
+                            </div>
+
+                            <div v-else class="rounded-xl border border-dashed border-base-300 px-4 py-8 text-center text-sm text-base-content/60">
+                                Tidak ada material stock-tracked yang perlu diaudit pada project ini.
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+            </teleport>
 
             <!-- Tab: Expenses -->
             <div v-if="activeTab === 'kas'" class="space-y-4">

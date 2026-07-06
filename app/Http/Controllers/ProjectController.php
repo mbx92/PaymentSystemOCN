@@ -19,6 +19,8 @@ use App\Models\TeamDistribution;
 use App\Models\TeamRole;
 use App\Models\User;
 use App\Services\ProjectMaterialReservationService;
+use App\Services\ProjectMaterialStockIssueService;
+use App\Services\ProjectStockCheckService;
 use App\Support\LegalVaultPath;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -323,6 +325,7 @@ class ProjectController extends Controller
 
         $availableWarehouses = $this->projectWarehouseQuery($request)->get(['id', 'code', 'name']);
         $availableWarehouseIds = $availableWarehouses->pluck('id');
+        $stockCheck = app(ProjectStockCheckService::class)->inspect($project);
 
         return Inertia::render('Projects/Show', [
             'project' => [
@@ -434,6 +437,7 @@ class ProjectController extends Controller
                         ? route('erp.sales.project-invoices.show', $project)
                         : null,
                 ],
+                'stock_check' => $stockCheck,
             ],
             'material_products' => MasterProduct::query()
                 ->where('status', 'active')
@@ -460,6 +464,38 @@ class ProjectController extends Controller
                 'out' => $cashOutCategories,
                 'labels' => $cashCategoryLabels,
             ],
+        ]);
+    }
+
+    public function syncIssuedStock(Project $project)
+    {
+        $rows = [];
+
+        DB::transaction(function () use ($project, &$rows): void {
+            $materials = ProjectMaterial::query()
+                ->with(['product', 'project'])
+                ->where('project_id', $project->id)
+                ->lockForUpdate()
+                ->get();
+
+            $issueService = app(ProjectMaterialStockIssueService::class);
+
+            foreach ($materials as $material) {
+                if (! $material->product?->isStockTracked() || (int) $material->warehouse_id <= 0) {
+                    continue;
+                }
+
+                $rows[] = $issueService->sync($material, (float) $material->issued_qty);
+            }
+        });
+
+        $changed = collect($rows)->filter(fn (array $row) => $row['action'] !== 'noop')->count();
+
+        return back()->with('flash', [
+            'type' => 'success',
+            'message' => $changed > 0
+                ? "Sinkron stok project selesai. {$changed} baris material diperbarui."
+                : 'Stock issue project sudah sinkron. Tidak ada perubahan.',
         ]);
     }
 
@@ -970,14 +1006,8 @@ class ProjectController extends Controller
                 ]);
             }
 
-            $material->issued_qty = $markAsUsed ? $plannedQty : 0;
-            $material->status = $this->projectMaterialStatus($material, $product);
-            $material->save();
-
-            if ($product->isStockTracked() && (int) $material->warehouse_id > 0) {
-                app(ProjectMaterialReservationService::class)
-                    ->syncWarehouseReservation((int) $material->master_product_id, (int) $material->warehouse_id);
-            }
+            app(ProjectMaterialStockIssueService::class)
+                ->sync($material, $markAsUsed ? $plannedQty : 0);
         });
 
         return back()->with('flash', [
