@@ -25,13 +25,16 @@ const activeTab = ref('info');
 const deletingMaterialId = ref(null);
 const createFolderForm = useForm({});
 const syncProjectStockForm = useForm({});
-const showProjectStockAudit = ref(false);
-const openProjectStockAudit = () => {
-    showProjectStockAudit.value = true;
+const sidebarCanvasMode = ref(null);
+const openSidebarCanvas = (mode) => {
+    sidebarCanvasMode.value = mode;
 };
-const closeProjectStockAudit = () => {
-    showProjectStockAudit.value = false;
+const closeSidebarCanvas = () => {
+    sidebarCanvasMode.value = null;
 };
+const isProjectStockAuditCanvas = computed(() => sidebarCanvasMode.value === 'project-stock-audit');
+const isTeamCalculatorCanvas = computed(() => sidebarCanvasMode.value === 'team-calculator');
+const isReferralCalculatorCanvas = computed(() => sidebarCanvasMode.value === 'referral-calculator');
 
 // Mark term paid
 const payForm = useForm({ paid_at: new Date().toISOString().slice(0, 10), cash_account_id: '', note: '' });
@@ -282,6 +285,7 @@ const removeTeamMember = (id) => {
 };
 
 const openAssignTeamModal = () => {
+    closeSidebarCanvas();
     if (!teamForm.team_role_id && props.team_roles?.length) {
         teamForm.team_role_id = props.team_roles[0].id;
     }
@@ -309,6 +313,7 @@ const submitReferral = () => {
 };
 
 const openAddReferralModal = () => {
+    closeSidebarCanvas();
     document.getElementById('modal-add-referral')?.showModal();
 };
 
@@ -346,6 +351,61 @@ const deleteTask = (task) => {
 const projectTypeLabel = () => props.project?.project_type_label ?? props.project?.project_type ?? '-';
 
 const roleLabel = (role) => role;
+const teamCalculatorRate = ref(Number(props.project?.team_distribution_rate ?? 30));
+const referralCalculatorRate = ref(5);
+const referralCalculatorBasis = ref('margin');
+const referralBasisOptions = [
+    { value: 'contract', label: 'Estimasi Revenue' },
+    { value: 'paid', label: 'Cash In Masuk' },
+    { value: 'margin', label: 'Margin Estimasi - Expense' },
+    { value: 'team_pool', label: 'Pool Tim Tersedia' },
+];
+watch(() => props.project?.team_distribution_rate, (value) => {
+    teamCalculatorRate.value = Number(value ?? 30);
+});
+watch(() => props.project?.id, () => {
+    referralCalculatorRate.value = 5;
+    referralCalculatorBasis.value = 'margin';
+});
+const teamCalculatorContractValue = computed(() => {
+    const directValue = Number(props.project?.total_value) || 0;
+    if (directValue > 0) return directValue;
+    return cctvProjectValue.value;
+});
+const teamCalculatorEstimatedCost = computed(() => {
+    if ((Number(cctvEstimatedCost.value) || 0) > 0) {
+        return Number(cctvEstimatedCost.value) || 0;
+    }
+
+    return (props.project?.materials ?? []).reduce((sum, item) => sum + (Number(item.subtotal_cost) || 0), 0);
+});
+const teamCalculatorExpense = computed(() => Number(props.project?.summary?.total_operational) || 0);
+const teamCalculatorReferralTotal = computed(() => Number(props.project?.summary?.total_referral_commission) || 0);
+const teamCalculatorEstimatedMargin = computed(() => teamCalculatorContractValue.value - teamCalculatorEstimatedCost.value);
+const teamCalculatorNetEstimate = computed(() => teamCalculatorEstimatedMargin.value - teamCalculatorExpense.value);
+const teamCalculatorReserveAmount = computed(() => Math.max(teamCalculatorNetEstimate.value * ((Number(teamCalculatorRate.value) || 0) / 100), 0));
+const teamCalculatorPool = computed(() => Math.max(teamCalculatorNetEstimate.value - teamCalculatorReserveAmount.value, 0));
+const teamCalculatorDistributed = computed(() => (props.project?.team_distributions ?? []).reduce((sum, item) => sum + (Number(item.total_pay) || 0), 0));
+const teamCalculatorRemaining = computed(() => teamCalculatorPool.value - teamCalculatorDistributed.value);
+const referralCalculatorBaseAmount = computed(() => {
+    switch (referralCalculatorBasis.value) {
+    case 'paid':
+        return Number(props.project?.summary?.total_cash_in) || 0;
+    case 'margin':
+        return Math.max(teamCalculatorNetEstimate.value, 0);
+    case 'team_pool':
+        return Math.max(teamCalculatorPool.value, 0);
+    case 'contract':
+    default:
+        return teamCalculatorContractValue.value;
+    }
+});
+const referralCalculatorAmount = computed(() => Math.round(referralCalculatorBaseAmount.value * ((Number(referralCalculatorRate.value) || 0) / 100)));
+const applyReferralCalculatorAmount = () => {
+    referralForm.commission_amount = referralCalculatorAmount.value;
+    closeSidebarCanvas();
+    openAddReferralModal();
+};
 const assignableTaskMembers = computed(() => {
     const rows = props.project?.team_distributions ?? [];
     const unique = new Map();
@@ -1065,7 +1125,7 @@ const deleteProject = () => {
             <div v-if="activeTab === 'materials'" class="space-y-4">
                 <div class="flex flex-wrap gap-2">
                     <button class="btn btn-primary btn-sm" onclick="document.getElementById('modal-add-material').showModal()">+ Tambah Material</button>
-                    <button class="btn btn-outline btn-sm" @click="openProjectStockAudit">
+                    <button class="btn btn-outline btn-sm" @click="openSidebarCanvas('project-stock-audit')">
                         Audit stok project
                     </button>
                 </div>
@@ -1099,24 +1159,32 @@ const deleteProject = () => {
 
             <teleport to="body">
                 <div
-                    v-if="showProjectStockAudit"
+                    v-if="sidebarCanvasMode"
                     class="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-[1px]"
-                    @click="closeProjectStockAudit"
+                    @click="closeSidebarCanvas"
                 />
                 <aside
                     class="fixed inset-y-0 right-0 z-50 flex w-full max-w-2xl flex-col border-l border-base-300 bg-base-100 shadow-2xl transition-transform duration-300 ease-out"
-                    :class="showProjectStockAudit ? 'translate-x-0' : 'translate-x-full'"
+                    :class="sidebarCanvasMode ? 'translate-x-0' : 'translate-x-full'"
                 >
                     <div class="flex items-start justify-between gap-3 border-b border-base-200 px-5 py-4">
                         <div>
-                            <h2 class="text-lg font-bold">Audit stok project</h2>
-                            <p class="mt-1 text-sm text-base-content/60">Bandingkan issued material project dengan movement stok aktual di gudang.</p>
+                            <h2 class="text-lg font-bold">
+                                {{ isProjectStockAuditCanvas ? 'Audit stok project' : isTeamCalculatorCanvas ? 'Kalkulator Tim' : 'Kalkulator Referral' }}
+                            </h2>
+                            <p class="mt-1 text-sm text-base-content/60">
+                                {{ isProjectStockAuditCanvas
+                                    ? 'Bandingkan issued material project dengan movement stok aktual di gudang.'
+                                    : isTeamCalculatorCanvas
+                                        ? 'Simulasi pembagian tim dari estimasi project setelah dikurangi HPP dan expense.'
+                                        : 'Hitung nominal komisi referral tanpa meninggalkan halaman project.' }}
+                            </p>
                         </div>
-                        <button class="btn btn-ghost btn-sm" @click="closeProjectStockAudit">Tutup</button>
+                        <button class="btn btn-ghost btn-sm" @click="closeSidebarCanvas">Tutup</button>
                     </div>
 
                     <div class="flex-1 overflow-y-auto px-5 py-4">
-                        <div class="space-y-4">
+                        <div v-if="isProjectStockAuditCanvas" class="space-y-4">
                             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div class="rounded-xl border border-base-200 bg-base-200/30 p-4">
                                     <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Item Dicek</p>
@@ -1218,6 +1286,102 @@ const deleteProject = () => {
 
                             <div v-else class="rounded-xl border border-dashed border-base-300 px-4 py-8 text-center text-sm text-base-content/60">
                                 Tidak ada material stock-tracked yang perlu diaudit pada project ini.
+                            </div>
+                        </div>
+
+                        <div v-else-if="isTeamCalculatorCanvas" class="space-y-4">
+                            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div class="rounded-xl border border-base-200 bg-base-200/30 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Estimasi Revenue</p>
+                                    <p class="mt-2 text-xl font-bold">{{ format(teamCalculatorContractValue) }}</p>
+                                </div>
+                                <div class="rounded-xl border border-error/30 bg-error/10 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-error/80">HPP</p>
+                                    <p class="mt-2 text-xl font-bold text-error">{{ format(teamCalculatorEstimatedCost) }}</p>
+                                </div>
+                                <div class="rounded-xl border border-warning/30 bg-warning/10 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-warning/80">Expense Project</p>
+                                    <p class="mt-2 text-xl font-bold text-warning">{{ format(teamCalculatorExpense) }}</p>
+                                </div>
+                                <div class="rounded-xl border border-secondary/30 bg-secondary/10 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-secondary/80">Referral Tersimpan</p>
+                                    <p class="mt-2 text-xl font-bold text-secondary">{{ format(teamCalculatorReferralTotal) }}</p>
+                                </div>
+                            </div>
+
+                            <div class="rounded-2xl border border-base-200 bg-base-100 p-4">
+                                <label class="label px-0 pt-0"><span class="label-text font-semibold">Rate cadangan perusahaan (%)</span></label>
+                                <input v-model.number="teamCalculatorRate" type="number" min="0" max="100" step="0.01" class="input input-bordered w-full" />
+                                <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                    <div>
+                                        <p class="text-xs uppercase tracking-wide text-base-content/50">Margin Estimasi</p>
+                                        <p class="mt-1 font-semibold" :class="teamCalculatorEstimatedMargin >= 0 ? 'text-success' : 'text-error'">{{ format(teamCalculatorEstimatedMargin) }}</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs uppercase tracking-wide text-base-content/50">Nilai Dasar Kalkulator</p>
+                                        <p class="mt-1 font-semibold" :class="teamCalculatorNetEstimate >= 0 ? 'text-success' : 'text-error'">{{ format(teamCalculatorNetEstimate) }}</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs uppercase tracking-wide text-base-content/50">Cadangan</p>
+                                        <p class="mt-1 font-semibold">{{ format(teamCalculatorReserveAmount) }}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="rounded-2xl border border-base-200 bg-base-100 p-4">
+                                <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                    <div>
+                                        <p class="text-xs uppercase tracking-wide text-base-content/50">Pool Tim</p>
+                                        <p class="mt-1 font-semibold text-primary">{{ format(teamCalculatorPool) }}</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs uppercase tracking-wide text-base-content/50">Sudah Dialokasikan</p>
+                                        <p class="mt-1 font-semibold">{{ format(teamCalculatorDistributed) }}</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs uppercase tracking-wide text-base-content/50">Sisa Pool</p>
+                                        <p class="mt-1 font-semibold" :class="teamCalculatorRemaining >= 0 ? 'text-success' : 'text-error'">{{ format(teamCalculatorRemaining) }}</p>
+                                    </div>
+                                </div>
+                                <p class="mt-4 text-xs text-base-content/60">
+                                    Kalkulator ini memakai rumus estimasi revenue dikurangi HPP dan expense, jadi tetap bisa dipakai walaupun invoice atau cash in belum masuk.
+                                </p>
+                                <div class="mt-4 flex flex-wrap gap-2">
+                                    <button class="btn btn-outline btn-sm" @click="openAssignTeamModal">Assign Tim</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div v-else-if="isReferralCalculatorCanvas" class="space-y-4">
+                            <div class="rounded-2xl border border-base-200 bg-base-100 p-4">
+                                <label class="label px-0 pt-0"><span class="label-text font-semibold">Basis Perhitungan</span></label>
+                                <select v-model="referralCalculatorBasis" class="select select-bordered w-full">
+                                    <option v-for="option in referralBasisOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                                </select>
+
+                                <label class="label mt-3 px-0"><span class="label-text font-semibold">Persentase Komisi (%)</span></label>
+                                <input v-model.number="referralCalculatorRate" type="number" min="0" max="100" step="0.01" class="input input-bordered w-full" />
+                            </div>
+
+                            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div class="rounded-xl border border-base-200 bg-base-200/30 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Nilai Basis</p>
+                                    <p class="mt-2 text-xl font-bold">{{ format(referralCalculatorBaseAmount) }}</p>
+                                </div>
+                                <div class="rounded-xl border border-secondary/30 bg-secondary/10 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-secondary/80">Nominal Komisi</p>
+                                    <p class="mt-2 text-xl font-bold text-secondary">{{ format(referralCalculatorAmount) }}</p>
+                                </div>
+                            </div>
+
+                            <div class="rounded-2xl border border-base-200 bg-base-100 p-4">
+                                <p class="text-sm text-base-content/70">
+                                    Gunakan kalkulator ini untuk menentukan nominal komisi referral dengan basis estimasi project atau nilai real yang sudah masuk.
+                                </p>
+                                <div class="mt-4 flex flex-wrap gap-2">
+                                    <button class="btn btn-primary btn-sm" @click="applyReferralCalculatorAmount">Gunakan nominal ini</button>
+                                    <button class="btn btn-outline btn-sm" @click="openAddReferralModal">Input referral manual</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1343,9 +1507,9 @@ const deleteProject = () => {
                         <h2 class="ocn-panel__title">Pembagian tim</h2>
                         <div class="flex gap-2 shrink-0">
                                 <button class="btn btn-outline btn-sm" @click="openAssignTeamModal">Assign Tim</button>
-                                <Link :href="route('team-distribution.calculator') + '?project_id=' + project.id" class="btn btn-primary btn-sm">
+                                <button class="btn btn-primary btn-sm" @click="openSidebarCanvas('team-calculator')">
                                     Kalkulator
-                                </Link>
+                                </button>
                         </div>
                     </div>
                     <div class="card-body">
@@ -1372,7 +1536,10 @@ const deleteProject = () => {
                 <div class="ocn-panel">
                     <div class="ocn-panel__head flex flex-wrap items-center justify-between gap-2">
                         <h2 class="ocn-panel__title">Komisi referral</h2>
-                        <button class="btn btn-outline btn-sm shrink-0" @click="openAddReferralModal">Add referral</button>
+                        <div class="flex gap-2 shrink-0">
+                            <button class="btn btn-outline btn-sm" @click="openSidebarCanvas('referral-calculator')">Kalkulator</button>
+                            <button class="btn btn-outline btn-sm" @click="openAddReferralModal">Add referral</button>
+                        </div>
                     </div>
                     <div class="card-body">
                         <div class="overflow-x-auto">

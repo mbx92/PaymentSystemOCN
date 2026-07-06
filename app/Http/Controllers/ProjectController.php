@@ -338,6 +338,7 @@ class ProjectController extends Controller
                 'project_type_label' => $project->projectTypeLabel(),
                 'supports_budget_items' => $project->supportsBudgetItems(),
                 'supports_project_board' => $project->supportsProjectBoard(),
+                'team_distribution_rate' => (float) ($project->team_distribution_rate ?? 30),
                 'total_value' => (float) $project->total_value,
                 'status' => $project->status,
                 'created_at' => $project->created_at?->format('Y-m-d'),
