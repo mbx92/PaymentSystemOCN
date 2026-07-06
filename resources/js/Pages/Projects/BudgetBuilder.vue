@@ -10,6 +10,7 @@ import {
     itemMatchKey,
     itemsToSlotMap,
     nextEmptySlotIndex,
+    normalizeProductAmount,
     normalizeProductQty,
     slotMapToItems,
 } from '@/composables/useBudgetBuilderItems';
@@ -35,7 +36,8 @@ const PALETTE_CARD = { width: 168, height: 108 };
 const { format } = useCurrency();
 const slotMap = ref(itemsToSlotMap(props.budget.cctv_items ?? []));
 const paletteTab = ref('master');
-const paletteSearch = ref('');
+const masterSearch = ref('');
+const catalogSearch = ref('');
 const catalogSheet = ref(props.catalog_sheets[0]?.key ?? '');
 const catalogItems = ref([]);
 const catalogLoading = ref(false);
@@ -54,8 +56,22 @@ const budgetForm = useForm({
     cctv_items: props.budget.cctv_items ?? [],
 });
 
+const activePaletteSearch = computed({
+    get() {
+        return paletteTab.value === 'catalog' ? catalogSearch.value : masterSearch.value;
+    },
+    set(value) {
+        if (paletteTab.value === 'catalog') {
+            catalogSearch.value = value;
+            return;
+        }
+
+        masterSearch.value = value;
+    },
+});
+
 const filteredMasterProducts = computed(() => {
-    const term = paletteSearch.value.trim().toLowerCase();
+    const term = masterSearch.value.trim().toLowerCase();
     const list = props.cctv_products ?? [];
     if (!term) return list;
     return list.filter((product) => {
@@ -160,9 +176,25 @@ function removeSlot(slotIndex) {
     slotMap.value = next;
 }
 
+function updateAmount(slotIndex, field, value) {
+    if (!props.can_edit || !['unit_cost', 'unit_price'].includes(field)) return;
+
+    const cell = slotMap.value[slotIndex];
+    if (!cell) return;
+
+    slotMap.value = {
+        ...slotMap.value,
+        [slotIndex]: {
+            ...cell,
+            [field]: normalizeProductAmount(value),
+        },
+    };
+}
+
 provide('budgetBuilderActions', {
     updateQty,
     removeSlot,
+    updateAmount,
 });
 
 function onPaletteDragStart(event, payload) {
@@ -224,7 +256,7 @@ async function fetchCatalogItems() {
     catalogLoading.value = true;
     catalogError.value = '';
     try {
-        const params = paletteSearch.value.trim() ? { q: paletteSearch.value.trim() } : {};
+        const params = catalogSearch.value.trim() ? { q: catalogSearch.value.trim() } : {};
         const { data } = await axios.get(`/api/supplier-catalog/${catalogSheet.value}/items`, { params });
         catalogItems.value = data.items ?? [];
     } catch (err) {
@@ -236,7 +268,7 @@ async function fetchCatalogItems() {
 }
 
 let catalogTimer;
-watch([paletteTab, catalogSheet, paletteSearch], () => {
+watch([paletteTab, catalogSheet, catalogSearch], () => {
     if (paletteTab.value !== 'catalog') return;
     clearTimeout(catalogTimer);
     catalogTimer = setTimeout(fetchCatalogItems, 250);
@@ -244,7 +276,7 @@ watch([paletteTab, catalogSheet, paletteSearch], () => {
 
 onMounted(() => {
     document.documentElement.classList.add('overflow-hidden');
-    if (paletteTab.value === 'catalog') fetchCatalogItems();
+    if (catalogSheet.value) fetchCatalogItems();
 });
 
 onBeforeUnmount(() => {
@@ -339,12 +371,13 @@ function saveBudget() {
                 </div>
                 <label class="input input-bordered input-xs flex items-center gap-2 w-44 sm:w-56">
                     <MagnifyingGlassIcon class="size-3.5 opacity-50 shrink-0" />
-                    <input v-model="paletteSearch" type="search" placeholder="Cari produk..." class="grow min-w-0" />
+                    <input v-model="activePaletteSearch" type="search" placeholder="Cari produk..." class="grow min-w-0" />
                 </label>
                 <select
                     v-if="paletteTab === 'catalog'"
                     v-model="catalogSheet"
                     class="select select-bordered select-xs w-36"
+                    :disabled="!catalog_sheets.length"
                 >
                     <option v-for="sheet in catalog_sheets" :key="sheet.key" :value="sheet.key">{{ sheet.label }}</option>
                 </select>
@@ -362,26 +395,42 @@ function saveBudget() {
             </div>
 
             <div class="palette-strip px-4 py-3 overflow-x-auto">
-                <div v-if="paletteTab === 'catalog' && catalogLoading" class="flex justify-center py-6">
+                <p v-if="paletteTab === 'catalog' && !catalog_sheets.length" class="text-xs py-4 text-base-content/55">
+                    Belum ada brand katalog supplier yang dikonfigurasi.
+                </p>
+                <div v-else-if="paletteTab === 'catalog' && catalogLoading" class="flex justify-center py-6">
                     <span class="loading loading-spinner loading-sm text-primary" />
                 </div>
                 <p v-else-if="paletteTab === 'catalog' && catalogError" class="text-error text-xs py-4">{{ catalogError }}</p>
                 <div v-else class="flex gap-2.5 min-w-min pb-1">
-                    <button
+                    <div
                         v-for="entry in paletteItems"
                         :key="entry.key"
-                        type="button"
                         class="palette-card shrink-0 rounded-lg border border-base-300 bg-base-100 p-2 text-left shadow-sm hover:border-primary/50 hover:shadow-md transition-all cursor-grab active:cursor-grabbing flex flex-col"
                         :style="{ width: `${PALETTE_CARD.width}px`, height: `${PALETTE_CARD.height}px` }"
                         :class="entry.kind === 'catalog' ? 'hover:bg-secondary/5' : 'hover:bg-primary/5'"
+                        role="button"
+                        tabindex="0"
                         :draggable="can_edit"
                         @dragstart="onPaletteDragStart($event, { kind: entry.kind, product: entry.product })"
                         @click="onPaletteCardClick(entry)"
+                        @keydown.enter.prevent="onPaletteCardClick(entry)"
+                        @keydown.space.prevent="onPaletteCardClick(entry)"
                     >
                         <p class="text-[11px] font-semibold leading-tight line-clamp-3">{{ entry.product.name }}</p>
                         <p class="text-[9px] text-base-content/50 mt-0.5 truncate">{{ paletteCardLabel(entry) }}</p>
-                        <p class="text-[10px] font-bold tabular-nums mt-auto">{{ format(paletteCardPrice(entry)) }}</p>
-                    </button>
+                        <div class="mt-auto flex items-end justify-between gap-2">
+                            <p class="text-[10px] font-bold tabular-nums">{{ format(paletteCardPrice(entry)) }}</p>
+                            <button
+                                v-if="can_edit"
+                                type="button"
+                                class="btn btn-primary btn-xs min-h-0 h-6 px-2"
+                                @click.stop="onPaletteCardClick(entry)"
+                            >
+                                Add
+                            </button>
+                        </div>
+                    </div>
                     <p v-if="!paletteItems.length" class="text-sm text-base-content/50 py-6 px-2">Produk tidak ditemukan.</p>
                 </div>
             </div>

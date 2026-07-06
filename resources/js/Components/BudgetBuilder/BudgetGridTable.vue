@@ -1,6 +1,6 @@
 <script setup>
 import { computed, inject } from 'vue';
-import { normalizeProductQty } from '@/composables/useBudgetBuilderItems';
+import { normalizeProductAmount, normalizeProductQty } from '@/composables/useBudgetBuilderItems';
 import { useCurrency } from '@/composables/useCurrency';
 
 const props = defineProps({
@@ -56,7 +56,8 @@ function onDragLeave(index) {
                     <th class="w-12 text-center">#</th>
                     <th>Produk</th>
                     <th class="w-28 text-center">Qty</th>
-                    <th class="w-36 text-right">Harga</th>
+                    <th class="w-40 text-right">Harga Beli</th>
+                    <th class="w-40 text-right">Harga Jual</th>
                     <th class="w-36 text-right">Subtotal</th>
                     <th class="w-12" />
                 </tr>
@@ -75,7 +76,10 @@ function onDragLeave(index) {
                     <td class="min-w-[220px]">
                         <template v-if="cellFor(index)">
                             <p class="font-medium text-sm leading-tight">{{ cellFor(index).name }}</p>
-                            <p class="text-[10px] text-base-content/50 mt-0.5">{{ sourceLabel(cellFor(index)) }}</p>
+                            <p class="text-[10px] text-base-content/50 mt-0.5">
+                                {{ sourceLabel(cellFor(index)) }}
+                                <span v-if="cellFor(index).catalog_ref" class="font-mono">· {{ cellFor(index).catalog_ref }}</span>
+                            </p>
                         </template>
                         <span v-else class="text-xs text-base-content/35 italic">Kosong — drop produk di sini</span>
                     </td>
@@ -104,7 +108,42 @@ function onDragLeave(index) {
                         <span v-else class="text-base-content/25">—</span>
                     </td>
                     <td class="text-right tabular-nums text-sm">
-                        {{ cellFor(index) ? format(cellFor(index).unit_price) : '—' }}
+                        <template v-if="cellFor(index)">
+                            <label
+                                v-if="canEdit"
+                                class="input input-bordered input-xs flex items-center w-32 ml-auto"
+                            >
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    class="w-full text-right tabular-nums"
+                                    :value="normalizeProductAmount(cellFor(index).unit_cost)"
+                                    @change="actions?.updateAmount?.(index, 'unit_cost', $event.target.value)"
+                                >
+                            </label>
+                            <span v-else>{{ format(cellFor(index).unit_cost) }}</span>
+                        </template>
+                        <span v-else>—</span>
+                    </td>
+                    <td class="text-right tabular-nums text-sm">
+                        <template v-if="cellFor(index)">
+                            <label
+                                v-if="canEdit"
+                                class="input input-bordered input-xs flex items-center w-32 ml-auto"
+                            >
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    class="w-full text-right tabular-nums"
+                                    :value="normalizeProductAmount(cellFor(index).unit_price)"
+                                    @change="actions?.updateAmount?.(index, 'unit_price', $event.target.value)"
+                                >
+                            </label>
+                            <span v-else>{{ format(cellFor(index).unit_price) }}</span>
+                        </template>
+                        <span v-else>—</span>
                     </td>
                     <td class="text-right tabular-nums text-sm font-medium">
                         {{ cellFor(index) ? format(subtotal(cellFor(index))) : '—' }}
