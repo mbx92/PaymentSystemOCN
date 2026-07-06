@@ -21,6 +21,7 @@ use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
 use App\Models\ProductStockMovement;
 use App\Models\ProjectMaterial;
+use App\Services\GoodsReceiptStockCheckService;
 use App\Services\ProjectMaterialReservationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -494,6 +495,7 @@ class ERPPurchasingController extends Controller
     public function goodsReceiptShow(GoodsReceipt $goodsReceipt): Response
     {
         $goodsReceipt->load(['purchaseOrder', 'warehouse', 'lines.product']);
+        $stockCheck = app(GoodsReceiptStockCheckService::class)->inspect($goodsReceipt);
 
         return Inertia::render('ERP/Purchasing/GoodsReceiptShow', [
             'detail' => [
@@ -511,6 +513,7 @@ class ERPPurchasingController extends Controller
                     'uom' => $line->product?->uom,
                 ]),
             ],
+            'stock_check' => $stockCheck,
             'warehouses' => Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']),
         ]);
     }
