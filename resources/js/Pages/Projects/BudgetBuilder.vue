@@ -42,6 +42,7 @@ const catalogSheet = ref(props.catalog_sheets[0]?.key ?? '');
 const catalogItems = ref([]);
 const catalogLoading = ref(false);
 const catalogError = ref('');
+const catalogSource = ref('database');
 const dragPayload = ref(null);
 const dropHighlight = ref(null);
 
@@ -259,9 +260,11 @@ async function fetchCatalogItems() {
         const params = catalogSearch.value.trim() ? { q: catalogSearch.value.trim() } : {};
         const { data } = await axios.get(`/api/supplier-catalog/${catalogSheet.value}/items`, { params });
         catalogItems.value = data.items ?? [];
+        catalogSource.value = data.source ?? 'database';
     } catch (err) {
         catalogError.value = err?.response?.data?.message ?? 'Gagal memuat katalog supplier.';
         catalogItems.value = [];
+        catalogSource.value = 'database';
     } finally {
         catalogLoading.value = false;
     }
@@ -391,6 +394,13 @@ function saveBudget() {
                     <ArrowPathIcon class="size-3.5" />
                     Refresh
                 </button>
+                <span
+                    v-if="paletteTab === 'catalog' && !catalogLoading && catalogItems.length"
+                    class="badge badge-sm"
+                    :class="catalogSource === 'remote' ? 'badge-warning' : 'badge-success'"
+                >
+                    {{ catalogSource === 'remote' ? 'Sumber: Google Sheets' : 'Sumber: Database Lokal' }}
+                </span>
                 <p class="text-[11px] text-base-content/50 ml-auto hidden sm:block">Tarik ke baris tabel di bawah · posisi baris terkunci</p>
             </div>
 

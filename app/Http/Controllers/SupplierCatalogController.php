@@ -39,11 +39,35 @@ class SupplierCatalogController extends Controller
         $search = $request->string('q')->toString();
 
         $items = $this->catalog->itemsForSheet($sheetKey, $search !== '' ? $search : null);
+        $source = 'database';
+
+        if ($items === []) {
+            try {
+                $items = $this->catalog->fetchRemoteItemsForSheet($sheetKey);
+                $source = 'remote';
+
+                if ($search !== '') {
+                    $term = mb_strtolower(trim($search));
+                    $items = array_values(array_filter($items, function (array $item) use ($term): bool {
+                        $haystack = mb_strtolower(implode(' ', [
+                            (string) ($item['code'] ?? ''),
+                            (string) ($item['name'] ?? ''),
+                            (string) ($item['category'] ?? ''),
+                        ]));
+
+                        return str_contains($haystack, $term);
+                    }));
+                }
+            } catch (\Throwable) {
+                $items = [];
+            }
+        }
 
         return response()->json([
             'sheet_key' => $sheetKey,
             'items' => $items,
             'total' => count($items),
+            'source' => $source,
             'last_synced_at' => $this->catalog->lastSyncedAt()?->toIso8601String(),
         ]);
     }

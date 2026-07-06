@@ -112,6 +112,45 @@ CSV;
             ->assertJsonPath('items.0.last_price', null);
     }
 
+    public function test_catalog_api_falls_back_to_remote_sheet_when_database_is_empty(): void
+    {
+        $this->disableErpMiddleware();
+
+        $remoteItem = [
+            'ref' => 'tiandy:IPCTIA009',
+            'code' => 'IPCTIA009',
+            'name' => 'IPCAM REMOTE',
+            'category' => 'IP CAMERA',
+            'supplier_price' => 250000.0,
+            'sheet_key' => 'tiandy',
+            'sheet_label' => 'TIANDY',
+            'supplier_name' => 'PL TUNAS JAYA ELEKTRONIK',
+        ];
+
+        $this->mock(SupplierCatalogService::class, function ($mock) use ($remoteItem): void {
+            $mock->shouldReceive('itemsForSheet')
+                ->once()
+                ->with('tiandy', null)
+                ->andReturn([]);
+            $mock->shouldReceive('fetchRemoteItemsForSheet')
+                ->once()
+                ->with('tiandy')
+                ->andReturn([$remoteItem]);
+            $mock->shouldReceive('lastSyncedAt')
+                ->andReturn(null);
+        });
+
+        $user = User::factory()->create();
+
+        $this
+            ->actingAs($user)
+            ->getJson('/api/supplier-catalog/tiandy/items')
+            ->assertOk()
+            ->assertJsonPath('source', 'remote')
+            ->assertJsonPath('items.0.code', 'IPCTIA009')
+            ->assertJsonPath('items.0.supplier_price', 250000);
+    }
+
     public function test_catalog_sync_upserts_items_and_tracks_last_price(): void
     {
         $remoteItem = [
