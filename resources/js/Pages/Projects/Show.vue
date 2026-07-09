@@ -377,11 +377,13 @@ const makeTeamCalculatorRow = (overrides = {}) => ({
     user_name: overrides.user_name ?? findTeamMemberName(overrides.user_id),
     role_in_project: overrides.role_in_project || defaultTeamCalculatorRole.value,
     percentage: clampPercentage(overrides.percentage ?? 0),
+    base_pay: Math.max(0, Number(overrides.base_pay) || 0),
     bonus: Math.max(0, Number(overrides.bonus) || 0),
     paid_at: overrides.paid_at ?? null,
     original_user_id: overrides.original_user_id ?? (overrides.user_id ? Number(overrides.user_id) : ''),
     original_role_in_project: overrides.original_role_in_project ?? (overrides.role_in_project || defaultTeamCalculatorRole.value),
     current_percentage: clampPercentage(overrides.current_percentage ?? overrides.percentage ?? 0),
+    current_base_pay: Math.max(0, Number(overrides.current_base_pay ?? overrides.base_pay) || 0),
     current_bonus: Math.max(0, Number(overrides.current_bonus ?? overrides.bonus) || 0),
     current_total_pay: Math.max(0, Number(overrides.current_total_pay ?? overrides.total_pay) || 0),
 });
@@ -391,9 +393,14 @@ const buildTeamCalculatorRows = (rows = []) => (rows ?? []).map((row) => makeTea
     user_name: row.user_name,
     role_in_project: row.role_in_project,
     percentage: row.percentage,
+    base_pay: row.base_pay,
     bonus: row.bonus,
     total_pay: row.total_pay,
     paid_at: row.paid_at,
+    current_percentage: row.percentage,
+    current_base_pay: row.base_pay,
+    current_bonus: row.bonus,
+    current_total_pay: row.total_pay,
 }));
 const teamCalculatorRows = ref(buildTeamCalculatorRows(props.project?.team_distributions ?? []));
 const teamCalculatorSaveForm = useForm({});
@@ -440,7 +447,8 @@ const teamCalculatorReserveAmount = computed(() => Math.max(teamCalculatorNetEst
 const teamCalculatorPool = computed(() => Math.max(teamCalculatorNetEstimate.value - teamCalculatorReserveAmount.value, 0));
 const teamCalculatorDistributed = computed(() => (props.project?.team_distributions ?? []).reduce((sum, item) => sum + (Number(item.total_pay) || 0), 0));
 const teamCalculatorRemaining = computed(() => teamCalculatorPool.value - teamCalculatorDistributed.value);
-const teamCalculatorBasePay = (row) => Math.round(teamCalculatorPool.value * (clampPercentage(row?.percentage ?? 0) / 100));
+const calculateTeamCalculatorBasePay = (percentage) => Math.round(teamCalculatorPool.value * (clampPercentage(percentage) / 100));
+const teamCalculatorBasePay = (row) => Math.max(0, Number(row?.base_pay) || 0);
 const teamCalculatorRowTotalPay = (row) => teamCalculatorBasePay(row) + (Number(row?.bonus) || 0);
 const teamCalculatorAssignmentRows = computed(() => teamCalculatorRows.value.map((row) => {
     const userName = findTeamMemberName(row.user_id) || row.user_name || 'Pilih anggota';
@@ -452,6 +460,7 @@ const teamCalculatorAssignmentRows = computed(() => teamCalculatorRows.value.map
         user_name: userName,
         bonus: Number(row.bonus) || 0,
         currentPercentage: clampPercentage(row.current_percentage ?? 0),
+        currentBasePay: Math.max(0, Number(row.current_base_pay) || 0),
         currentTotalPay: Math.max(0, Number(row.current_total_pay) || 0),
         currentBonus: Math.max(0, Number(row.current_bonus) || 0),
         sliderPercentage: clampPercentage(row.percentage ?? 0),
@@ -464,6 +473,30 @@ const teamCalculatorSimulatedPercentageTotal = computed(() => teamCalculatorAssi
 const teamCalculatorSimulatedDistributed = computed(() => teamCalculatorAssignmentRows.value.reduce((sum, item) => sum + item.simulatedTotalPay, 0));
 const teamCalculatorSimulatedRemaining = computed(() => teamCalculatorPool.value - teamCalculatorSimulatedDistributed.value);
 const teamCalculatorSimulatedPercentageRemaining = computed(() => 100 - teamCalculatorSimulatedPercentageTotal.value);
+const normalizeTeamCalculatorRowsFromStoredData = (rows = []) => {
+    const preparedRows = buildTeamCalculatorRows(rows ?? []);
+
+    if (teamCalculatorPool.value <= 0) {
+        return preparedRows;
+    }
+
+    return preparedRows.map((row) => {
+        const storedBasePay = Math.max(0, Number(row.base_pay) || 0);
+        const storedPercentage = clampPercentage(row.percentage ?? 0);
+        const inferredPercentage = storedBasePay > 0
+            ? clampPercentage((storedBasePay / teamCalculatorPool.value) * 100)
+            : 0;
+        const effectivePercentage = storedPercentage > 0 ? storedPercentage : inferredPercentage;
+
+        return {
+            ...row,
+            percentage: effectivePercentage,
+            current_percentage: effectivePercentage,
+            base_pay: storedBasePay,
+            current_base_pay: storedBasePay,
+        };
+    });
+};
 const teamCalculatorDuplicateMemberIds = computed(() => {
     const ids = teamCalculatorRows.value
         .map((row) => row.user_id)
@@ -497,6 +530,7 @@ const teamCalculatorSimulationDirty = computed(() => {
         || String(row.user_id) !== String(row.original_user_id)
         || row.role_in_project !== row.original_role_in_project
         || Math.abs(row.sliderPercentage - row.currentPercentage) > 0.01
+        || Math.abs(row.simulatedBasePay - row.currentBasePay) > 0.01
         || Math.abs((Number(row.bonus) || 0) - (Number(row.currentBonus) || 0)) > 0.01
     ));
 });
@@ -518,10 +552,11 @@ const removeTeamCalculatorRow = (key) => {
 const setTeamCalculatorShare = (rowKey, value) => {
     const maxAllowed = teamCalculatorMaxAllowedPercentage(rowKey);
     const nextPercentage = Math.min(clampPercentage(value), maxAllowed);
+    const nextBasePay = calculateTeamCalculatorBasePay(nextPercentage);
 
     teamCalculatorRows.value = teamCalculatorRows.value.map((row) => (
         row.key === rowKey
-            ? { ...row, percentage: nextPercentage }
+            ? { ...row, percentage: nextPercentage, base_pay: nextBasePay }
             : row
     ));
 };
@@ -530,12 +565,29 @@ const setTeamCalculatorPercentageInput = (rowKey, value) => {
 };
 const setTeamCalculatorAmount = (rowKey, value) => {
     const amount = Math.max(0, parseLocalizedNumber(value));
+    const maxAmount = Math.round(teamCalculatorPool.value * (teamCalculatorMaxAllowedPercentage(rowKey) / 100));
+    const nextAmount = Math.min(amount, maxAmount);
+
     if (teamCalculatorPool.value <= 0) {
-        setTeamCalculatorShare(rowKey, 0);
+        teamCalculatorRows.value = teamCalculatorRows.value.map((row) => (
+            row.key === rowKey
+                ? { ...row, percentage: 0, base_pay: 0 }
+                : row
+        ));
         return;
     }
 
-    setTeamCalculatorShare(rowKey, (amount / teamCalculatorPool.value) * 100);
+    const nextPercentage = (nextAmount / teamCalculatorPool.value) * 100;
+
+    teamCalculatorRows.value = teamCalculatorRows.value.map((row) => (
+        row.key === rowKey
+            ? {
+                ...row,
+                percentage: Math.min(clampPercentage(nextPercentage), teamCalculatorMaxAllowedPercentage(rowKey)),
+                base_pay: nextAmount,
+            }
+            : row
+    ));
 };
 const setTeamCalculatorRole = (rowKey, value) => {
     teamCalculatorRows.value = teamCalculatorRows.value.map((row) => (
@@ -561,7 +613,7 @@ const setTeamCalculatorBonus = (rowKey, value) => {
 };
 const resetTeamCalculatorShares = () => {
     teamCalculatorRate.value = Number(props.project?.team_distribution_rate ?? 30);
-    teamCalculatorRows.value = buildTeamCalculatorRows(props.project?.team_distributions ?? []);
+    teamCalculatorRows.value = normalizeTeamCalculatorRowsFromStoredData(props.project?.team_distributions ?? []);
 };
 const saveTeamCalculator = () => {
     activeTab.value = 'tim';
@@ -946,7 +998,7 @@ const deleteProject = () => {
 </script>
 
 <template>
-    <AppLayout>
+    <AppLayout :hide-assistant="!!sidebarCanvasMode">
         <div class="space-y-5">
             <!-- Header -->
             <div class="ocn-panel">
@@ -1376,7 +1428,7 @@ const deleteProject = () => {
                                 {{ isProjectStockAuditCanvas
                                     ? 'Bandingkan issued material project dengan movement stok aktual di gudang.'
                                     : isTeamCalculatorCanvas
-                                        ? 'Simulasi pembagian tim dari estimasi project setelah dikurangi HPP dan expense.'
+                                        ? 'Atur pembagian tim dari estimasi project setelah dikurangi HPP dan expense.'
                                         : 'Hitung nominal komisi referral tanpa meninggalkan halaman project.' }}
                             </p>
                         </div>
@@ -1612,7 +1664,7 @@ const deleteProject = () => {
                                             </p>
                                         </div>
                                         <div class="rounded-xl border border-primary/30 bg-primary/10 p-4">
-                                            <p class="text-xs font-semibold uppercase tracking-wide text-primary/80">Total Simulasi</p>
+                                            <p class="text-xs font-semibold uppercase tracking-wide text-primary/80">Total Pembagian</p>
                                             <p class="mt-2 text-xl font-bold tabular-nums text-primary">{{ format(teamCalculatorSimulatedDistributed) }}</p>
                                         </div>
                                         <div
@@ -1623,7 +1675,7 @@ const deleteProject = () => {
                                                 class="text-xs font-semibold uppercase tracking-wide"
                                                 :class="teamCalculatorSimulatedRemaining >= 0 ? 'text-success/80' : 'text-error/80'"
                                             >
-                                                Sisa Pool Simulasi
+                                                Sisa Pool
                                             </p>
                                             <p
                                                 class="mt-2 text-xl font-bold tabular-nums"
@@ -1752,7 +1804,7 @@ const deleteProject = () => {
 
                                         <div class="mt-4 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
                                             <div>
-                                                <p class="text-xs uppercase tracking-wide text-base-content/50">Base Pay Simulasi</p>
+                                                <p class="text-xs uppercase tracking-wide text-base-content/50">Base Pay</p>
                                                 <p class="mt-1 font-semibold">{{ format(distribution.simulatedBasePay) }}</p>
                                             </div>
                                             <div>
@@ -1760,24 +1812,19 @@ const deleteProject = () => {
                                                 <p class="mt-1 font-semibold">{{ format(distribution.bonus) }}</p>
                                             </div>
                                             <div>
-                                                <p class="text-xs uppercase tracking-wide text-base-content/50">Total Simulasi</p>
+                                                <p class="text-xs uppercase tracking-wide text-base-content/50">Total</p>
                                                 <p class="mt-1 font-semibold text-primary">{{ format(teamCalculatorRowTotalPay(distribution)) }}</p>
                                             </div>
-                                            <div>
-                                                <p class="text-xs uppercase tracking-wide text-base-content/50">Delta vs Tersimpan</p>
-                                                <p
-                                                    class="mt-1 font-semibold"
-                                                    :class="distribution.simulatedDeltaPay >= 0 ? 'text-success' : 'text-error'"
-                                                >
-                                                    {{ distribution.simulatedDeltaPay >= 0 ? '+' : '-' }}{{ format(Math.abs(distribution.simulatedDeltaPay)) }}
-                                                </p>
+                                            <div v-if="distribution.id">
+                                                <p class="text-xs uppercase tracking-wide text-base-content/50">Tersimpan</p>
+                                                <p class="mt-1 font-semibold">{{ format(distribution.currentTotalPay) }}</p>
                                             </div>
                                         </div>
                                     </article>
 
                                     <div class="flex flex-col gap-3 border-t border-base-300 pt-4 sm:flex-row sm:items-center sm:justify-between">
                                         <div>
-                                            <p class="text-sm font-semibold">Total simulasi: {{ format(teamCalculatorSimulatedDistributed) }}</p>
+                                            <p class="text-sm font-semibold">Total pembagian: {{ format(teamCalculatorSimulatedDistributed) }}</p>
                                             <p class="text-xs text-base-content/60">Klik simpan untuk menulis pembagian tim ke project dan memperbarui tabel Tim.</p>
                                         </div>
                                         <div class="flex flex-wrap gap-2">
