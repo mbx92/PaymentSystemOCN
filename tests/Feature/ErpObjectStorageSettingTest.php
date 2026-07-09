@@ -124,6 +124,42 @@ class ErpObjectStorageSettingTest extends TestCase
         $this->assertSame('hello-pdf', Storage::disk('erp_archive')->get($path));
     }
 
+    public function test_disk_config_auto_enables_path_style_for_custom_endpoint(): void
+    {
+        $setting = new ErpSetting([
+            'object_storage_enabled' => true,
+            'object_storage_access_key' => 'test-key',
+            'object_storage_secret_key' => 'test-secret',
+            'object_storage_bucket' => 'archive-bucket',
+            'object_storage_region' => 'us-east-1',
+            'object_storage_endpoint' => 'https://s3.yumalab.my.id/',
+            'object_storage_use_path_style' => false,
+        ]);
+
+        $config = app(GeneratedFileArchiveService::class)->diskConfig($setting);
+
+        $this->assertSame('https://s3.yumalab.my.id', $config['endpoint']);
+        $this->assertTrue($config['use_path_style_endpoint']);
+    }
+
+    public function test_disk_config_keeps_virtual_host_style_for_aws_endpoint_when_not_forced(): void
+    {
+        $setting = new ErpSetting([
+            'object_storage_enabled' => true,
+            'object_storage_access_key' => 'test-key',
+            'object_storage_secret_key' => 'test-secret',
+            'object_storage_bucket' => 'archive-bucket',
+            'object_storage_region' => 'ap-southeast-1',
+            'object_storage_endpoint' => 'https://s3.ap-southeast-1.amazonaws.com/',
+            'object_storage_use_path_style' => false,
+        ]);
+
+        $config = app(GeneratedFileArchiveService::class)->diskConfig($setting);
+
+        $this->assertSame('https://s3.ap-southeast-1.amazonaws.com', $config['endpoint']);
+        $this->assertFalse($config['use_path_style_endpoint']);
+    }
+
     private function disableErpMiddleware(): void
     {
         $this->withoutMiddleware([

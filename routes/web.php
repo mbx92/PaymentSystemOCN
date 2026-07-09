@@ -58,6 +58,7 @@ use App\Http\Controllers\RndReportController;
 use App\Http\Controllers\RndResearchNoteController;
 use App\Http\Controllers\ShelfController;
 use App\Http\Controllers\SupplierCatalogController;
+use App\Http\Controllers\TeamDistributionController;
 use App\Http\Controllers\UiPreferenceController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\UserRolePermissionController;

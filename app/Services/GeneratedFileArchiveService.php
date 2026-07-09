@@ -61,14 +61,16 @@ class GeneratedFileArchiveService
      */
     public function diskConfig(ErpSetting $setting): array
     {
+        $endpoint = $this->normalizeEndpoint($setting->object_storage_endpoint);
+
         return [
             'driver' => 's3',
             'key' => $setting->object_storage_access_key,
             'secret' => $setting->resolvedObjectStorageSecretKey(),
             'region' => $setting->object_storage_region ?: 'us-east-1',
             'bucket' => $setting->object_storage_bucket,
-            'endpoint' => filled($setting->object_storage_endpoint) ? $setting->object_storage_endpoint : null,
-            'use_path_style_endpoint' => (bool) $setting->object_storage_use_path_style,
+            'endpoint' => $endpoint,
+            'use_path_style_endpoint' => $this->shouldUsePathStyleEndpoint($setting, $endpoint),
             'throw' => true,
         ];
     }
@@ -212,6 +214,35 @@ class GeneratedFileArchiveService
         return filled($setting->object_storage_access_key)
             && filled($setting->resolvedObjectStorageSecretKey())
             && filled($setting->object_storage_bucket);
+    }
+
+    private function normalizeEndpoint(?string $endpoint): ?string
+    {
+        $value = trim((string) $endpoint);
+
+        if ($value === '') {
+            return null;
+        }
+
+        return rtrim($value, '/');
+    }
+
+    private function shouldUsePathStyleEndpoint(ErpSetting $setting, ?string $endpoint): bool
+    {
+        if ((bool) $setting->object_storage_use_path_style) {
+            return true;
+        }
+
+        if (! $endpoint) {
+            return false;
+        }
+
+        $host = strtolower((string) parse_url($endpoint, PHP_URL_HOST));
+        if ($host === '') {
+            return false;
+        }
+
+        return ! str_contains($host, 'amazonaws.com');
     }
 
     private function escapeFilename(string $filename): string

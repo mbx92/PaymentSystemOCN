@@ -4,7 +4,7 @@ import StatusBadge from '@/Components/StatusBadge.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
 import ConfirmModal from '@/Components/ConfirmModal.vue';
 import { Link, useForm, router } from '@inertiajs/vue3';
-import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
+import { ArrowLeftIcon, TrashIcon } from '@heroicons/vue/24/outline';
 import { computed, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 import { useDateFormat } from '@/composables/useDateFormat';
@@ -351,7 +351,52 @@ const deleteTask = (task) => {
 const projectTypeLabel = () => props.project?.project_type_label ?? props.project?.project_type ?? '-';
 
 const roleLabel = (role) => role;
+const defaultTeamCalculatorRole = computed(() => props.team_roles?.[0]?.name ?? 'developer');
 const teamCalculatorRate = ref(Number(props.project?.team_distribution_rate ?? 30));
+const clampPercentage = (value) => Math.min(100, Math.max(0, Number(value) || 0));
+const formatPercentageNumber = (value) => new Intl.NumberFormat('id-ID', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+}).format(Number(value) || 0);
+const formatPercentage = (value) => `${formatPercentageNumber(value)}%`;
+const parseLocalizedNumber = (value) => {
+    const normalized = String(value ?? '')
+        .replace(/[^\d,.-]/g, '')
+        .replace(/\./g, '')
+        .replace(',', '.');
+
+    return Number(normalized) || 0;
+};
+let teamCalculatorRowCounter = 0;
+const nextTeamCalculatorRowKey = () => `team-calculator-row-${teamCalculatorRowCounter++}`;
+const findTeamMemberName = (userId) => props.team_members.find((member) => String(member.id) === String(userId))?.name ?? '';
+const makeTeamCalculatorRow = (overrides = {}) => ({
+    key: overrides.key ?? nextTeamCalculatorRowKey(),
+    id: overrides.id ?? null,
+    user_id: overrides.user_id ? Number(overrides.user_id) : '',
+    user_name: overrides.user_name ?? findTeamMemberName(overrides.user_id),
+    role_in_project: overrides.role_in_project || defaultTeamCalculatorRole.value,
+    percentage: clampPercentage(overrides.percentage ?? 0),
+    bonus: Math.max(0, Number(overrides.bonus) || 0),
+    paid_at: overrides.paid_at ?? null,
+    original_user_id: overrides.original_user_id ?? (overrides.user_id ? Number(overrides.user_id) : ''),
+    original_role_in_project: overrides.original_role_in_project ?? (overrides.role_in_project || defaultTeamCalculatorRole.value),
+    current_percentage: clampPercentage(overrides.current_percentage ?? overrides.percentage ?? 0),
+    current_bonus: Math.max(0, Number(overrides.current_bonus ?? overrides.bonus) || 0),
+    current_total_pay: Math.max(0, Number(overrides.current_total_pay ?? overrides.total_pay) || 0),
+});
+const buildTeamCalculatorRows = (rows = []) => (rows ?? []).map((row) => makeTeamCalculatorRow({
+    id: row.id,
+    user_id: row.user_id,
+    user_name: row.user_name,
+    role_in_project: row.role_in_project,
+    percentage: row.percentage,
+    bonus: row.bonus,
+    total_pay: row.total_pay,
+    paid_at: row.paid_at,
+}));
+const teamCalculatorRows = ref(buildTeamCalculatorRows(props.project?.team_distributions ?? []));
+const teamCalculatorSaveForm = useForm({});
 const referralCalculatorRate = ref(5);
 const referralCalculatorBasis = ref('margin');
 const referralBasisOptions = [
@@ -362,6 +407,14 @@ const referralBasisOptions = [
 ];
 watch(() => props.project?.team_distribution_rate, (value) => {
     teamCalculatorRate.value = Number(value ?? 30);
+});
+watch(() => props.project?.team_distributions, (rows) => {
+    teamCalculatorRows.value = buildTeamCalculatorRows(rows ?? []);
+}, { deep: true, immediate: true });
+watch(sidebarCanvasMode, (mode) => {
+    if (mode === 'team-calculator') {
+        resetTeamCalculatorShares();
+    }
 });
 watch(() => props.project?.id, () => {
     referralCalculatorRate.value = 5;
@@ -387,6 +440,153 @@ const teamCalculatorReserveAmount = computed(() => Math.max(teamCalculatorNetEst
 const teamCalculatorPool = computed(() => Math.max(teamCalculatorNetEstimate.value - teamCalculatorReserveAmount.value, 0));
 const teamCalculatorDistributed = computed(() => (props.project?.team_distributions ?? []).reduce((sum, item) => sum + (Number(item.total_pay) || 0), 0));
 const teamCalculatorRemaining = computed(() => teamCalculatorPool.value - teamCalculatorDistributed.value);
+const teamCalculatorBasePay = (row) => Math.round(teamCalculatorPool.value * (clampPercentage(row?.percentage ?? 0) / 100));
+const teamCalculatorRowTotalPay = (row) => teamCalculatorBasePay(row) + (Number(row?.bonus) || 0);
+const teamCalculatorAssignmentRows = computed(() => teamCalculatorRows.value.map((row) => {
+    const userName = findTeamMemberName(row.user_id) || row.user_name || 'Pilih anggota';
+    const simulatedBasePay = teamCalculatorBasePay(row);
+    const simulatedTotalPay = simulatedBasePay + (Number(row.bonus) || 0);
+
+    return {
+        ...row,
+        user_name: userName,
+        bonus: Number(row.bonus) || 0,
+        currentPercentage: clampPercentage(row.current_percentage ?? 0),
+        currentTotalPay: Math.max(0, Number(row.current_total_pay) || 0),
+        currentBonus: Math.max(0, Number(row.current_bonus) || 0),
+        sliderPercentage: clampPercentage(row.percentage ?? 0),
+        simulatedBasePay,
+        simulatedTotalPay,
+        simulatedDeltaPay: simulatedTotalPay - (Math.max(0, Number(row.current_total_pay) || 0)),
+    };
+}));
+const teamCalculatorSimulatedPercentageTotal = computed(() => teamCalculatorAssignmentRows.value.reduce((sum, item) => sum + item.sliderPercentage, 0));
+const teamCalculatorSimulatedDistributed = computed(() => teamCalculatorAssignmentRows.value.reduce((sum, item) => sum + item.simulatedTotalPay, 0));
+const teamCalculatorSimulatedRemaining = computed(() => teamCalculatorPool.value - teamCalculatorSimulatedDistributed.value);
+const teamCalculatorSimulatedPercentageRemaining = computed(() => 100 - teamCalculatorSimulatedPercentageTotal.value);
+const teamCalculatorDuplicateMemberIds = computed(() => {
+    const ids = teamCalculatorRows.value
+        .map((row) => row.user_id)
+        .filter((id) => id !== '' && id !== undefined && id !== null);
+
+    return ids.filter((id, index) => ids.indexOf(id) !== index);
+});
+const teamCalculatorHasDuplicates = computed(() => teamCalculatorDuplicateMemberIds.value.length > 0);
+const teamCalculatorRowsValid = computed(() => teamCalculatorRows.value.length > 0 && teamCalculatorRows.value.every((row) => row.user_id && row.role_in_project));
+const teamCalculatorRateValid = computed(() => Number(teamCalculatorRate.value) >= 0 && Number(teamCalculatorRate.value) <= 100);
+const teamCalculatorPercentageValid = computed(() => teamCalculatorSimulatedPercentageTotal.value <= 100.01);
+const teamCalculatorBudgetValid = computed(() => teamCalculatorSimulatedDistributed.value <= teamCalculatorPool.value + 0.01);
+const teamCalculatorMaxAllowedPercentage = (rowKey) => {
+    const otherTotal = teamCalculatorRows.value.reduce((sum, row) => (
+        row.key === rowKey ? sum : sum + clampPercentage(row.percentage)
+    ), 0);
+
+    return Math.max(0, 100 - otherTotal);
+};
+const teamCalculatorSimulationDirty = computed(() => {
+    if (Math.abs((Number(teamCalculatorRate.value) || 0) - (Number(props.project?.team_distribution_rate) || 0)) > 0.01) {
+        return true;
+    }
+
+    if (teamCalculatorRows.value.length !== (props.project?.team_distributions?.length ?? 0)) {
+        return true;
+    }
+
+    return teamCalculatorAssignmentRows.value.some((row) => (
+        !row.id
+        || String(row.user_id) !== String(row.original_user_id)
+        || row.role_in_project !== row.original_role_in_project
+        || Math.abs(row.sliderPercentage - row.currentPercentage) > 0.01
+        || Math.abs((Number(row.bonus) || 0) - (Number(row.currentBonus) || 0)) > 0.01
+    ));
+});
+const canSaveTeamCalculator = computed(() => (
+    teamCalculatorSimulationDirty.value
+    && teamCalculatorRateValid.value
+    && teamCalculatorRowsValid.value
+    && teamCalculatorPercentageValid.value
+    && teamCalculatorBudgetValid.value
+    && !teamCalculatorHasDuplicates.value
+    && !teamCalculatorSaveForm.processing
+));
+const addTeamCalculatorRow = () => {
+    teamCalculatorRows.value.push(makeTeamCalculatorRow());
+};
+const removeTeamCalculatorRow = (key) => {
+    teamCalculatorRows.value = teamCalculatorRows.value.filter((row) => row.key !== key);
+};
+const setTeamCalculatorShare = (rowKey, value) => {
+    const maxAllowed = teamCalculatorMaxAllowedPercentage(rowKey);
+    const nextPercentage = Math.min(clampPercentage(value), maxAllowed);
+
+    teamCalculatorRows.value = teamCalculatorRows.value.map((row) => (
+        row.key === rowKey
+            ? { ...row, percentage: nextPercentage }
+            : row
+    ));
+};
+const setTeamCalculatorPercentageInput = (rowKey, value) => {
+    setTeamCalculatorShare(rowKey, parseLocalizedNumber(value));
+};
+const setTeamCalculatorAmount = (rowKey, value) => {
+    const amount = Math.max(0, parseLocalizedNumber(value));
+    if (teamCalculatorPool.value <= 0) {
+        setTeamCalculatorShare(rowKey, 0);
+        return;
+    }
+
+    setTeamCalculatorShare(rowKey, (amount / teamCalculatorPool.value) * 100);
+};
+const setTeamCalculatorRole = (rowKey, value) => {
+    teamCalculatorRows.value = teamCalculatorRows.value.map((row) => (
+        row.key === rowKey
+            ? { ...row, role_in_project: value || defaultTeamCalculatorRole.value }
+            : row
+    ));
+};
+const setTeamCalculatorUser = (rowKey, value) => {
+    const nextUserId = value ? Number(value) : '';
+    teamCalculatorRows.value = teamCalculatorRows.value.map((row) => (
+        row.key === rowKey
+            ? { ...row, user_id: nextUserId, user_name: findTeamMemberName(nextUserId) }
+            : row
+    ));
+};
+const setTeamCalculatorBonus = (rowKey, value) => {
+    teamCalculatorRows.value = teamCalculatorRows.value.map((row) => (
+        row.key === rowKey
+            ? { ...row, bonus: Math.max(0, Number(value) || 0) }
+            : row
+    ));
+};
+const resetTeamCalculatorShares = () => {
+    teamCalculatorRate.value = Number(props.project?.team_distribution_rate ?? 30);
+    teamCalculatorRows.value = buildTeamCalculatorRows(props.project?.team_distributions ?? []);
+};
+const saveTeamCalculator = () => {
+    activeTab.value = 'tim';
+
+    teamCalculatorSaveForm
+        .transform(() => ({
+            project_id: props.project.id,
+            distribution_rate: Number(teamCalculatorRate.value || 0),
+            distributions: teamCalculatorRows.value.map((row) => ({
+                user_id: row.user_id,
+                role_in_project: row.role_in_project,
+                percentage: Number(clampPercentage(row.percentage).toFixed(2)),
+                base_pay: teamCalculatorBasePay(row),
+                bonus: Number(row.bonus || 0),
+            })),
+        }))
+        .post(route('team-distribution.save'), {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => {
+                activeTab.value = 'tim';
+                closeSidebarCanvas();
+            },
+        });
+};
 const referralCalculatorBaseAmount = computed(() => {
     switch (referralCalculatorBasis.value) {
     case 'paid':
@@ -1311,7 +1511,13 @@ const deleteProject = () => {
 
                             <div class="rounded-2xl border border-base-200 bg-base-100 p-4">
                                 <label class="label px-0 pt-0"><span class="label-text font-semibold">Rate cadangan perusahaan (%)</span></label>
-                                <input v-model.number="teamCalculatorRate" type="number" min="0" max="100" step="0.01" class="input input-bordered w-full" />
+                                <input
+                                    :value="formatPercentageNumber(teamCalculatorRate)"
+                                    type="text"
+                                    inputmode="decimal"
+                                    class="input input-bordered w-full"
+                                    @input="teamCalculatorRate = clampPercentage(parseLocalizedNumber($event.target.value))"
+                                >
                                 <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                                     <div>
                                         <p class="text-xs uppercase tracking-wide text-base-content/50">Margin Estimasi</p>
@@ -1347,7 +1553,259 @@ const deleteProject = () => {
                                     Kalkulator ini memakai rumus estimasi revenue dikurangi HPP dan expense, jadi tetap bisa dipakai walaupun invoice atau cash in belum masuk.
                                 </p>
                                 <div class="mt-4 flex flex-wrap gap-2">
-                                    <button class="btn btn-outline btn-sm" @click="openAssignTeamModal">Assign Tim</button>
+                                    <button class="btn btn-primary btn-sm" @click="addTeamCalculatorRow">Tambah Tim</button>
+                                    <button class="btn btn-outline btn-sm" @click="openAssignTeamModal">Assign via modal</button>
+                                </div>
+                            </div>
+
+                            <div class="rounded-2xl border border-base-200 bg-base-100 p-4">
+                                <div class="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                        <h3 class="font-semibold">Pembagian tim di canvas</h3>
+                                        <p class="mt-1 text-sm text-base-content/60">
+                                            Tambah anggota, atur persen atau nominal rupiah, lalu simpan dari canvas ini. Hasil simpan akan masuk ke tabel Tim project.
+                                        </p>
+                                    </div>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button class="btn btn-outline btn-sm" @click="addTeamCalculatorRow">Tambah Baris</button>
+                                        <button
+                                            class="btn btn-ghost btn-sm"
+                                            :disabled="!teamCalculatorSimulationDirty"
+                                            @click="resetTeamCalculatorShares"
+                                        >
+                                            Reset
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div v-if="!teamCalculatorRateValid || !teamCalculatorPercentageValid || !teamCalculatorBudgetValid || !teamCalculatorRowsValid || teamCalculatorHasDuplicates || teamCalculatorSaveForm.errors.distributions" class="mt-4 space-y-2">
+                                    <div v-if="!teamCalculatorRateValid" class="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+                                        Rate cadangan perusahaan harus antara 0,00% sampai 100,00%.
+                                    </div>
+                                    <div v-if="!teamCalculatorPercentageValid" class="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+                                        Total pembagian saat ini {{ formatPercentage(teamCalculatorSimulatedPercentageTotal) }} dan tidak boleh melebihi 100,00%.
+                                    </div>
+                                    <div v-if="!teamCalculatorBudgetValid" class="rounded-xl border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
+                                        Total simulasi {{ format(teamCalculatorSimulatedDistributed) }} melebihi pool tim {{ format(teamCalculatorPool) }}.
+                                    </div>
+                                    <div v-if="!teamCalculatorRowsValid" class="rounded-xl border border-info/30 bg-info/10 px-4 py-3 text-sm text-info">
+                                        Setiap baris wajib punya anggota dan peran sebelum disimpan.
+                                    </div>
+                                    <div v-if="teamCalculatorHasDuplicates" class="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+                                        Anggota terpilih ganda:
+                                        {{ teamCalculatorDuplicateMemberIds.map(id => team_members.find(member => String(member.id) === String(id))?.name).filter(Boolean).join(', ') }}.
+                                    </div>
+                                    <div v-if="teamCalculatorSaveForm.errors.distributions" class="rounded-xl border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
+                                        {{ teamCalculatorSaveForm.errors.distributions }}
+                                    </div>
+                                </div>
+
+                                <div v-if="teamCalculatorAssignmentRows.length" class="mt-4 space-y-4">
+                                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                        <div class="rounded-xl border border-base-200 bg-base-200/30 p-4">
+                                            <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Total Persentase</p>
+                                            <p
+                                                class="mt-2 text-xl font-bold tabular-nums"
+                                                :class="Math.abs(teamCalculatorSimulatedPercentageRemaining) <= 0.01 ? 'text-success' : 'text-warning'"
+                                            >
+                                                {{ formatPercentage(teamCalculatorSimulatedPercentageTotal) }}
+                                            </p>
+                                        </div>
+                                        <div class="rounded-xl border border-primary/30 bg-primary/10 p-4">
+                                            <p class="text-xs font-semibold uppercase tracking-wide text-primary/80">Total Simulasi</p>
+                                            <p class="mt-2 text-xl font-bold tabular-nums text-primary">{{ format(teamCalculatorSimulatedDistributed) }}</p>
+                                        </div>
+                                        <div
+                                            class="rounded-xl p-4"
+                                            :class="teamCalculatorSimulatedRemaining >= 0 ? 'border border-success/30 bg-success/10' : 'border border-error/30 bg-error/10'"
+                                        >
+                                            <p
+                                                class="text-xs font-semibold uppercase tracking-wide"
+                                                :class="teamCalculatorSimulatedRemaining >= 0 ? 'text-success/80' : 'text-error/80'"
+                                            >
+                                                Sisa Pool Simulasi
+                                            </p>
+                                            <p
+                                                class="mt-2 text-xl font-bold tabular-nums"
+                                                :class="teamCalculatorSimulatedRemaining >= 0 ? 'text-success' : 'text-error'"
+                                            >
+                                                {{ format(teamCalculatorSimulatedRemaining) }}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div
+                                        class="rounded-xl border px-4 py-3 text-sm"
+                                        :class="Math.abs(teamCalculatorSimulatedPercentageRemaining) <= 0.01 ? 'border-success/30 bg-success/10 text-success' : 'border-warning/30 bg-warning/10 text-warning'"
+                                    >
+                                        <span v-if="Math.abs(teamCalculatorSimulatedPercentageRemaining) <= 0.01">
+                                            Total pembagian sudah pas 100,00%.
+                                        </span>
+                                        <span v-else-if="teamCalculatorSimulatedPercentageRemaining > 0">
+                                            Masih ada sisa {{ formatPercentage(teamCalculatorSimulatedPercentageRemaining) }} yang belum dialokasikan.
+                                        </span>
+                                        <span v-else>
+                                            Alokasi melebihi 100% sebesar {{ formatPercentage(Math.abs(teamCalculatorSimulatedPercentageRemaining)) }}.
+                                        </span>
+                                    </div>
+
+                                    <article
+                                        v-for="distribution in teamCalculatorAssignmentRows"
+                                        :key="distribution.key"
+                                        class="rounded-2xl border border-base-200 bg-base-100 p-4"
+                                    >
+                                        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                            <div>
+                                                <p class="font-semibold">{{ distribution.user_name }}</p>
+                                                <p class="text-sm text-base-content/60">{{ roleLabel(distribution.role_in_project) }}</p>
+                                            </div>
+                                            <div class="flex flex-wrap items-center gap-2 text-xs">
+                                                <span class="badge badge-ghost badge-sm">Tersimpan {{ formatPercentage(distribution.currentPercentage) }}</span>
+                                                <span class="badge badge-primary badge-sm">Aktif {{ formatPercentage(distribution.sliderPercentage) }}</span>
+                                                <span v-if="distribution.paid_at" class="badge badge-success badge-sm">Sudah dibayar</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
+                                            <div>
+                                                <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-base-content/50">Anggota Tim</label>
+                                                <select
+                                                    :value="distribution.user_id"
+                                                    class="select select-bordered select-sm w-full"
+                                                    @change="setTeamCalculatorUser(distribution.key, $event.target.value)"
+                                                >
+                                                    <option value="">Pilih anggota</option>
+                                                    <option v-for="member in team_members" :key="member.id" :value="member.id">{{ member.name }}</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-base-content/50">Peran</label>
+                                                <select
+                                                    :value="distribution.role_in_project"
+                                                    class="select select-bordered select-sm w-full"
+                                                    @change="setTeamCalculatorRole(distribution.key, $event.target.value)"
+                                                >
+                                                    <option v-for="role in team_roles" :key="role.id" :value="role.name">{{ role.name }}</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="mt-4 rounded-xl border border-base-200 bg-base-200/20 p-3">
+                                            <div class="mb-2 flex items-center justify-between gap-3 text-xs font-semibold uppercase tracking-wide text-base-content/50">
+                                                <span>Slider Persentase</span>
+                                                <span>{{ formatPercentage(distribution.sliderPercentage) }}</span>
+                                            </div>
+                                            <input
+                                                :value="distribution.sliderPercentage"
+                                                type="range"
+                                                min="0"
+                                                :max="teamCalculatorMaxAllowedPercentage(distribution.key)"
+                                                step="0.01"
+                                                class="range range-primary"
+                                                @input="setTeamCalculatorShare(distribution.key, $event.target.value)"
+                                            >
+                                        </div>
+
+                                        <div class="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-[120px_minmax(0,1fr)_minmax(0,1fr)_44px]">
+                                            <div>
+                                                <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-base-content/50">Persen</label>
+                                                <input
+                                                    :value="formatPercentageNumber(distribution.sliderPercentage)"
+                                                    type="text"
+                                                    inputmode="decimal"
+                                                    class="input input-bordered input-sm w-full text-right"
+                                                    @input="setTeamCalculatorPercentageInput(distribution.key, $event.target.value)"
+                                                >
+                                                <p class="mt-1 text-[11px] text-base-content/50">
+                                                    Maks {{ formatPercentage(teamCalculatorMaxAllowedPercentage(distribution.key)) }}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-base-content/50">Nominal Rupiah</label>
+                                                <CurrencyInput
+                                                    :model-value="distribution.simulatedBasePay"
+                                                    @update:modelValue="setTeamCalculatorAmount(distribution.key, $event)"
+                                                />
+                                                <p class="mt-1 text-[11px] text-base-content/50">
+                                                    Maks {{ format(Math.round(teamCalculatorPool * (teamCalculatorMaxAllowedPercentage(distribution.key) / 100))) }}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-base-content/50">Bonus</label>
+                                                <CurrencyInput
+                                                    :model-value="distribution.bonus"
+                                                    @update:modelValue="setTeamCalculatorBonus(distribution.key, $event)"
+                                                />
+                                            </div>
+                                            <div class="flex items-start justify-end xl:pt-6">
+                                                <button
+                                                    class="btn btn-ghost btn-square btn-sm text-error"
+                                                    :disabled="!!distribution.paid_at"
+                                                    @click="removeTeamCalculatorRow(distribution.key)"
+                                                    :title="distribution.paid_at ? 'Baris yang sudah dibayar tidak bisa dihapus' : 'Hapus baris tim'"
+                                                    aria-label="Hapus baris tim"
+                                                >
+                                                    <TrashIcon class="h-4 w-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div class="mt-4 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
+                                            <div>
+                                                <p class="text-xs uppercase tracking-wide text-base-content/50">Base Pay Simulasi</p>
+                                                <p class="mt-1 font-semibold">{{ format(distribution.simulatedBasePay) }}</p>
+                                            </div>
+                                            <div>
+                                                <p class="text-xs uppercase tracking-wide text-base-content/50">Bonus</p>
+                                                <p class="mt-1 font-semibold">{{ format(distribution.bonus) }}</p>
+                                            </div>
+                                            <div>
+                                                <p class="text-xs uppercase tracking-wide text-base-content/50">Total Simulasi</p>
+                                                <p class="mt-1 font-semibold text-primary">{{ format(teamCalculatorRowTotalPay(distribution)) }}</p>
+                                            </div>
+                                            <div>
+                                                <p class="text-xs uppercase tracking-wide text-base-content/50">Delta vs Tersimpan</p>
+                                                <p
+                                                    class="mt-1 font-semibold"
+                                                    :class="distribution.simulatedDeltaPay >= 0 ? 'text-success' : 'text-error'"
+                                                >
+                                                    {{ distribution.simulatedDeltaPay >= 0 ? '+' : '-' }}{{ format(Math.abs(distribution.simulatedDeltaPay)) }}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </article>
+
+                                    <div class="flex flex-col gap-3 border-t border-base-300 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                                        <div>
+                                            <p class="text-sm font-semibold">Total simulasi: {{ format(teamCalculatorSimulatedDistributed) }}</p>
+                                            <p class="text-xs text-base-content/60">Klik simpan untuk menulis pembagian tim ke project dan memperbarui tabel Tim.</p>
+                                        </div>
+                                        <div class="flex flex-wrap gap-2">
+                                            <Link
+                                                class="btn btn-outline btn-sm"
+                                                :href="route('team-distribution.calculator', { project_id: project.id })"
+                                            >
+                                                Buka kalkulator penuh
+                                            </Link>
+                                            <button class="btn btn-primary btn-sm" :disabled="!canSaveTeamCalculator" @click="saveTeamCalculator">
+                                                {{ teamCalculatorSaveForm.processing ? 'Menyimpan...' : 'Simpan ke Tim' }}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div v-else class="mt-4 rounded-xl border border-dashed border-base-300 px-4 py-8 text-center text-sm text-base-content/60">
+                                    <p>Belum ada anggota tim di canvas ini.</p>
+                                    <div class="mt-4 flex flex-wrap justify-center gap-2">
+                                        <button class="btn btn-primary btn-sm" @click="addTeamCalculatorRow">Tambah Tim</button>
+                                        <button class="btn btn-outline btn-sm" @click="openAssignTeamModal">Assign via modal</button>
+                                        <Link
+                                            class="btn btn-primary btn-sm"
+                                            :href="route('team-distribution.calculator', { project_id: project.id })"
+                                        >
+                                            Buka kalkulator penuh
+                                        </Link>
+                                    </div>
                                 </div>
                             </div>
                         </div>

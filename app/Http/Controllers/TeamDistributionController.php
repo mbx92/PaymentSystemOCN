@@ -113,8 +113,8 @@ class TeamDistributionController extends Controller
         ]);
 
         $totalPercentage = collect($validated['distributions'])->sum('percentage');
-        if (abs($totalPercentage - 100) > 0.01) {
-            return back()->withErrors(['distributions' => 'Total persentase harus tepat 100%.']);
+        if ($totalPercentage > 100.01) {
+            return back()->withErrors(['distributions' => 'Total persentase pembagian tidak boleh melebihi 100%.']);
         }
 
         DB::transaction(function () use ($validated) {

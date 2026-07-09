@@ -196,7 +196,7 @@ const duplicateMemberIds = computed(() => {
 
 const hasDuplicates = computed(() => duplicateMemberIds.value.length > 0);
 
-const percentageValid = computed(() => Math.abs(totalPercentage.value - 100) < 0.01);
+const percentageValid = computed(() => totalPercentage.value <= 100.01);
 const budgetValid = computed(() => !props.selectedProject || totalPay.value <= distributableAmount.value + 0.01);
 const rowsValid = computed(() => rows.value.every((row) => row.user_id && row.role_in_project));
 const rateValid = computed(() => Number(distributionRate.value) >= 0 && Number(distributionRate.value) <= 100);
@@ -421,7 +421,7 @@ const save = () => {
             </div>
             <div v-if="!percentageValid" class="alert alert-warning">
               <ExclamationTriangleIcon class="h-5 w-5" />
-              <span>Total persentase pembagian saat ini {{ totalPercentage.toFixed(1) }}%. Total harus tepat 100%.</span>
+              <span>Total persentase pembagian saat ini {{ totalPercentage.toFixed(1) }}%. Total tidak boleh melebihi 100%.</span>
             </div>
             <div v-if="!budgetValid" class="alert alert-error">
               <ExclamationTriangleIcon class="h-5 w-5" />
@@ -513,7 +513,7 @@ const save = () => {
               <div class="grid gap-3 border-t border-base-300 pt-4 md:grid-cols-4">
                 <div>
                   <p class="text-xs uppercase text-base-content/50">Total Persentase</p>
-                  <p :class="['mt-1 text-lg font-bold', percentageValid ? 'text-success' : 'text-error']">
+                  <p :class="['mt-1 text-lg font-bold', percentageValid ? 'text-primary' : 'text-error']">
                     {{ totalPercentage.toFixed(1) }}%
                   </p>
                 </div>

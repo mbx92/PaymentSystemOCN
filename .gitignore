@@ -20,3 +20,4 @@ yarn-error.log
 /.cursor
 /node_modules   
 .cursor/mcp.json
+.claude/settings.json
