@@ -33,7 +33,7 @@ class AccountingInventoryTest extends TestCase
             ->post(route('erp.accounting.inventaris.store'), [
                 'item_name' => 'Laptop Admin',
                 'qty' => 2,
-                'amount' => 15000000,
+                'unit_price' => 7500000,
                 'acquisition_date' => '2026-05-17',
                 'asset_account_id' => $peralatan->id,
                 'cash_account_id' => $bank->id,
@@ -44,6 +44,9 @@ class AccountingInventoryTest extends TestCase
 
         $record = AccountingInventoryRecord::query()->firstOrFail();
         $this->assertSame('Laptop Admin', $record->item_name);
+        $this->assertSame(2.0, (float) $record->qty);
+        $this->assertSame(7500000.0, (float) $record->unit_price);
+        $this->assertSame(15000000.0, (float) $record->amount);
         $this->assertSame($peralatan->id, (int) $record->asset_account_id);
         $this->assertSame($bank->id, (int) $record->cash_account_id);
 
@@ -82,7 +85,7 @@ class AccountingInventoryTest extends TestCase
             ->post(route('erp.accounting.inventaris.store'), [
                 'item_name' => 'Printer Thermal',
                 'qty' => 1,
-                'amount' => 2500000,
+                'unit_price' => 2500000,
                 'acquisition_date' => '2026-05-17',
                 'asset_account_id' => $peralatan->id,
                 'cash_account_id' => $bank->id,
@@ -138,7 +141,7 @@ class AccountingInventoryTest extends TestCase
                 ->post(route('erp.accounting.inventaris.store'), [
                     'item_name' => $index === 1 ? 'Laptop Admin' : "Inventaris #{$index}",
                     'qty' => 1,
-                    'amount' => 1000000 + $index,
+                    'unit_price' => 1000000 + $index,
                     'acquisition_date' => '2026-05-17',
                     'asset_account_id' => $peralatan->id,
                     'cash_account_id' => $bank->id,
@@ -161,24 +164,25 @@ class AccountingInventoryTest extends TestCase
 
         $this
             ->actingAs($user)
-            ->get(route('erp.accounting.inventaris', ['per_page' => 25, 'page' => 1]))
+            ->get(route('erp.accounting.inventaris', ['per_page' => 10, 'page' => 1]))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('ERP/Accounting/Inventaris')
-                ->has('records.data', 25)
-                ->where('records.per_page', 25)
-                ->where('records.last_page', 2)
+                ->has('records.data', 10)
+                ->where('records.per_page', 10)
+                ->where('records.last_page', 3)
                 ->where('records.total', 26)
+                ->has('records.links')
             );
 
         $this
             ->actingAs($user)
-            ->get(route('erp.accounting.inventaris', ['per_page' => 25, 'page' => 2]))
+            ->get(route('erp.accounting.inventaris', ['per_page' => 10, 'page' => 3]))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('ERP/Accounting/Inventaris')
-                ->has('records.data', 1)
-                ->where('records.current_page', 2)
+                ->has('records.data', 6)
+                ->where('records.current_page', 3)
             );
     }
 
@@ -196,7 +200,7 @@ class AccountingInventoryTest extends TestCase
             ->post(route('erp.accounting.inventaris.store'), [
                 'item_name' => 'Laptop Admin',
                 'qty' => 1,
-                'amount' => 10000000,
+                'unit_price' => 10000000,
                 'acquisition_date' => '2026-05-17',
                 'asset_account_id' => $peralatan->id,
                 'cash_account_id' => $bank->id,
@@ -211,7 +215,7 @@ class AccountingInventoryTest extends TestCase
             ->patch(route('erp.accounting.inventaris.update', $record), [
                 'item_name' => 'Laptop Admin Pro',
                 'qty' => 2,
-                'amount' => 12000000,
+                'unit_price' => 6000000,
                 'acquisition_date' => '2026-05-18',
                 'asset_account_id' => $kendaraan->id,
                 'cash_account_id' => $bank->id,
@@ -223,6 +227,7 @@ class AccountingInventoryTest extends TestCase
         $record->refresh();
         $this->assertSame('Laptop Admin Pro', $record->item_name);
         $this->assertSame(2.0, (float) $record->qty);
+        $this->assertSame(6000000.0, (float) $record->unit_price);
         $this->assertSame(12000000.0, (float) $record->amount);
         $this->assertSame($kendaraan->id, (int) $record->asset_account_id);
         $this->assertNotSame($originalEntryId, $record->journal_entry_id);
@@ -255,7 +260,7 @@ class AccountingInventoryTest extends TestCase
             ->post(route('erp.accounting.inventaris.store'), [
                 'item_name' => 'Printer Thermal',
                 'qty' => 1,
-                'amount' => 2500000,
+                'unit_price' => 2500000,
                 'acquisition_date' => '2026-05-17',
                 'asset_account_id' => $peralatan->id,
                 'cash_account_id' => $bank->id,

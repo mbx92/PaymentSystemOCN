@@ -15,6 +15,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -81,6 +82,7 @@ class AccountingInventoryController extends Controller
                 'id' => $row->id,
                 'item_name' => $row->item_name,
                 'qty' => (float) $row->qty,
+                'unit_price' => (float) ($row->unit_price ?? ($row->qty > 0 ? round((float) $row->amount / (float) $row->qty, 2) : (float) $row->amount)),
                 'amount' => (float) $row->amount,
                 'acquisition_date' => $row->acquisition_date?->format('Y-m-d'),
                 'asset_account_id' => $row->asset_account_id,
@@ -117,8 +119,8 @@ class AccountingInventoryController extends Controller
     {
         $validated = $request->validate([
             'item_name' => ['required', 'string', 'max:255'],
-            'qty' => ['nullable', 'numeric', 'min:0.01'],
-            'amount' => ['required', 'numeric', 'min:1'],
+            'qty' => ['required', 'numeric', 'min:0.01'],
+            'unit_price' => ['required', 'numeric', 'min:1'],
             'acquisition_date' => ['required', 'date'],
             'asset_account_id' => Account::inventoryAssetIdValidationRules(),
             'cash_account_id' => Account::cashBankIdValidationRules(),
@@ -127,15 +129,15 @@ class AccountingInventoryController extends Controller
 
         $assetAccount = Account::query()->findOrFail((int) $validated['asset_account_id']);
         $cashAccount = Account::query()->findOrFail((int) $validated['cash_account_id']);
-        $amount = (float) $validated['amount'];
-        $qty = (float) ($validated['qty'] ?? 1);
+        [$qty, $unitPrice, $amount] = $this->resolveQtyUnitPriceAmount($validated);
         $itemName = trim($validated['item_name']);
         $note = trim((string) ($validated['note'] ?? ''));
 
-        DB::transaction(function () use ($request, $validated, $assetAccount, $cashAccount, $amount, $qty, $itemName, $note): void {
+        DB::transaction(function () use ($request, $validated, $assetAccount, $cashAccount, $amount, $qty, $unitPrice, $itemName, $note): void {
             $record = AccountingInventoryRecord::query()->create([
                 'item_name' => $itemName,
                 'qty' => $qty,
+                'unit_price' => $unitPrice,
                 'amount' => $amount,
                 'acquisition_date' => $validated['acquisition_date'],
                 'asset_account_id' => $assetAccount->id,
@@ -178,8 +180,8 @@ class AccountingInventoryController extends Controller
 
         $validated = $request->validate([
             'item_name' => ['required', 'string', 'max:255'],
-            'qty' => ['nullable', 'numeric', 'min:0.01'],
-            'amount' => ['required', 'numeric', 'min:1'],
+            'qty' => ['required', 'numeric', 'min:0.01'],
+            'unit_price' => ['required', 'numeric', 'min:1'],
             'acquisition_date' => ['required', 'date'],
             'asset_account_id' => Account::inventoryAssetIdValidationRules(),
             'cash_account_id' => Account::cashBankIdValidationRules(),
@@ -195,12 +197,11 @@ class AccountingInventoryController extends Controller
 
         $assetAccount = Account::query()->findOrFail((int) $validated['asset_account_id']);
         $cashAccount = Account::query()->findOrFail((int) $validated['cash_account_id']);
-        $amount = (float) $validated['amount'];
-        $qty = (float) ($validated['qty'] ?? 1);
+        [$qty, $unitPrice, $amount] = $this->resolveQtyUnitPriceAmount($validated);
         $itemName = trim($validated['item_name']);
         $note = trim((string) ($validated['note'] ?? ''));
 
-        DB::transaction(function () use ($record, $validated, $assetAccount, $cashAccount, $amount, $qty, $itemName, $note, $companyId): void {
+        DB::transaction(function () use ($record, $validated, $assetAccount, $cashAccount, $amount, $qty, $unitPrice, $itemName, $note, $companyId): void {
             if ($record->journal_entry_id) {
                 $this->createReversalJournalEntry($record->journal_entry_id, $companyId);
             }
@@ -208,6 +209,7 @@ class AccountingInventoryController extends Controller
             $record->update([
                 'item_name' => $itemName,
                 'qty' => $qty,
+                'unit_price' => $unitPrice,
                 'amount' => $amount,
                 'acquisition_date' => $validated['acquisition_date'],
                 'asset_account_id' => $assetAccount->id,
@@ -260,6 +262,25 @@ class AccountingInventoryController extends Controller
         ]);
     }
 
+    /**
+     * @param  array{qty?: mixed, unit_price?: mixed}  $validated
+     * @return array{0: float, 1: float, 2: float}
+     */
+    private function resolveQtyUnitPriceAmount(array $validated): array
+    {
+        $qty = round((float) $validated['qty'], 2);
+        $unitPrice = round((float) $validated['unit_price'], 2);
+        $amount = round($qty * $unitPrice, 2);
+
+        if ($amount < 1) {
+            throw ValidationException::withMessages([
+                'unit_price' => 'Total nominal (qty × harga satuan) minimal Rp 1.',
+            ]);
+        }
+
+        return [$qty, $unitPrice, $amount];
+    }
+
     private function buildDescription(string $itemName, string $note): string
     {
         $description = "Pembelian inventaris: {$itemName}";
@@ -268,6 +289,13 @@ class AccountingInventoryController extends Controller
         }
 
         return $description;
+    }
+
+    protected function resolvedPerPage(Request $request): int
+    {
+        $perPage = (int) $request->query('per_page', 10);
+
+        return in_array($perPage, self::ALLOWED_PER_PAGE, true) ? $perPage : 10;
     }
 
     private function createReversalJournalEntry(int $originalEntryId, ?int $companyId = null): void

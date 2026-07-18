@@ -5,11 +5,19 @@ import { computed } from 'vue';
 const props = defineProps({
   paginator: { type: Object, required: true },
   showPerPage: { type: Boolean, default: true },
+  perPageOptions: {
+    type: Array,
+    default: () => [10, 15, 25, 50, 75, 100, 125, 150, 175, 200, 225, 250],
+  },
 });
 
 const emit = defineEmits(['update:perPage']);
 
-const perPageOptions = [25, 50, 75, 100, 125, 150, 175, 200, 225, 250];
+const resolvedPerPageOptions = computed(() => (
+  props.perPageOptions?.length
+    ? props.perPageOptions
+    : [10, 15, 25, 50, 75, 100, 125, 150, 175, 200, 225, 250]
+));
 
 const summary = computed(() => {
   const p = props.paginator;
@@ -40,14 +48,17 @@ const onPerPageInput = (e) => {
             :value="currentPerPage"
             @change="onPerPageInput"
           >
-            <option v-for="n in perPageOptions" :key="n" :value="n">{{ n }}</option>
+            <option v-for="n in resolvedPerPageOptions" :key="n" :value="n">{{ n }}</option>
           </select>
         </label>
       </template>
       <span>{{ summary }}</span>
     </div>
-    <div v-if="(paginator?.last_page ?? 1) > 1" class="flex flex-wrap justify-end gap-1">
-      <template v-for="link in paginator.links" :key="link.label">
+    <div
+      v-if="(paginator?.total ?? 0) > 0 && (paginator?.links?.length ?? 0) > 0"
+      class="flex flex-wrap justify-end gap-1"
+    >
+      <template v-for="(link, index) in paginator.links" :key="`${index}-${link.label}`">
         <Link
           v-if="link.url"
           :href="link.url"

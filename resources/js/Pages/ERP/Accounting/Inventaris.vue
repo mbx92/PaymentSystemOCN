@@ -4,7 +4,7 @@ import CurrencyInput from '@/Components/CurrencyInput.vue';
 import DataTablePagination from '@/Components/DataTablePagination.vue';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { ArchiveBoxIcon, ArrowLeftIcon } from '@heroicons/vue/24/outline';
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 import { useDateFormat } from '@/composables/useDateFormat';
 
@@ -28,7 +28,7 @@ const filters = ref({
   date_to: props.filters?.date_to ?? '',
   asset_account_id: props.filters?.asset_account_id ?? '',
   q: props.filters?.q ?? '',
-  per_page: Number(props.filters?.per_page ?? props.records?.per_page ?? 25),
+  per_page: Number(props.filters?.per_page ?? props.records?.per_page ?? 10),
 });
 
 let timer;
@@ -43,9 +43,16 @@ watch(filters, (val) => {
   }, 300);
 }, { deep: true });
 
+const calcAmount = (qty, unitPrice) => {
+  const q = Number(qty) || 0;
+  const p = Number(unitPrice) || 0;
+  return Math.round(q * p);
+};
+
 const form = useForm({
   item_name: '',
   qty: 1,
+  unit_price: 0,
   amount: 0,
   acquisition_date: new Date().toISOString().slice(0, 10),
   asset_account_id: props.defaultAssetAccountId ?? props.assetAccounts?.[0]?.id ?? '',
@@ -53,10 +60,18 @@ const form = useForm({
   note: '',
 });
 
+watch(
+  () => [form.qty, form.unit_price],
+  ([qty, unitPrice]) => {
+    form.amount = calcAmount(qty, unitPrice);
+  },
+);
+
 const resetForm = () => {
   form.reset();
   form.item_name = '';
   form.qty = 1;
+  form.unit_price = 0;
   form.amount = 0;
   form.acquisition_date = new Date().toISOString().slice(0, 10);
   form.asset_account_id = props.defaultAssetAccountId ?? props.assetAccounts?.[0]?.id ?? '';
@@ -70,7 +85,16 @@ const openModal = () => {
 };
 
 const submit = () => {
-  form.post(route('erp.accounting.inventaris.store'), {
+  form.amount = calcAmount(form.qty, form.unit_price);
+  form.transform((data) => ({
+    item_name: data.item_name,
+    qty: data.qty,
+    unit_price: data.unit_price,
+    acquisition_date: data.acquisition_date,
+    asset_account_id: data.asset_account_id,
+    cash_account_id: data.cash_account_id,
+    note: data.note,
+  })).post(route('erp.accounting.inventaris.store'), {
     preserveScroll: true,
     onSuccess: () => {
       resetForm();
@@ -83,6 +107,7 @@ const editForm = useForm({
   id: '',
   item_name: '',
   qty: 1,
+  unit_price: 0,
   amount: 0,
   acquisition_date: '',
   asset_account_id: '',
@@ -90,13 +115,21 @@ const editForm = useForm({
   note: '',
 });
 
+watch(
+  () => [editForm.qty, editForm.unit_price],
+  ([qty, unitPrice]) => {
+    editForm.amount = calcAmount(qty, unitPrice);
+  },
+);
+
 const deleting = useForm({});
 
 const openEditModal = (row) => {
   editForm.id = row.id;
   editForm.item_name = row.item_name || '';
   editForm.qty = row.qty ?? 1;
-  editForm.amount = row.amount ?? 0;
+  editForm.unit_price = row.unit_price ?? (row.qty ? Math.round(row.amount / row.qty) : row.amount) ?? 0;
+  editForm.amount = calcAmount(editForm.qty, editForm.unit_price);
   editForm.acquisition_date = row.acquisition_date || '';
   editForm.asset_account_id = row.asset_account_id || props.defaultAssetAccountId || '';
   editForm.cash_account_id = row.cash_account_id || props.cashAccounts?.[0]?.id || '';
@@ -105,7 +138,16 @@ const openEditModal = (row) => {
 };
 
 const submitEdit = () => {
-  editForm.patch(route('erp.accounting.inventaris.update', editForm.id), {
+  editForm.amount = calcAmount(editForm.qty, editForm.unit_price);
+  editForm.transform((data) => ({
+    item_name: data.item_name,
+    qty: data.qty,
+    unit_price: data.unit_price,
+    acquisition_date: data.acquisition_date,
+    asset_account_id: data.asset_account_id,
+    cash_account_id: data.cash_account_id,
+    note: data.note,
+  })).patch(route('erp.accounting.inventaris.update', editForm.id), {
     preserveScroll: true,
     onSuccess: () => document.getElementById('modal-inventaris-edit')?.close(),
   });
@@ -117,6 +159,8 @@ const destroyRow = (row) => {
 };
 
 const rows = () => props.records?.data ?? [];
+const formTotal = computed(() => calcAmount(form.qty, form.unit_price));
+const editTotal = computed(() => calcAmount(editForm.qty, editForm.unit_price));
 
 const itemTitle = (row) => {
   const parts = [row.company_name, row.note, row.creator_name ? `Oleh: ${row.creator_name}` : null].filter(Boolean);
@@ -217,7 +261,8 @@ const accountName = (label) => {
                 <th class="w-[6.25rem] whitespace-nowrap">Tgl</th>
                 <th>Nama</th>
                 <th class="w-12 text-right">Qty</th>
-                <th class="w-[7.5rem] text-right">Nominal</th>
+                <th class="w-[6.5rem] text-right">Harga</th>
+                <th class="w-[7rem] text-right">Total</th>
                 <th class="w-[5.5rem]">Aset</th>
                 <th class="w-[5.5rem]">Kas</th>
                 <th class="w-[5.5rem]">Jurnal</th>
@@ -234,6 +279,7 @@ const accountName = (label) => {
                   </p>
                 </td>
                 <td class="text-right text-xs tabular-nums">{{ row.qty }}</td>
+                <td class="text-right text-xs tabular-nums">{{ format(row.unit_price) }}</td>
                 <td class="text-right text-xs font-semibold tabular-nums">{{ format(row.amount) }}</td>
                 <td class="w-[5.5rem] max-w-[5.5rem] truncate text-xs" :title="row.asset_account_label">{{ accountName(row.asset_account_label) }}</td>
                 <td class="w-[5.5rem] max-w-[5.5rem] truncate text-xs" :title="row.cash_account_label">{{ accountName(row.cash_account_label) }}</td>
@@ -246,13 +292,14 @@ const accountName = (label) => {
                 </td>
               </tr>
               <tr v-if="!rows().length">
-                <td colspan="8" class="py-8 text-center text-base-content/50">Belum ada pencatatan inventaris.</td>
+                <td colspan="9" class="py-8 text-center text-base-content/50">Belum ada pencatatan inventaris.</td>
               </tr>
             </tbody>
           </table>
         </div>
         <DataTablePagination
           :paginator="records"
+          :per-page-options="[10, 15, 25, 50, 75, 100]"
           @update:per-page="(n) => { filters.per_page = n; }"
         />
       </div>
@@ -262,7 +309,7 @@ const accountName = (label) => {
       <div class="modal-box max-w-xl">
         <h3 class="font-bold text-lg">Catat Inventaris</h3>
         <p class="mt-1 text-sm text-base-content/60">
-          Jurnal: debit akun aset inventaris, kredit akun kas/bank. Akun aset default ke Peralatan (bisa diubah).
+          Total dihitung otomatis: qty × harga satuan. Jurnal mem-posting total tersebut.
         </p>
         <div class="mt-4 space-y-3">
           <div>
@@ -290,7 +337,7 @@ const accountName = (label) => {
           </div>
           <div class="grid gap-3 md:grid-cols-2">
             <div>
-              <label class="label py-0"><span class="label-text">Qty</span></label>
+              <label class="label py-0"><span class="label-text">Qty <span class="text-error">*</span></span></label>
               <input v-model.number="form.qty" type="number" min="0.01" step="0.01" class="input input-bordered w-full">
               <p v-if="form.errors.qty" class="text-error text-xs mt-1">{{ form.errors.qty }}</p>
             </div>
@@ -300,7 +347,11 @@ const accountName = (label) => {
               <p v-if="form.errors.acquisition_date" class="text-error text-xs mt-1">{{ form.errors.acquisition_date }}</p>
             </div>
           </div>
-          <CurrencyInput v-model="form.amount" label="Total nominal" :required="true" :error="form.errors.amount" />
+          <CurrencyInput v-model="form.unit_price" label="Harga satuan" :required="true" :error="form.errors.unit_price" />
+          <div class="rounded-lg border border-base-300 bg-base-200/50 px-3 py-2">
+            <p class="text-xs uppercase tracking-wide text-base-content/50">Total (qty × harga)</p>
+            <p class="mt-0.5 text-lg font-bold tabular-nums">{{ format(formTotal) }}</p>
+          </div>
           <div>
             <label class="label py-0"><span class="label-text">Catatan</span></label>
             <textarea v-model="form.note" class="textarea textarea-bordered w-full" rows="2" placeholder="Opsional: merk, serial, lokasi" />
@@ -319,7 +370,7 @@ const accountName = (label) => {
       <div class="modal-box max-w-xl">
         <h3 class="font-bold text-lg">Edit Inventaris</h3>
         <p class="mt-1 text-sm text-base-content/60">
-          Perubahan akan me-reverse jurnal lama lalu memposting ulang jurnal baru.
+          Total dihitung otomatis. Perubahan akan me-reverse jurnal lama lalu memposting ulang.
         </p>
         <div class="mt-4 space-y-3">
           <div>
@@ -347,7 +398,7 @@ const accountName = (label) => {
           </div>
           <div class="grid gap-3 md:grid-cols-2">
             <div>
-              <label class="label py-0"><span class="label-text">Qty</span></label>
+              <label class="label py-0"><span class="label-text">Qty <span class="text-error">*</span></span></label>
               <input v-model.number="editForm.qty" type="number" min="0.01" step="0.01" class="input input-bordered w-full">
               <p v-if="editForm.errors.qty" class="text-error text-xs mt-1">{{ editForm.errors.qty }}</p>
             </div>
@@ -357,7 +408,11 @@ const accountName = (label) => {
               <p v-if="editForm.errors.acquisition_date" class="text-error text-xs mt-1">{{ editForm.errors.acquisition_date }}</p>
             </div>
           </div>
-          <CurrencyInput v-model="editForm.amount" label="Total nominal" :required="true" :error="editForm.errors.amount" />
+          <CurrencyInput v-model="editForm.unit_price" label="Harga satuan" :required="true" :error="editForm.errors.unit_price" />
+          <div class="rounded-lg border border-base-300 bg-base-200/50 px-3 py-2">
+            <p class="text-xs uppercase tracking-wide text-base-content/50">Total (qty × harga)</p>
+            <p class="mt-0.5 text-lg font-bold tabular-nums">{{ format(editTotal) }}</p>
+          </div>
           <div>
             <label class="label py-0"><span class="label-text">Catatan</span></label>
             <textarea v-model="editForm.note" class="textarea textarea-bordered w-full" rows="2" placeholder="Opsional: merk, serial, lokasi" />
