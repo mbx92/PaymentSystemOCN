@@ -170,6 +170,8 @@ Route::middleware(['auth', 'throttle:120,1'])->group(function () {
         Route::post('erp/accounting/utilities/backfill-material-cogs', [ERPAccountingUtilityController::class, 'backfillMaterialCogs'])->name('erp.accounting.utilities.backfill-material-cogs');
         Route::post('erp/accounting/mutasi-kas-bank', [CashBankTransferController::class, 'store'])->name('erp.accounting.cash-bank-transfer.store');
         Route::post('erp/accounting/inventaris', [AccountingInventoryController::class, 'store'])->name('erp.accounting.inventaris.store');
+        Route::patch('erp/accounting/inventaris/{record}', [AccountingInventoryController::class, 'update'])->name('erp.accounting.inventaris.update');
+        Route::delete('erp/accounting/inventaris/{record}', [AccountingInventoryController::class, 'destroy'])->name('erp.accounting.inventaris.destroy');
     });
 
     // Projects (Admin + Manajer)

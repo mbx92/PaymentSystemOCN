@@ -74,7 +74,56 @@ const submit = () => {
   });
 };
 
+const editForm = useForm({
+  id: '',
+  item_name: '',
+  qty: 1,
+  amount: 0,
+  acquisition_date: '',
+  asset_account_id: '',
+  cash_account_id: '',
+  note: '',
+});
+
+const deleting = useForm({});
+
+const openEditModal = (row) => {
+  editForm.id = row.id;
+  editForm.item_name = row.item_name || '';
+  editForm.qty = row.qty ?? 1;
+  editForm.amount = row.amount ?? 0;
+  editForm.acquisition_date = row.acquisition_date || '';
+  editForm.asset_account_id = row.asset_account_id || props.defaultAssetAccountId || '';
+  editForm.cash_account_id = row.cash_account_id || props.cashAccounts?.[0]?.id || '';
+  editForm.note = row.note || '';
+  document.getElementById('modal-inventaris-edit')?.showModal();
+};
+
+const submitEdit = () => {
+  editForm.patch(route('erp.accounting.inventaris.update', editForm.id), {
+    preserveScroll: true,
+    onSuccess: () => document.getElementById('modal-inventaris-edit')?.close(),
+  });
+};
+
+const destroyRow = (row) => {
+  if (!confirm(`Hapus inventaris "${row.item_name}"? Jurnal terkait akan di-reverse.`)) return;
+  deleting.delete(route('erp.accounting.inventaris.destroy', row.id), { preserveScroll: true });
+};
+
 const rows = () => props.records?.data ?? [];
+
+const itemTitle = (row) => {
+  const parts = [row.company_name, row.note, row.creator_name ? `Oleh: ${row.creator_name}` : null].filter(Boolean);
+  return parts.join(' · ') || undefined;
+};
+
+/** Label "1401 - Peralatan" → "Peralatan" */
+const accountName = (label) => {
+  if (!label) return '—';
+  const sep = label.indexOf(' - ');
+  return sep === -1 ? label : label.slice(sep + 3);
+};
 </script>
 
 <template>
@@ -150,37 +199,43 @@ const rows = () => props.records?.data ?? [];
         <div class="ocn-panel__head">
           <h2 class="ocn-panel__title">Riwayat pencatatan</h2>
         </div>
-        <div class="overflow-x-auto">
-          <table class="table table-zebra">
+        <div class="w-full">
+          <table class="table table-zebra table-sm w-full">
             <thead>
-              <tr>
-                <th>Tanggal</th>
-                <th>Usaha</th>
-                <th>Nama inventaris</th>
-                <th class="text-right">Qty</th>
-                <th class="text-right">Nominal</th>
-                <th>Akun aset</th>
-                <th>Kas/Bank</th>
-                <th>Catatan</th>
-                <th>Jurnal</th>
-                <th>Oleh</th>
+              <tr class="text-xs">
+                <th class="w-[6.25rem] whitespace-nowrap">Tgl</th>
+                <th>Nama</th>
+                <th class="w-12 text-right">Qty</th>
+                <th class="w-[7.5rem] text-right">Nominal</th>
+                <th class="w-[5.5rem]">Aset</th>
+                <th class="w-[5.5rem]">Kas</th>
+                <th class="w-[5.5rem]">Jurnal</th>
+                <th class="w-[5.5rem]"></th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="row in rows()" :key="row.id">
-                <td class="whitespace-nowrap">{{ formatDate(row.acquisition_date) }}</td>
-                <td class="text-sm">{{ row.company_name }}</td>
-                <td class="font-medium">{{ row.item_name }}</td>
-                <td class="text-right">{{ row.qty }}</td>
-                <td class="text-right font-semibold">{{ format(row.amount) }}</td>
-                <td class="text-sm">{{ row.asset_account_label }}</td>
-                <td class="text-sm">{{ row.cash_account_label }}</td>
-                <td class="max-w-xs truncate">{{ row.note || '—' }}</td>
-                <td class="font-mono text-xs">{{ row.journal_entry_no || '—' }}</td>
-                <td class="text-sm">{{ row.creator_name || '—' }}</td>
+                <td class="w-[6.25rem] whitespace-nowrap text-xs tabular-nums">{{ formatDate(row.acquisition_date) }}</td>
+                <td class="min-w-0">
+                  <p class="truncate font-medium text-sm" :title="itemTitle(row)">{{ row.item_name }}</p>
+                  <p v-if="row.company_name" class="truncate text-[11px] text-base-content/50" :title="row.company_name">
+                    {{ row.company_name }}
+                  </p>
+                </td>
+                <td class="text-right text-xs tabular-nums">{{ row.qty }}</td>
+                <td class="text-right text-xs font-semibold tabular-nums">{{ format(row.amount) }}</td>
+                <td class="w-[5.5rem] max-w-[5.5rem] truncate text-xs" :title="row.asset_account_label">{{ accountName(row.asset_account_label) }}</td>
+                <td class="w-[5.5rem] max-w-[5.5rem] truncate text-xs" :title="row.cash_account_label">{{ accountName(row.cash_account_label) }}</td>
+                <td class="font-mono text-[11px] truncate" :title="row.journal_entry_no">{{ row.journal_entry_no || '—' }}</td>
+                <td>
+                  <div class="flex justify-end gap-0.5">
+                    <button type="button" class="btn btn-ghost btn-xs" @click="openEditModal(row)">Edit</button>
+                    <button type="button" class="btn btn-ghost btn-xs text-error" @click="destroyRow(row)">Hapus</button>
+                  </div>
+                </td>
               </tr>
               <tr v-if="!rows().length">
-                <td colspan="10" class="py-8 text-center text-base-content/50">Belum ada pencatatan inventaris.</td>
+                <td colspan="8" class="py-8 text-center text-base-content/50">Belum ada pencatatan inventaris.</td>
               </tr>
             </tbody>
           </table>
@@ -244,6 +299,64 @@ const rows = () => props.records?.data ?? [];
           <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
           <button type="button" class="btn btn-primary" :disabled="form.processing" @click="submit">
             {{ form.processing ? 'Menyimpan...' : 'Posting jurnal' }}
+          </button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="modal-inventaris-edit" class="modal">
+      <div class="modal-box max-w-xl">
+        <h3 class="font-bold text-lg">Edit Inventaris</h3>
+        <p class="mt-1 text-sm text-base-content/60">
+          Perubahan akan me-reverse jurnal lama lalu memposting ulang jurnal baru.
+        </p>
+        <div class="mt-4 space-y-3">
+          <div>
+            <label class="label py-0"><span class="label-text">Nama inventaris <span class="text-error">*</span></span></label>
+            <input v-model="editForm.item_name" type="text" class="input input-bordered w-full">
+            <p v-if="editForm.errors.item_name" class="text-error text-xs mt-1">{{ editForm.errors.item_name }}</p>
+          </div>
+          <div class="grid gap-3 md:grid-cols-2">
+            <div>
+              <label class="label py-0"><span class="label-text">Akun aset (inventaris) <span class="text-error">*</span></span></label>
+              <select v-model="editForm.asset_account_id" class="select select-bordered w-full">
+                <option value="" disabled>Pilih akun aset</option>
+                <option v-for="acc in assetAccounts" :key="`edit-asset-${acc.id}`" :value="acc.id">{{ acc.code }} - {{ acc.name }}</option>
+              </select>
+              <p v-if="editForm.errors.asset_account_id" class="text-error text-xs mt-1">{{ editForm.errors.asset_account_id }}</p>
+            </div>
+            <div>
+              <label class="label py-0"><span class="label-text">Bayar dari (Kas/Bank) <span class="text-error">*</span></span></label>
+              <select v-model="editForm.cash_account_id" class="select select-bordered w-full" :disabled="!(cashAccounts || []).length">
+                <option value="" disabled>{{ (cashAccounts || []).length ? 'Pilih akun kas/bank' : 'Belum ada akun kas/bank' }}</option>
+                <option v-for="acc in cashAccounts" :key="`edit-cash-${acc.id}`" :value="acc.id">{{ acc.code }} - {{ acc.name }}</option>
+              </select>
+              <p v-if="editForm.errors.cash_account_id" class="text-error text-xs mt-1">{{ editForm.errors.cash_account_id }}</p>
+            </div>
+          </div>
+          <div class="grid gap-3 md:grid-cols-2">
+            <div>
+              <label class="label py-0"><span class="label-text">Qty</span></label>
+              <input v-model.number="editForm.qty" type="number" min="0.01" step="0.01" class="input input-bordered w-full">
+              <p v-if="editForm.errors.qty" class="text-error text-xs mt-1">{{ editForm.errors.qty }}</p>
+            </div>
+            <div>
+              <label class="label py-0"><span class="label-text">Tanggal <span class="text-error">*</span></span></label>
+              <input v-model="editForm.acquisition_date" type="date" class="input input-bordered w-full">
+              <p v-if="editForm.errors.acquisition_date" class="text-error text-xs mt-1">{{ editForm.errors.acquisition_date }}</p>
+            </div>
+          </div>
+          <CurrencyInput v-model="editForm.amount" label="Total nominal" :required="true" :error="editForm.errors.amount" />
+          <div>
+            <label class="label py-0"><span class="label-text">Catatan</span></label>
+            <textarea v-model="editForm.note" class="textarea textarea-bordered w-full" rows="2" placeholder="Opsional: merk, serial, lokasi" />
+            <p v-if="editForm.errors.note" class="text-error text-xs mt-1">{{ editForm.errors.note }}</p>
+          </div>
+        </div>
+        <div class="modal-action">
+          <form method="dialog"><button class="btn btn-ghost">Batal</button></form>
+          <button type="button" class="btn btn-primary" :disabled="editForm.processing" @click="submitEdit">
+            {{ editForm.processing ? 'Menyimpan...' : 'Simpan perubahan' }}
           </button>
         </div>
       </div>
