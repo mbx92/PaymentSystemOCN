@@ -11,6 +11,7 @@ use App\Http\Controllers\CrmActivityController;
 use App\Http\Controllers\CrmCustomerController;
 use App\Http\Controllers\CrmLeadController;
 use App\Http\Controllers\CrmPipelineController;
+use App\Http\Controllers\DocumentTemplateController;
 use App\Http\Controllers\ERPAccountingCoaSettingsController;
 use App\Http\Controllers\ERPAccountingFiscalPeriodController;
 use App\Http\Controllers\ERPAccountingOpeningBalanceController;
@@ -55,6 +56,8 @@ use App\Http\Controllers\RndProjectController;
 use App\Http\Controllers\RndPurchaseController;
 use App\Http\Controllers\RndReportController;
 use App\Http\Controllers\RndResearchNoteController;
+use App\Http\Controllers\ShelfController;
+use App\Http\Controllers\SupplierCatalogController;
 use App\Http\Controllers\TeamDistributionController;
 use App\Http\Controllers\UiPreferenceController;
 use App\Http\Controllers\UserController;
@@ -83,6 +86,12 @@ Route::get('/', [PublicHomeController::class, 'index'])
 Route::post('/landing/track', [PublicHomeController::class, 'track'])
     ->middleware('throttle:landing-track')
     ->name('landing.track');
+Route::get('budget-share/{budget}', [ProjectBudgetController::class, 'publicCustomerView'])
+    ->middleware(['signed', 'throttle:30,1'])
+    ->name('erp.projects.budgets.customer-view.signed');
+Route::get('budget-share/{budget}/pdf', [ProjectBudgetController::class, 'publicPdf'])
+    ->middleware(['signed', 'throttle:30,1'])
+    ->name('erp.projects.budgets.customer-pdf.signed');
 
 Route::middleware(['auth', 'throttle:120,1'])->group(function () {
     // Profile (Breeze default)
@@ -154,7 +163,6 @@ Route::middleware(['auth', 'throttle:120,1'])->group(function () {
         Route::delete('erp/accounting/cashflow/cash-out/{cashOut}', [CashflowController::class, 'destroyCashOut'])->name('erp.accounting.cashflow.cash-out.destroy');
         Route::post('erp/accounting/opening-balance', [ERPAccountingOpeningBalanceController::class, 'store'])->name('erp.accounting.opening-balance.store');
         Route::post('erp/accounting/tutup-buku', [ERPAccountingFiscalPeriodController::class, 'store'])->name('erp.accounting.fiscal-periods.store');
-        Route::post('erp/accounting/tutup-buku/{fiscalPeriod}/reopen', [ERPAccountingFiscalPeriodController::class, 'reopen'])->name('erp.accounting.fiscal-periods.reopen');
         Route::post('erp/accounting/utilities/move-journals', [ERPAccountingUtilityController::class, 'moveJournalEntries'])->name('erp.accounting.utilities.move-journals');
         Route::post('erp/accounting/utilities/reverse-journal-sides', [ERPAccountingUtilityController::class, 'reverseJournalEntrySides'])->name('erp.accounting.utilities.reverse-journal-sides');
         Route::post('erp/accounting/utilities/correct-pos-channel-payable', [ERPAccountingUtilityController::class, 'correctPosChannelPayable'])->name('erp.accounting.utilities.correct-pos-channel-payable');
@@ -263,6 +271,22 @@ Route::middleware(['auth', 'throttle:120,1'])->group(function () {
         Route::post('erp/inventory/stock-transfer', [ERPInventoryController::class, 'storeStockTransfer'])->name('erp.inventory.stock-transfer.store');
         Route::get('erp/inventory/stock-report', [ERPInventoryController::class, 'stockReport'])->name('erp.inventory.stock-report');
         Route::get('erp/inventory/stock-movements', [ERPInventoryController::class, 'stockMovements'])->name('erp.inventory.stock-movements');
+        Route::get('erp/inventory/shelf-map', [ShelfController::class, 'page'])->name('erp.inventory.shelf-map');
+
+        // Shelf API routes (session-based, inside web middleware)
+        Route::prefix('api')->group(function () {
+            Route::get('/products/search', [ShelfController::class, 'productSearch']);
+            Route::get('/shelves', [ShelfController::class, 'index']);
+            Route::post('/shelves', [ShelfController::class, 'store']);
+            Route::delete('/shelves/{id}', [ShelfController::class, 'destroy']);
+            Route::patch('/shelves/{id}', [ShelfController::class, 'update']);
+            Route::get('/shelves/{id}/items', [ShelfController::class, 'items']);
+            Route::post('/shelves/{id}/slots', [ShelfController::class, 'storeSlot']);
+            Route::patch('/shelves/{id}/position', [ShelfController::class, 'updatePosition']);
+            Route::patch('/shelf-slots/{id}', [ShelfController::class, 'updateSlot']);
+            Route::delete('/shelf-slots/{id}', [ShelfController::class, 'destroySlot']);
+            Route::patch('/shelf-slots/{id}/position', [ShelfController::class, 'moveSlot']);
+        });
         Route::get('erp/purchasing/suppliers', [ERPPurchasingController::class, 'suppliers'])->name('erp.purchasing.suppliers');
         Route::post('erp/purchasing/suppliers', [ERPPurchasingController::class, 'storeSupplier'])->name('erp.purchasing.suppliers.store');
         Route::get('erp/purchasing/suppliers/{supplier}', [ERPPurchasingController::class, 'supplierShow'])->name('erp.purchasing.suppliers.show');
@@ -301,15 +325,24 @@ Route::middleware(['auth', 'throttle:120,1'])->group(function () {
         Route::get('erp/projects/budgets', [ProjectBudgetController::class, 'index'])->name('erp.projects.budgets.index');
         Route::post('erp/projects/budgets', [ProjectBudgetController::class, 'store'])->name('erp.projects.budgets.store');
         Route::get('erp/projects/budgets/{budget}', [ProjectBudgetController::class, 'show'])->name('erp.projects.budgets.show');
+        Route::get('erp/projects/budgets/{budget}/builder', [ProjectBudgetController::class, 'builder'])->name('erp.projects.budgets.builder');
+        Route::get('erp/projects/budgets/{budget}/customer-view', [ProjectBudgetController::class, 'customerView'])->name('erp.projects.budgets.customer-view');
         Route::put('erp/projects/budgets/{budget}', [ProjectBudgetController::class, 'update'])->name('erp.projects.budgets.update');
         Route::patch('erp/projects/budgets/{budget}/deal', [ProjectBudgetController::class, 'markDeal'])->name('erp.projects.budgets.deal');
+        Route::patch('erp/projects/budgets/{budget}/cancel', [ProjectBudgetController::class, 'cancel'])->name('erp.projects.budgets.cancel');
         Route::post('erp/projects/budgets/{budget}/convert', [ProjectBudgetController::class, 'convert'])->name('erp.projects.budgets.convert');
         Route::get('erp/projects/budgets/{budget}/pdf', [ProjectBudgetController::class, 'pdf'])->name('erp.projects.budgets.pdf');
+        Route::get('erp/projects/supplier-catalog', [SupplierCatalogController::class, 'page'])->name('erp.projects.supplier-catalog');
+        Route::get('api/supplier-catalog/sheets', [SupplierCatalogController::class, 'sheets']);
+        Route::post('api/supplier-catalog/sync', [SupplierCatalogController::class, 'sync']);
+        Route::get('api/supplier-catalog/{sheetKey}/items', [SupplierCatalogController::class, 'items']);
         Route::get('erp/projects/project-types', [ProjectTypeController::class, 'index'])->name('erp.projects.project-types.index');
         Route::post('erp/projects/project-types', [ProjectTypeController::class, 'store'])->name('erp.projects.project-types.store');
         Route::patch('erp/projects/project-types/{projectType}', [ProjectTypeController::class, 'update'])->name('erp.projects.project-types.update');
         Route::post('projects/{project}/materials', [ProjectController::class, 'storeMaterial'])->name('projects.materials.store');
         Route::get('projects/{project}/material-products/search', [ProjectController::class, 'materialProductSearch'])->name('projects.material-products.search');
+        Route::patch('projects/{project}/materials/{material}/usage', [ProjectController::class, 'toggleMaterialUsage'])->name('projects.materials.usage');
+        Route::patch('projects/{project}/stock-sync', [ProjectController::class, 'syncIssuedStock'])->name('projects.stock.sync');
         Route::delete('projects/{project}/materials/{material}', [ProjectController::class, 'destroyMaterial'])->name('projects.materials.destroy');
         Route::post('projects/{project}/legal-folder', [ProjectController::class, 'createLegalFolder'])->name('projects.legal-folder.create');
         Route::patch('projects/{project}/status', [ProjectController::class, 'updateStatus'])->name('projects.status.update');
@@ -395,6 +428,8 @@ Route::middleware(['auth', 'throttle:120,1'])->group(function () {
 
     // User Management (Admin only)
     Route::middleware('role:admin')->group(function () {
+        Route::post('erp/accounting/tutup-buku/{fiscalPeriod}/reopen', [ERPAccountingFiscalPeriodController::class, 'reopen'])->name('erp.accounting.fiscal-periods.reopen');
+        Route::post('erp/accounting/tutup-buku/reopen-by-date', [ERPAccountingFiscalPeriodController::class, 'reopenByDate'])->name('erp.accounting.fiscal-periods.reopen-by-date');
         Route::get('users/accounts', [UserController::class, 'index'])->name('users.accounts');
         Route::get('users/roles-permissions', [UserRolePermissionController::class, 'index'])->name('users.roles-permissions');
         Route::get('users', [UserController::class, 'workspace'])->name('users.index');
@@ -403,8 +438,19 @@ Route::middleware(['auth', 'throttle:120,1'])->group(function () {
         Route::put('users/{user}', [UserController::class, 'update'])->name('users.update');
         Route::delete('users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
         Route::get('erp/administration', [ERPModuleController::class, 'administration'])->name('erp.administration');
+        Route::get('erp/settings/document-templates', [DocumentTemplateController::class, 'index'])->name('erp.settings.document-templates.index');
+        Route::get('erp/settings/document-templates/create', [DocumentTemplateController::class, 'create'])->name('erp.settings.document-templates.create');
+        Route::post('erp/settings/document-templates', [DocumentTemplateController::class, 'store'])->name('erp.settings.document-templates.store');
+        Route::get('erp/settings/document-templates/{documentTemplate}/edit', [DocumentTemplateController::class, 'edit'])->name('erp.settings.document-templates.edit');
+        Route::put('erp/settings/document-templates/{documentTemplate}', [DocumentTemplateController::class, 'update'])->name('erp.settings.document-templates.update');
+        Route::delete('erp/settings/document-templates/{documentTemplate}', [DocumentTemplateController::class, 'destroy'])->name('erp.settings.document-templates.destroy');
+        Route::post('erp/settings/document-templates/{documentTemplate}/activate', [DocumentTemplateController::class, 'activate'])->name('erp.settings.document-templates.activate');
+        Route::post('erp/settings/document-templates/{documentTemplate}/duplicate', [DocumentTemplateController::class, 'duplicate'])->name('erp.settings.document-templates.duplicate');
+        Route::post('erp/settings/document-templates/preview', [DocumentTemplateController::class, 'preview'])->name('erp.settings.document-templates.preview');
+
         Route::get('erp/admin/erp-settings', [ERPAdministrationMasterDataController::class, 'erpSettings'])->name('erp.admin.erp-settings');
         Route::post('erp/admin/erp-settings', [ERPAdministrationMasterDataController::class, 'updateErpSettings'])->name('erp.admin.erp-settings.update');
+        Route::post('erp/admin/erp-settings/object-storage/test', [ERPAdministrationMasterDataController::class, 'testObjectStorageConnection'])->name('erp.admin.erp-settings.object-storage.test');
         Route::get('erp/admin/maintenance-mode', [ERPAdministrationMasterDataController::class, 'maintenanceMode'])->name('erp.admin.maintenance-mode');
         Route::post('erp/admin/maintenance-mode', [ERPAdministrationMasterDataController::class, 'updateMaintenanceMode'])->name('erp.admin.maintenance-mode.update');
         Route::get('erp/admin/server-monitoring', [ERPAdministrationMasterDataController::class, 'serverMonitoring'])->name('erp.admin.server-monitoring');

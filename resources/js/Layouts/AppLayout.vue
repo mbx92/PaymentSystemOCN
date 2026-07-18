@@ -29,6 +29,10 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    hideAssistant: {
+        type: Boolean,
+        default: false,
+    },
 });
 
 const SIDEBAR_COLLAPSE_STORAGE_KEY = 'ocn_sidebar_collapsed';
@@ -811,7 +815,7 @@ const handleSidebarItemMouseLeave = () => {
                 <slot />
             </main>
 
-            <div class="fixed bottom-3 right-3 z-[9999] flex flex-col items-end gap-2 sm:bottom-6 sm:right-6 sm:gap-3">
+            <div v-if="!props.hideAssistant" class="fixed bottom-3 right-3 z-[9999] flex flex-col items-end gap-2 sm:bottom-6 sm:right-6 sm:gap-3">
                 <div
                     v-if="chatPanelOpen"
                     class="w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-2xl sm:w-[42rem] sm:max-w-[calc(100vw-3rem)]"

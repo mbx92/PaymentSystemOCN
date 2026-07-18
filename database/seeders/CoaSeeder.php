@@ -47,6 +47,7 @@ class CoaSeeder extends Seeder
             ['code' => '4003', 'name' => 'Pendapatan Project', 'type' => 'revenue', 'normal_balance' => 'credit'],
             ['code' => '4004', 'name' => 'Pendapatan Lain-lain', 'type' => 'revenue', 'normal_balance' => 'credit'],
             ['code' => '4005', 'name' => 'Diskon Penjualan', 'type' => 'revenue', 'normal_balance' => 'debit'],
+            ['code' => '4020', 'name' => 'Diskon Invoice Project', 'type' => 'revenue', 'normal_balance' => 'debit'],
 
             // Expenses (5xxx)
             ['code' => '5001', 'name' => 'Beban Operasional', 'type' => 'expense', 'normal_balance' => 'debit'],

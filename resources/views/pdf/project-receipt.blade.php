@@ -263,6 +263,12 @@
             <div class="amount-card">
                 <div class="amount-label">Jumlah Diterima</div>
                 <div class="amount-value">{{ $rupiah($cashIn->amount) }}</div>
+                @if (($discountAmount ?? 0) > 0)
+                    <div class="muted" style="margin-top: 6px; color: #dbeafe; font-size: 8.5px; line-height: 1.45;">
+                        Tagihan dilunasi {{ $rupiah($settledAmount) }}<br>
+                        Diskon (potongan) − {{ $rupiah($discountAmount) }}
+                    </div>
+                @endif
             </div>
         </td>
     </tr>
@@ -283,6 +289,16 @@
             <td>Metode Bayar</td>
             <td>{{ $cashIn->paymentMethod?->name ?: '-' }}</td>
         </tr>
+        @if (($discountAmount ?? 0) > 0)
+            <tr>
+                <td>Tagihan Dilunasi</td>
+                <td>{{ $rupiah($settledAmount) }}</td>
+            </tr>
+            <tr>
+                <td>Diskon (Potongan)</td>
+                <td>− {{ $rupiah($discountAmount) }}</td>
+            </tr>
+        @endif
         <tr>
             <td>Keterangan</td>
             <td>{{ $cashIn->note ?: '-' }}</td>

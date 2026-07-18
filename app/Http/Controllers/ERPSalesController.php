@@ -19,6 +19,8 @@ use App\Models\PosSale;
 use App\Models\ProductStockMovement;
 use App\Models\Project;
 use App\Models\User;
+use App\Services\DocumentTemplateService;
+use App\Services\GeneratedFileArchiveService;
 use App\Services\LanEscPosPrinter;
 use App\Services\ThermalPosReceiptData;
 use App\Services\ThermalPosReceiptRenderer;
@@ -41,6 +43,7 @@ class ERPSalesController extends Controller
     public function __construct(
         private readonly GlPostingService $glPostingService,
         private readonly DocumentNumberService $documentNumberService,
+        private readonly GeneratedFileArchiveService $generatedFileArchiveService,
     ) {}
 
     public function pos(Request $request): Response
@@ -1093,7 +1096,6 @@ class ERPSalesController extends Controller
         abort_unless($project->status === 'selesai', 404);
 
         $project->load(['payments', 'cashIns.creator', 'cashIns.paymentMethod', 'cashIns.cashAccount', 'materials.product', 'convertedBudget.items', 'projectTypeDefinition']);
-        $project->loadSum('cashIns as paid_amount', 'amount');
         $project->invoice_number = $this->ensureProjectInvoiceNumber($project);
 
         return Inertia::render('ERP/Sales/ProjectInvoiceShow', [
@@ -1118,6 +1120,8 @@ class ERPSalesController extends Controller
                     ->map(fn (CashIn $cashIn) => [
                         'id' => $cashIn->id,
                         'amount' => (float) $cashIn->amount,
+                        'discount_amount' => (float) ($cashIn->discount_amount ?? 0),
+                        'settled_amount' => (float) $cashIn->amount + (float) ($cashIn->discount_amount ?? 0),
                         'date' => $cashIn->date?->format('Y-m-d'),
                         'category' => $cashIn->category,
                         'payment_method_id' => $cashIn->payment_method_id,
@@ -1143,18 +1147,29 @@ class ERPSalesController extends Controller
 
         $validated = $request->validate([
             'amount' => 'required|numeric|min:1',
+            'discount_amount' => 'nullable|numeric|min:0',
             'date' => 'required|date',
             'payment_method_id' => 'required|exists:payment_methods,id',
             'cash_account_id' => Account::cashBankIdValidationRules(),
             'note' => 'nullable|string|max:1000',
         ]);
 
-        $paidAmount = (float) $project->cashIns()->sum('amount');
+        $cashAmount = (float) $validated['amount'];
+        $discountAmount = max(0, (float) ($validated['discount_amount'] ?? 0));
+        $settledAmount = $cashAmount + $discountAmount;
+
+        if ($discountAmount > 0 && $cashAmount <= 0) {
+            throw ValidationException::withMessages([
+                'amount' => 'Jumlah bayar harus lebih dari 0 setelah diskon.',
+            ]);
+        }
+
+        $paidAmount = $project->invoicePaymentSettledTotal();
         $invoiceAmount = $project->resolveInvoiceAmount();
         $remaining = max($invoiceAmount - $paidAmount, 0);
-        if ((float) $validated['amount'] > $remaining) {
+        if ($settledAmount > $remaining) {
             throw ValidationException::withMessages([
-                'amount' => 'Jumlah pembayaran melebihi sisa tagihan: Rp '.number_format($remaining, 0, ',', '.'),
+                'amount' => 'Total pembayaran + diskon melebihi sisa tagihan: Rp '.number_format($remaining, 0, ',', '.'),
             ]);
         }
 
@@ -1164,6 +1179,8 @@ class ERPSalesController extends Controller
 
         $validated['project_id'] = $project->id;
         $validated['category'] = 'pendapatan_project';
+        $validated['amount'] = $cashAmount;
+        $validated['discount_amount'] = $discountAmount;
         $validated['created_by'] = Auth::id();
         $validated['document_status'] = DocumentStatus::Posted->value;
         $validated['approved_at'] = now();
@@ -1179,10 +1196,13 @@ class ERPSalesController extends Controller
             sourceReference: (string) $cashIn->id,
             description: 'Pembayaran invoice project '.$project->name,
             entryDate: $validated['date'],
-            lines: [
-                ['account_id' => $cashAccount->id, 'debit' => $validated['amount'], 'credit' => 0],
-                ['account_id' => $revenueAccount->id, 'debit' => 0, 'credit' => $validated['amount']],
-            ],
+            lines: $this->buildProjectInvoicePaymentJournalLines(
+                $coa,
+                $cashAccount,
+                $revenueAccount,
+                $cashAmount,
+                $discountAmount,
+            ),
         );
 
         $cashIn->update(['journal_entry_id' => $entry->id]);
@@ -1196,25 +1216,41 @@ class ERPSalesController extends Controller
 
         $validated = $request->validate([
             'amount' => 'required|numeric|min:1',
+            'discount_amount' => 'nullable|numeric|min:0',
             'date' => 'required|date',
             'payment_method_id' => 'required|exists:payment_methods,id',
             'cash_account_id' => Account::cashBankIdValidationRules(),
             'note' => 'nullable|string|max:1000',
         ]);
 
-        $totalPaidOther = (float) $project->cashIns()->whereKeyNot($cashIn->id)->sum('amount');
-        $remaining = max($project->resolveInvoiceAmount() - $totalPaidOther, 0);
-        if ((float) $validated['amount'] > $remaining) {
+        $cashAmount = (float) $validated['amount'];
+        $discountAmount = max(0, (float) ($validated['discount_amount'] ?? 0));
+        $settledAmount = $cashAmount + $discountAmount;
+
+        if ($discountAmount > 0 && $cashAmount <= 0) {
             throw ValidationException::withMessages([
-                'amount' => 'Jumlah pembayaran melebihi sisa tagihan: Rp '.number_format($remaining, 0, ',', '.'),
+                'amount' => 'Jumlah bayar harus lebih dari 0 setelah diskon.',
             ]);
         }
 
-        $cashAccount = Account::query()->findOrFail((int) $validated['cash_account_id']);
+        $totalPaidOther = (float) $project->cashIns()
+            ->whereKeyNot($cashIn->id)
+            ->sum(DB::raw('amount + COALESCE(discount_amount, 0)'));
+        $remaining = max($project->resolveInvoiceAmount() - $totalPaidOther, 0);
+        if ($settledAmount > $remaining) {
+            throw ValidationException::withMessages([
+                'amount' => 'Total pembayaran + diskon melebihi sisa tagihan: Rp '.number_format($remaining, 0, ',', '.'),
+            ]);
+        }
 
-        DB::transaction(function () use ($cashIn, $validated, $project, $cashAccount): void {
+        $coa = app(CoaSettingService::class);
+        $cashAccount = Account::query()->findOrFail((int) $validated['cash_account_id']);
+        $revenueAccount = $coa->resolveAccountByKey('project_invoice_revenue_account', '4003');
+
+        DB::transaction(function () use ($cashIn, $validated, $project, $cashAccount, $revenueAccount, $coa, $cashAmount, $discountAmount): void {
             $cashIn->update([
-                'amount' => $validated['amount'],
+                'amount' => $cashAmount,
+                'discount_amount' => $discountAmount,
                 'date' => $validated['date'],
                 'payment_method_id' => $validated['payment_method_id'],
                 'cash_account_id' => $cashAccount->id,
@@ -1222,23 +1258,21 @@ class ERPSalesController extends Controller
             ]);
 
             if ($cashIn->journal_entry_id) {
-                $entry = JournalEntry::query()->with('lines')->find($cashIn->journal_entry_id);
+                $entry = JournalEntry::query()->find($cashIn->journal_entry_id);
                 if ($entry) {
                     $entry->update([
                         'entry_date' => $validated['date'],
                         'description' => 'Pembayaran invoice project '.$project->name.' (updated)',
                     ]);
-
-                    foreach ($entry->lines as $line) {
-                        if ((float) $line->debit > 0) {
-                            $line->update([
-                                'account_id' => $cashAccount->id,
-                                'debit' => $validated['amount'],
-                                'credit' => 0,
-                            ]);
-                        } else {
-                            $line->update(['debit' => 0, 'credit' => $validated['amount']]);
-                        }
+                    $entry->lines()->delete();
+                    foreach ($this->buildProjectInvoicePaymentJournalLines(
+                        $coa,
+                        $cashAccount,
+                        $revenueAccount,
+                        $cashAmount,
+                        $discountAmount,
+                    ) as $line) {
+                        $entry->lines()->create($line);
                     }
                 }
             }
@@ -1247,7 +1281,7 @@ class ERPSalesController extends Controller
         return back()->with('flash', ['type' => 'success', 'message' => 'Pembayaran invoice berhasil diperbarui.']);
     }
 
-    public function downloadProjectInvoice(Project $project)
+    public function downloadProjectInvoice(Project $project, DocumentTemplateService $tplService)
     {
         abort_unless($project->status === 'selesai', 404);
 
@@ -1257,39 +1291,51 @@ class ERPSalesController extends Controller
 
         $lineItems = $project->resolveInvoiceLineItems();
 
-        $pdf = Pdf::loadView('pdf.project-invoice', [
+        $pdf = $tplService->renderInvoicePdf([
             'project' => $project,
             'invoice' => $this->mapProjectInvoice($project),
+            'items' => $lineItems,
             'lineItems' => $lineItems,
+            'itemsSubtotal' => $lineItems->sum('subtotal'),
             'lineItemsSubtotal' => $lineItems->sum('subtotal'),
             'brand' => $this->pdfBrand(),
             'generatedAt' => now(),
-        ])->setPaper('a4');
+        ]);
 
-        return $pdf->download($this->invoiceNumber($project).'.pdf');
+        return $this->generatedFileArchiveService->downloadPdf(
+            $pdf,
+            $this->invoiceNumber($project).'.pdf',
+        );
     }
 
-    public function downloadProjectSalesNote(Project $project)
+    public function downloadProjectSalesNote(Project $project, DocumentTemplateService $tplService)
     {
         abort_unless($project->status === 'selesai', 404);
 
         $project->invoice_number = $this->ensureProjectInvoiceNumber($project);
-        $project->load(['materials.product', 'convertedBudget.items']);
+        $project->load(['materials.product', 'convertedBudget.items', 'cashIns']);
         $project->loadSum('cashIns as paid_amount', 'amount');
 
         $invoice = $this->mapProjectInvoice($project);
         $items = $project->resolveInvoiceLineItems();
+        $totalDiscount = (float) $project->cashIns->sum('discount_amount');
+        $cashReceived = (float) $project->cashIns->sum('amount');
 
-        $pdf = Pdf::loadView('pdf.project-sales-note', [
+        $pdf = $tplService->renderSalesNotePdf([
             'project' => $project,
             'invoice' => $invoice,
             'items' => $items,
             'itemsSubtotal' => $items->sum('subtotal'),
+            'totalDiscount' => $totalDiscount,
+            'cashReceived' => $cashReceived,
             'brand' => $this->pdfBrand(),
             'generatedAt' => now(),
-        ])->setPaper('a4');
+        ]);
 
-        return $pdf->download('NOTA-'.$this->invoiceNumber($project).'.pdf');
+        return $this->generatedFileArchiveService->downloadPdf(
+            $pdf,
+            'NOTA-'.$this->invoiceNumber($project).'.pdf',
+        );
     }
 
     public function downloadProjectReceipt(Project $project, CashIn $cashIn)
@@ -1299,16 +1345,23 @@ class ERPSalesController extends Controller
         $project->invoice_number = $this->ensureProjectInvoiceNumber($project);
         $project->loadSum('cashIns as paid_amount', 'amount');
         $cashIn->load('paymentMethod');
+        $settledAmount = (float) $cashIn->amount + (float) ($cashIn->discount_amount ?? 0);
+        $discountAmount = (float) ($cashIn->discount_amount ?? 0);
 
         $pdf = Pdf::loadView('pdf.project-receipt', [
             'project' => $project,
             'cashIn' => $cashIn,
             'invoice' => $this->mapProjectInvoice($project),
+            'settledAmount' => $settledAmount,
+            'discountAmount' => $discountAmount,
             'brand' => $this->pdfBrand(),
             'generatedAt' => now(),
         ])->setPaper('a4');
 
-        return $pdf->download('KW-'.$this->invoiceNumber($project).'-'.($cashIn->date?->format('Ymd') ?? now()->format('Ymd')).'.pdf');
+        return $this->generatedFileArchiveService->downloadPdf(
+            $pdf,
+            'KW-'.$this->invoiceNumber($project).'-'.($cashIn->date?->format('Ymd') ?? now()->format('Ymd')).'.pdf',
+        );
     }
 
     private function pdfBrand(): array
@@ -1329,7 +1382,7 @@ class ERPSalesController extends Controller
 
     private function mapProjectInvoice(Project $project): array
     {
-        $paidAmount = (float) ($project->paid_amount ?? $project->cashIns()->sum('amount'));
+        $paidAmount = $project->invoicePaymentSettledTotal();
         $amount = $project->resolveInvoiceAmount();
         $remaining = max($amount - $paidAmount, 0);
 
@@ -1377,5 +1430,29 @@ class ERPSalesController extends Controller
 
             return $nextNumber;
         });
+    }
+
+    /**
+     * @return list<array{account_id: int, debit: float, credit: float}>
+     */
+    private function buildProjectInvoicePaymentJournalLines(
+        CoaSettingService $coa,
+        Account $cashAccount,
+        Account $revenueAccount,
+        float $cashAmount,
+        float $discountAmount,
+    ): array {
+        $lines = [
+            ['account_id' => $cashAccount->id, 'debit' => $cashAmount, 'credit' => 0],
+            ['account_id' => $revenueAccount->id, 'debit' => 0, 'credit' => $cashAmount],
+        ];
+
+        if ($discountAmount > 0) {
+            $discountAccount = $coa->resolveAccountByKey('project_invoice_discount_account', '4020');
+            $lines[] = ['account_id' => $discountAccount->id, 'debit' => $discountAmount, 'credit' => 0];
+            $lines[] = ['account_id' => $discountAccount->id, 'debit' => 0, 'credit' => $discountAmount];
+        }
+
+        return $lines;
     }
 }

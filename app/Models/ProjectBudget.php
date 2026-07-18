@@ -8,6 +8,7 @@ class ProjectBudget extends Model
 {
     protected $fillable = [
         'name',
+        'crm_customer_id',
         'client_name',
         'client_contact',
         'project_type',

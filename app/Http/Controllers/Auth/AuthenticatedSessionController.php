@@ -7,7 +7,6 @@ use App\Http\Requests\Auth\LoginRequest;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\App;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -28,16 +27,14 @@ class AuthenticatedSessionController extends Controller
     }
 
     /**
-     * Seed database and return default dev login credentials.
+     * Return default dev login credentials.
      */
     public function seedDevLogin(Request $request): RedirectResponse
     {
         abort_unless(App::environment('local'), 404);
 
-        Artisan::call('db:seed', ['--force' => true]);
-
         return back()->with('devLoginSeed', [
-            'message' => 'Seeder berhasil dijalankan.',
+            'message' => 'Kredensial dev diisi.',
             'email' => 'admin@ocn.test',
             'password' => 'password',
         ]);

@@ -11,11 +11,11 @@ use App\Models\CashOut;
 use App\Models\PaymentMethod;
 use App\Models\Project;
 use App\Services\CashflowReportService;
+use App\Services\GeneratedFileArchiveService;
 use App\Services\PosReportService;
 use App\Services\ProjectReportService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
-use Maatwebsite\Excel\Facades\Excel;
 
 class ReportController extends Controller
 {
@@ -23,6 +23,7 @@ class ReportController extends Controller
         private readonly CashflowReportService $cashflowReportService,
         private readonly ProjectReportService $projectReportService,
         private readonly PosReportService $posReportService,
+        private readonly GeneratedFileArchiveService $generatedFileArchiveService,
     ) {}
 
     public function cashflow(Request $request)
@@ -298,9 +299,11 @@ class ReportController extends Controller
 
     public function exportProjectProfitExcel(Request $request)
     {
-        return Excel::download(
+        $filename = 'laporan-project-'.now()->format('Y-m-d').'.xlsx';
+
+        return $this->generatedFileArchiveService->downloadExcel(
             new ProjectProfitExport($request->only(['search'])),
-            'laporan-project-'.now()->format('Y-m-d').'.xlsx'
+            $filename,
         );
     }
 

@@ -2,7 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\ERP\Accounting\Services\CoaSettingService;
+use App\ERP\Accounting\Services\GlPostingService;
 use App\ERP\Core\Models\Company;
+use App\ERP\Core\Services\ErpCompanyResolver;
+use App\ERP\Core\Services\FiscalPeriodService;
 use App\ERP\Inventory\Models\Warehouse;
 use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
@@ -13,11 +17,14 @@ use App\Services\WarehouseStockRebuildService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class ERPInventoryController extends Controller
 {
+    public function __construct(private readonly GlPostingService $glPostingService) {}
+
     public function stockManagement(Request $request): Response
     {
         $warehouses = Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']);
@@ -235,6 +242,8 @@ class ERPInventoryController extends Controller
 
     public function stockOpname(): Response
     {
+        $previewSettings = $this->stockOpnamePreviewSettings();
+
         $warehouses = Warehouse::query()
             ->where('is_active', true)
             ->orderBy('name')
@@ -277,12 +286,14 @@ class ERPInventoryController extends Controller
                         'sku' => $product->sku,
                         'name' => $product->name,
                         'uom' => $product->uom,
+                        'unit_cost' => (float) ($product->unit_cost ?? 0),
                         'stock' => (float) $product->stock,
                         'warehouse_stock' => (float) ($warehouseStock?->qty ?? 0),
                         'reserved_qty' => (float) ($warehouseStock?->reserved_qty ?? 0),
                     ];
                 })
                 ->values(),
+            'postingPreview' => $previewSettings,
         ]);
     }
 
@@ -296,10 +307,21 @@ class ERPInventoryController extends Controller
             'note' => 'nullable|string|max:500',
         ]);
 
-        $product = MasterProduct::query()->findOrFail($validated['product_id']);
-        $newStock = (float) $validated['physical_stock'];
+        DB::transaction(function () use ($request, $validated): void {
+            $product = MasterProduct::query()
+                ->lockForUpdate()
+                ->findOrFail($validated['product_id']);
+            $warehouse = Warehouse::query()->findOrFail($validated['warehouse_id']);
+            $newStock = (float) $validated['physical_stock'];
+            $companyId = (int) ($warehouse->company_id ?: ErpCompanyResolver::resolveForGlPosting($request));
 
-        DB::transaction(function () use ($product, $newStock, $validated): void {
+            app(FiscalPeriodService::class)->ensureDateIsOpen(
+                $validated['stock_opname_date'],
+                $companyId,
+                'stock_opname_date',
+                'Stock opname'
+            );
+
             $warehouseStock = MasterProductWarehouseStock::query()->firstOrCreate(
                 [
                     'master_product_id' => $product->id,
@@ -332,8 +354,15 @@ class ERPInventoryController extends Controller
             $product->update(['stock' => (int) round($totalStock)]);
 
             $diff = $newStock - $oldStock;
-            if ($diff !== 0) {
-                ProductStockMovement::query()->create([
+            if (abs($diff) > 0.00001) {
+                $unitCost = (float) ($product->unit_cost ?? 0);
+                if ($unitCost <= 0) {
+                    throw ValidationException::withMessages([
+                        'product_id' => 'Unit cost untuk produk '.$product->sku.' - '.$product->name.' masih 0. Isi unit cost terlebih dahulu agar stock opname bisa diposting ke akunting.',
+                    ]);
+                }
+
+                $movement = ProductStockMovement::query()->create([
                     'master_product_id' => $product->id,
                     'warehouse_id' => $validated['warehouse_id'],
                     'movement_date' => $validated['stock_opname_date'],
@@ -341,6 +370,17 @@ class ERPInventoryController extends Controller
                     'qty' => abs($diff),
                     'note' => $validated['note'] ?? 'Stock opname',
                 ]);
+
+                $this->postStockOpnameJournal(
+                    companyId: $companyId,
+                    warehouse: $warehouse,
+                    product: $product,
+                    movement: $movement,
+                    diff: $diff,
+                    unitCost: $unitCost,
+                    opnameDate: (string) $validated['stock_opname_date'],
+                    note: $validated['note'] ?? null,
+                );
             }
         });
 
@@ -349,6 +389,77 @@ class ERPInventoryController extends Controller
                 'warehouse_id' => $validated['warehouse_id'],
             ])
             ->with('flash', ['type' => 'success', 'message' => 'Stock opname berhasil disimpan.']);
+    }
+
+    private function postStockOpnameJournal(
+        int $companyId,
+        Warehouse $warehouse,
+        MasterProduct $product,
+        ProductStockMovement $movement,
+        float $diff,
+        float $unitCost,
+        string $opnameDate,
+        ?string $note = null,
+    ): void {
+        $amount = round(abs($diff) * $unitCost, 2);
+        if ($amount <= 0) {
+            throw ValidationException::withMessages([
+                'product_id' => 'Nilai stock opname untuk produk '.$product->sku.' - '.$product->name.' masih 0. Periksa qty selisih dan unit cost produk.',
+            ]);
+        }
+
+        $coa = app(CoaSettingService::class);
+        $inventoryAccount = $coa->resolveAccountByKey('stock_opname_inventory_account', '1201');
+        $adjustmentAccount = $coa->resolveAccountByKey('stock_opname_adjustment_account', '5013');
+        $isIncrease = $diff > 0;
+
+        $description = 'Stock opname '.($isIncrease ? 'masuk' : 'keluar').' '
+            .$product->sku.' - '.$product->name
+            .' @ '.$warehouse->code.' - '.$warehouse->name;
+
+        $cleanNote = trim((string) $note);
+        if ($cleanNote !== '') {
+            $description .= ' — '.$cleanNote;
+        }
+
+        $this->glPostingService->post(
+            $companyId,
+            sourceModule: 'stock_opname',
+            sourceReference: (string) $movement->id,
+            description: $description,
+            entryDate: $opnameDate,
+            lines: $isIncrease
+                ? [
+                    ['account_id' => $inventoryAccount->id, 'debit' => $amount, 'credit' => 0],
+                    ['account_id' => $adjustmentAccount->id, 'debit' => 0, 'credit' => $amount],
+                ]
+                : [
+                    ['account_id' => $adjustmentAccount->id, 'debit' => $amount, 'credit' => 0],
+                    ['account_id' => $inventoryAccount->id, 'debit' => 0, 'credit' => $amount],
+                ],
+        );
+    }
+
+    /**
+     * @return array{inventory_account_label:?string,adjustment_account_label:?string}
+     */
+    private function stockOpnamePreviewSettings(): array
+    {
+        try {
+            $coa = app(CoaSettingService::class);
+            $inventoryAccount = $coa->resolveAccountByKey('stock_opname_inventory_account', '1201');
+            $adjustmentAccount = $coa->resolveAccountByKey('stock_opname_adjustment_account', '5013');
+
+            return [
+                'inventory_account_label' => $inventoryAccount->displayLabel(),
+                'adjustment_account_label' => $adjustmentAccount->displayLabel(),
+            ];
+        } catch (\Throwable) {
+            return [
+                'inventory_account_label' => null,
+                'adjustment_account_label' => null,
+            ];
+        }
     }
 
     public function stockReport(Request $request): Response
@@ -554,45 +665,69 @@ class ERPInventoryController extends Controller
 
     public function stockTransfer(Request $request): Response
     {
-        $warehouses = Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']);
+        $validated = $request->validate([
+            'warehouse_id' => 'nullable|integer|exists:warehouses,id',
+        ]);
 
-        $query = MasterProduct::query()->where('status', 'active');
+        $warehouses = Warehouse::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']);
+        $selectedWarehouseId = isset($validated['warehouse_id']) ? (int) $validated['warehouse_id'] : null;
+        $searchOperator = $this->caseInsensitiveLikeOperator();
+
+        $query = MasterProduct::query()
+            ->where('status', 'active')
+            ->where('product_type', '!=', MasterProduct::PRODUCT_TYPE_SERVICE)
+            ->when($selectedWarehouseId, function ($query) use ($selectedWarehouseId): void {
+                $query->whereHas('warehouseStocks', function ($stock) use ($selectedWarehouseId): void {
+                    $stock
+                        ->where('warehouse_id', $selectedWarehouseId)
+                        ->whereRaw('(qty - reserved_qty) > 0');
+                });
+            });
 
         if ($request->filled('q')) {
-            $q = $request->q;
-            $op = DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
-            $query->where(function ($qry) use ($q, $op) {
-                $qry->where('sku', $op, "%{$q}%")
-                    ->orWhere('name', $op, "%{$q}%")
-                    ->orWhere('category', $op, "%{$q}%");
+            $q = $request->string('q')->toString();
+            $query->where(function ($qry) use ($q, $searchOperator): void {
+                $qry->where('sku', $searchOperator, "%{$q}%")
+                    ->orWhere('name', $searchOperator, "%{$q}%")
+                    ->orWhere('category', $searchOperator, "%{$q}%");
             });
         }
 
-        $products = $query->orderBy('name')
+        $products = $query
+            ->orderBy('name')
             ->paginate($this->resolvedPerPage($request))
             ->withQueryString()
-            ->through(fn ($p) => [
-                'id' => $p->id,
-                'sku' => $p->sku,
-                'name' => $p->name,
-                'category' => $p->category,
-                'uom' => $p->uom,
-            ]);
+            ->through(function (MasterProduct $product) use ($selectedWarehouseId): array {
+                $stockRow = null;
+                if ($selectedWarehouseId) {
+                    $stockRow = MasterProductWarehouseStock::query()
+                        ->where('master_product_id', $product->id)
+                        ->where('warehouse_id', $selectedWarehouseId)
+                        ->first(['qty', 'reserved_qty']);
+                }
 
-        $warehouseStocks = MasterProductWarehouseStock::query()
-            ->get(['master_product_id', 'warehouse_id', 'qty', 'reserved_qty'])
-            ->groupBy('master_product_id')
-            ->map(fn ($rows) => $rows->keyBy('warehouse_id')->map(fn ($r) => [
-                'qty' => (float) $r->qty,
-                'reserved' => (float) $r->reserved_qty,
-                'available' => (float) $r->qty - (float) $r->reserved_qty,
-            ]));
+                $qty = (float) ($stockRow?->qty ?? 0);
+                $reservedQty = (float) ($stockRow?->reserved_qty ?? 0);
+
+                return [
+                    'id' => $product->id,
+                    'sku' => $product->sku,
+                    'name' => $product->name,
+                    'category' => $product->category,
+                    'uom' => $product->uom,
+                    'qty' => $qty,
+                    'reserved_qty' => $reservedQty,
+                    'available_qty' => max($qty - $reservedQty, 0),
+                ];
+            });
 
         return Inertia::render('ERP/Inventory/StockTransfer', [
             'warehouses' => $warehouses,
             'products' => $products,
-            'warehouseStocks' => $warehouseStocks,
-            'filters' => $this->filtersWithPerPage($request, ['q', 'warehouse_id']),
+            'filters' => array_merge(
+                $this->filtersWithPerPage($request, ['q', 'warehouse_id']),
+                ['warehouse_id' => $selectedWarehouseId]
+            ),
         ]);
     }
 
@@ -751,6 +886,7 @@ class ERPInventoryController extends Controller
             'types' => collect([
                 'purchase_receipt',
                 'project_issue_out',
+                'project_issue_return_in',
                 'pos_sale_out',
                 'pos_refund_in',
                 'pos_reopen_out',
@@ -760,6 +896,7 @@ class ERPInventoryController extends Controller
                 'opname_out',
                 'manual_in',
                 'manual_out',
+                'purchase_reopen_out',
                 'transfer_in',
                 'transfer_out',
             ])->map(fn (string $type) => [
@@ -774,6 +911,7 @@ class ERPInventoryController extends Controller
         return match ($type) {
             'purchase_receipt' => 'Penerimaan Pembelian',
             'project_issue_out' => 'Pemakaian Project',
+            'project_issue_return_in' => 'Batal Pemakaian Project',
             'pos_sale_out' => 'Penjualan POS',
             'pos_refund_in' => 'Refund POS',
             'pos_reopen_out' => 'Reopen POS',
@@ -783,6 +921,7 @@ class ERPInventoryController extends Controller
             'opname_out' => 'Penyesuaian Opname Keluar',
             'manual_in' => 'Input Manual Masuk',
             'manual_out' => 'Input Manual Keluar',
+            'purchase_reopen_out' => 'Reopen GR',
             'transfer_in' => 'Transfer Masuk',
             'transfer_out' => 'Transfer Keluar',
             default => str_replace('_', ' ', $type),

@@ -157,73 +157,75 @@ const totalPayable = computed(() => (
         </div>
       </div>
 
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <article class="ocn-panel ocn-stat-card member-stat-card member-stat-card--warning">
-          <div class="card-body p-5">
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <p class="text-xs font-bold uppercase tracking-wide text-base-content/50">Belum dibayar</p>
-                <p class="mt-2 text-2xl font-bold tabular-nums text-warning">{{ format(summary?.outstanding_total ?? 0) }}</p>
-                <p class="mt-2 text-xs text-base-content/60">
+          <div class="card-body p-3">
+            <div class="flex items-start gap-2.5 min-w-0">
+              <div class="member-stat-card__icon bg-warning/15 text-warning">
+                <ClockIcon class="h-4 w-4 shrink-0" />
+              </div>
+              <div class="min-w-0 flex-1">
+                <p class="text-[10px] font-bold uppercase tracking-wide text-base-content/50">Belum dibayar</p>
+                <p class="text-base font-bold tabular-nums text-warning whitespace-nowrap leading-tight mt-0.5">{{ format(summary?.outstanding_total ?? 0) }}</p>
+                <p class="text-[10px] text-base-content/60 truncate whitespace-nowrap mt-0.5">
                   {{ unpaidCount }} distribusi · {{ summary?.open_count ?? 0 }} slot terbuka
                 </p>
-              </div>
-              <div class="member-stat-card__icon bg-warning/15 text-warning">
-                <ClockIcon class="h-6 w-6 shrink-0" />
               </div>
             </div>
           </div>
         </article>
 
         <article class="ocn-panel ocn-stat-card member-stat-card member-stat-card--success">
-          <div class="card-body p-5">
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <p class="text-xs font-bold uppercase tracking-wide text-base-content/50">Sudah dibayar</p>
-                <p class="mt-2 text-2xl font-bold tabular-nums text-success">{{ format(summary?.paid_total ?? 0) }}</p>
-                <p class="mt-2 text-xs text-base-content/60">{{ paidCount }} distribusi lunas</p>
-              </div>
+          <div class="card-body p-3">
+            <div class="flex items-start gap-2.5 min-w-0">
               <div class="member-stat-card__icon bg-success/15 text-success">
-                <CheckCircleIcon class="h-6 w-6 shrink-0" />
+                <CheckCircleIcon class="h-4 w-4 shrink-0" />
+              </div>
+              <div class="min-w-0 flex-1">
+                <p class="text-[10px] font-bold uppercase tracking-wide text-base-content/50">Sudah dibayar</p>
+                <p class="text-base font-bold tabular-nums text-success whitespace-nowrap leading-tight mt-0.5">{{ format(summary?.paid_total ?? 0) }}</p>
+                <p class="text-[10px] text-base-content/60 truncate whitespace-nowrap mt-0.5">{{ paidCount }} distribusi lunas</p>
               </div>
             </div>
           </div>
         </article>
 
         <article class="ocn-panel ocn-stat-card member-stat-card member-stat-card--primary">
-          <div class="card-body p-5">
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0 flex-1">
-                <p class="text-xs font-bold uppercase tracking-wide text-base-content/50">Progress pelunasan</p>
-                <p class="mt-2 text-2xl font-bold tabular-nums text-primary">{{ paymentProgress }}%</p>
-                <progress class="progress progress-primary mt-3 h-2 w-full" :value="paymentProgress" max="100" />
-                <p class="mt-2 text-xs text-base-content/60">
-                  {{ paidCount }} dari {{ totalDistributions }} distribusi
-                </p>
-              </div>
+          <div class="card-body p-3">
+            <div class="flex items-start gap-2.5 min-w-0">
               <div class="member-stat-card__icon bg-primary/15 text-primary">
-                <UserGroupIcon class="h-6 w-6 shrink-0" />
+                <UserGroupIcon class="h-4 w-4 shrink-0" />
+              </div>
+              <div class="min-w-0 flex-1">
+                <p class="text-[10px] font-bold uppercase tracking-wide text-base-content/50">Progress</p>
+                <p class="text-base font-bold tabular-nums text-primary whitespace-nowrap leading-tight mt-0.5">{{ paymentProgress }}%</p>
+                <progress class="progress progress-primary h-1.5 w-full mt-1" :value="paymentProgress" max="100" />
+                <p class="text-[10px] text-base-content/60 truncate whitespace-nowrap mt-0.5">
+                  {{ paidCount }}/{{ totalDistributions }} distribusi
+                </p>
               </div>
             </div>
           </div>
         </article>
 
         <article class="ocn-panel ocn-stat-card member-stat-card member-stat-card--info">
-          <div class="card-body p-5">
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <p class="text-xs font-bold uppercase tracking-wide text-base-content/50">Total honor</p>
-                <p class="mt-2 text-2xl font-bold tabular-nums text-info">{{ format(totalPayable) }}</p>
-                <p class="mt-2 text-xs text-base-content/60">Akumulasi sesuai filter aktif</p>
-                <Link
-                  :href="route('erp.accounting.cashflow', { source: 'member_payment' })"
-                  class="btn btn-ghost btn-xs mt-3 gap-1 px-0 text-info hover:bg-info/10"
-                >
-                  Lihat di cashflow →
-                </Link>
-              </div>
+          <div class="card-body p-3">
+            <div class="flex items-start gap-2.5 min-w-0">
               <div class="member-stat-card__icon bg-info/15 text-info">
-                <BanknotesIcon class="h-6 w-6 shrink-0" />
+                <BanknotesIcon class="h-4 w-4 shrink-0" />
+              </div>
+              <div class="min-w-0 flex-1">
+                <p class="text-[10px] font-bold uppercase tracking-wide text-base-content/50">Total honor</p>
+                <p class="text-base font-bold tabular-nums text-info whitespace-nowrap leading-tight mt-0.5">{{ format(totalPayable) }}</p>
+                <p class="text-[10px] text-base-content/60 flex items-center justify-between gap-2 mt-0.5 min-w-0">
+                  <span class="truncate whitespace-nowrap">Sesuai filter aktif</span>
+                  <Link
+                    :href="route('erp.accounting.cashflow', { source: 'member_payment' })"
+                    class="link link-hover link-info shrink-0 whitespace-nowrap text-[10px]"
+                  >
+                    Cashflow →
+                  </Link>
+                </p>
               </div>
             </div>
           </div>
@@ -455,8 +457,9 @@ const totalPayable = computed(() => (
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 0.75rem;
-  padding: 0.625rem;
+  border-radius: 0.625rem;
+  width: 2rem;
+  height: 2rem;
   flex-shrink: 0;
 }
 </style>

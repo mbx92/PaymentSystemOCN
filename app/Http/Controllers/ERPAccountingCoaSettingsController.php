@@ -67,6 +67,22 @@ class ERPAccountingCoaSettingsController extends Controller
                 'source_module' => 'pos_sale_cogs',
             ],
             [
+                'key' => 'stock_opname_inventory_account',
+                'label' => 'Stock Opname - Akun Persediaan',
+                'description' => 'Akun persediaan yang didebit saat opname menambah stok, dan dikredit saat opname mengurangi stok.',
+                'amount_source' => 'Selisih qty opname x MasterProduct.unit_cost',
+                'default_account_code' => '1201',
+                'source_module' => 'stock_opname',
+            ],
+            [
+                'key' => 'stock_opname_adjustment_account',
+                'label' => 'Stock Opname - Akun Selisih Opname',
+                'description' => 'Akun lawan untuk selisih stock opname. Kredit saat stok bertambah, debit saat stok berkurang.',
+                'amount_source' => 'Selisih qty opname x MasterProduct.unit_cost',
+                'default_account_code' => '5013',
+                'source_module' => 'stock_opname',
+            ],
+            [
                 'key' => 'project_invoice_cash_account',
                 'label' => 'Invoice Project - Akun Kas/Bank',
                 'description' => 'Debit saat pembayaran invoice project atau termin project dicatat sebagai kas masuk.',
@@ -77,9 +93,17 @@ class ERPAccountingCoaSettingsController extends Controller
             [
                 'key' => 'project_invoice_revenue_account',
                 'label' => 'Invoice Project - Akun Pendapatan',
-                'description' => 'Credit untuk pendapatan invoice project.',
-                'amount_source' => 'CashIn.amount dari pembayaran project',
+                'description' => 'Credit pendapatan dari kas masuk invoice project (jumlah bayar setelah diskon).',
+                'amount_source' => 'CashIn.amount (jumlah bayar)',
                 'default_account_code' => '4003',
+                'source_module' => 'project_invoice_payment',
+            ],
+            [
+                'key' => 'project_invoice_discount_account',
+                'label' => 'Invoice Project - Akun Potongan/Diskon',
+                'description' => 'Debit potongan invoice untuk customer. Dicatat berpasangan di jurnal agar tidak masuk pendapatan.',
+                'amount_source' => 'CashIn.discount_amount',
+                'default_account_code' => '4020',
                 'source_module' => 'project_invoice_payment',
             ],
         ]);

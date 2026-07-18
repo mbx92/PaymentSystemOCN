@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class Project extends Model
 {
@@ -65,6 +66,11 @@ class Project extends Model
     public function cashIns()
     {
         return $this->hasMany(CashIn::class);
+    }
+
+    public function invoicePaymentSettledTotal(): float
+    {
+        return (float) $this->cashIns()->sum(DB::raw('amount + COALESCE(discount_amount, 0)'));
     }
 
     public function cashOuts()

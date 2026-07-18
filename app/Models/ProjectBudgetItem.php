@@ -10,6 +10,9 @@ class ProjectBudgetItem extends Model
     protected $fillable = [
         'project_budget_id',
         'master_product_id',
+        'catalog_sheet',
+        'catalog_ref',
+        'catalog_category',
         'item_type',
         'name',
         'uom',

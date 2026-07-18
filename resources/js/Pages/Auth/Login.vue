@@ -11,7 +11,7 @@ const devLoading = ref(false);
 const devMessage = ref('');
 const devError = ref('');
 
-const seedAndFillDevLogin = async () => {
+const fillDevLogin = async () => {
     if (!props.isDevMode) return;
 
     devLoading.value = true;
@@ -24,16 +24,16 @@ const seedAndFillDevLogin = async () => {
             const payload = page?.props?.devLoginSeed;
 
             if (!payload) {
-                devError.value = 'Seeder selesai, tetapi respons login dev tidak ditemukan.';
+                devError.value = 'Gagal mengisi kredensial dev.';
                 return;
             }
 
-            form.email = payload.email ?? '';
-            form.password = payload.password ?? '';
-            devMessage.value = payload.message ?? 'Seeder berhasil dijalankan.';
+            form.email = 'mbx@ocnetworks.web.id' ?? '';
+            form.password = 'Nopassword123!' ?? '';
+            devMessage.value = payload.message ?? 'Kredensial dev diisi.';
         },
         onError: () => {
-            devError.value = 'Gagal menjalankan seeder.';
+            devError.value = 'Gagal mengisi kredensial dev.';
         },
         onFinish: () => {
             devLoading.value = false;
@@ -130,10 +130,10 @@ const seedAndFillDevLogin = async () => {
                         type="button"
                         class="btn btn-outline w-full"
                         :disabled="devLoading"
-                        @click="seedAndFillDevLogin"
+                        @click="fillDevLogin"
                     >
                         <span v-if="devLoading" class="loading loading-spinner loading-sm" />
-                        Seed DB + Isi Login Dev
+                        Fill Credential Dev
                     </button>
                 </form>
             </div>

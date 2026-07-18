@@ -40,6 +40,11 @@ class PurchaseOrder extends Model
         ];
     }
 
+    public function isEditable(): bool
+    {
+        return in_array($this->status, [DocumentStatus::Draft, DocumentStatus::Submitted], true);
+    }
+
     public function isExpense(): bool
     {
         return $this->po_category === 'expense';

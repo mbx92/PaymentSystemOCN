@@ -5,6 +5,7 @@ namespace App\ERP\Core\Services;
 use App\ERP\Accounting\Models\JournalEntry;
 use App\ERP\Core\Models\FiscalPeriod;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
@@ -85,6 +86,46 @@ class FiscalPeriodService
         ]);
 
         return $period->fresh(['company:id,name', 'closer:id,name']);
+    }
+
+    /**
+     * @return EloquentCollection<int, FiscalPeriod>
+     */
+    public function reopenByDate(int $companyId, string|\DateTimeInterface $date): EloquentCollection
+    {
+        $resolvedDate = $date instanceof \DateTimeInterface
+            ? Carbon::instance(Carbon::parse($date))
+            : Carbon::parse($date);
+
+        $periods = FiscalPeriod::query()
+            ->where('company_id', $companyId)
+            ->where('is_closed', true)
+            ->whereDate('start_date', '<=', $resolvedDate->toDateString())
+            ->whereDate('end_date', '>=', $resolvedDate->toDateString())
+            ->orderByRaw("CASE WHEN period_type = 'monthly' THEN 0 ELSE 1 END")
+            ->orderByDesc('end_date')
+            ->get();
+
+        if ($periods->isEmpty()) {
+            throw ValidationException::withMessages([
+                'open_date' => 'Tidak ada periode tutup buku yang aktif pada tanggal '.$resolvedDate->format('d/m/Y').'.',
+            ]);
+        }
+
+        FiscalPeriod::query()
+            ->whereKey($periods->modelKeys())
+            ->update([
+                'is_closed' => false,
+                'closed_at' => null,
+                'closed_by' => null,
+            ]);
+
+        return FiscalPeriod::query()
+            ->with(['company:id,name', 'closer:id,name'])
+            ->whereKey($periods->modelKeys())
+            ->orderByRaw("CASE WHEN period_type = 'monthly' THEN 0 ELSE 1 END")
+            ->orderByDesc('end_date')
+            ->get();
     }
 
     public function ensureDateIsOpen(string|\DateTimeInterface $date, ?int $companyId, string $field = 'date', string $actionLabel = 'Transaksi accounting'): void

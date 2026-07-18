@@ -3,6 +3,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import RevenueLineChart from '@/Components/Charts/RevenueLineChart.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
 import { Link, router, usePage } from '@inertiajs/vue3';
+import { ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 
 const props = defineProps({
@@ -20,20 +21,28 @@ const { format } = useCurrency();
 const page = usePage();
 const erpCompanyContext = () => page.props.erpCompanyContext ?? null;
 
-const changeFilters = (next = {}) => {
+const normalizeCompanyId = (value) => {
+    if (value === null || value === undefined || value === '' || value === 'all') {
+        return 'all';
+    }
+
+    return String(value);
+};
+
+const selectedYear = ref(props.selectedYear ?? new Date().getFullYear());
+const companyId = ref(
+    normalizeCompanyId(props.filters?.company_id ?? erpCompanyContext()?.current_company_id ?? 'all'),
+);
+
+const reloadDashboard = () => {
     router.get(route('dashboard'), {
-        year: next.year ?? props.selectedYear,
-        company_id: next.company_id ?? props.filters?.company_id ?? erpCompanyContext()?.current_company_id ?? undefined,
+        year: selectedYear.value,
+        company_id: companyId.value,
     }, { preserveState: true, replace: true });
 };
 
-const changeYear = (year) => {
-    changeFilters({ year });
-};
-
-const changeCompany = (companyId) => {
-    changeFilters({ company_id: companyId || undefined });
-};
+watch(selectedYear, reloadDashboard);
+watch(companyId, reloadDashboard);
 </script>
 
 <template>
@@ -47,14 +56,19 @@ const changeCompany = (companyId) => {
                 <div class="flex flex-col gap-2 sm:flex-row">
                     <select
                         v-if="erpCompanyContext()?.companies?.length"
-                        class="select select-bordered select-sm"
-                        :value="filters?.company_id ?? erpCompanyContext()?.current_company_id ?? 'all'"
-                        @change="changeCompany($event.target.value)"
+                        v-model="companyId"
+                        class="select select-bordered select-sm w-full sm:w-auto"
                     >
                         <option value="all">Semua Usaha</option>
-                        <option v-for="company in erpCompanyContext().companies" :key="company.id" :value="company.id">{{ company.name }}</option>
+                        <option
+                            v-for="company in erpCompanyContext().companies"
+                            :key="company.id"
+                            :value="String(company.id)"
+                        >
+                            {{ company.name }}
+                        </option>
                     </select>
-                    <select class="select select-bordered select-sm" :value="selectedYear" @change="changeYear($event.target.value)">
+                    <select v-model.number="selectedYear" class="select select-bordered select-sm w-full sm:w-auto">
                         <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
                     </select>
                 </div>

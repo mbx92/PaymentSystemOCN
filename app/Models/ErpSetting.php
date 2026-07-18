@@ -32,6 +32,17 @@ class ErpSetting extends Model
         'module_menu_layout',
         'screen_mode',
         'screen_density',
+        'object_storage_enabled',
+        'object_storage_access_key',
+        'object_storage_secret_key',
+        'object_storage_bucket',
+        'object_storage_region',
+        'object_storage_endpoint',
+        'object_storage_use_path_style',
+        'object_storage_prefix',
+        'object_storage_archive_pdf',
+        'object_storage_archive_excel',
+        'object_storage_archive_database',
         'thermal_printer_enabled',
         'thermal_printer_host',
         'thermal_printer_port',
@@ -61,6 +72,12 @@ class ErpSetting extends Model
     protected function casts(): array
     {
         return [
+            'object_storage_enabled' => 'boolean',
+            'object_storage_secret_key' => 'encrypted',
+            'object_storage_use_path_style' => 'boolean',
+            'object_storage_archive_pdf' => 'boolean',
+            'object_storage_archive_excel' => 'boolean',
+            'object_storage_archive_database' => 'boolean',
             'thermal_printer_enabled' => 'boolean',
             'thermal_printer_port' => 'integer',
             'thermal_pos_margin_left_mm' => 'decimal:2',
@@ -141,6 +158,33 @@ class ErpSetting extends Model
         return in_array($this->screen_density, self::screenDensityOptions(), true)
             ? $this->screen_density
             : self::SCREEN_DENSITY_COMFORTABLE;
+    }
+
+    public function resolvedObjectStorageSecretKey(): ?string
+    {
+        $secret = $this->object_storage_secret_key;
+
+        return is_string($secret) && trim($secret) !== '' ? $secret : null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function objectStorageSettingsPayload(): array
+    {
+        return [
+            'object_storage_enabled' => (bool) $this->object_storage_enabled,
+            'object_storage_access_key' => $this->object_storage_access_key,
+            'object_storage_secret_key_configured' => filled($this->object_storage_secret_key),
+            'object_storage_bucket' => $this->object_storage_bucket,
+            'object_storage_region' => $this->object_storage_region ?: 'us-east-1',
+            'object_storage_endpoint' => $this->object_storage_endpoint,
+            'object_storage_use_path_style' => (bool) $this->object_storage_use_path_style,
+            'object_storage_prefix' => $this->object_storage_prefix ?: 'erp-archive',
+            'object_storage_archive_pdf' => (bool) $this->object_storage_archive_pdf,
+            'object_storage_archive_excel' => (bool) $this->object_storage_archive_excel,
+            'object_storage_archive_database' => (bool) $this->object_storage_archive_database,
+        ];
     }
 
     /**

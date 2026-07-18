@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\RndProject;
+use App\Services\GeneratedFileArchiveService;
 use App\Services\PdfThemeResolver;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
@@ -13,6 +14,7 @@ class RndReportController extends Controller
 {
     public function __construct(
         private readonly PdfThemeResolver $pdfThemeResolver,
+        private readonly GeneratedFileArchiveService $generatedFileArchiveService,
     ) {}
 
     public function show(Request $request, RndProject $rndProject): Response
@@ -99,6 +101,9 @@ class RndReportController extends Controller
             'generatedAt' => now(),
         ]);
 
-        return $pdf->download('rnd-report-'.$rndProject->id.'.pdf');
+        return $this->generatedFileArchiveService->downloadPdf(
+            $pdf,
+            'rnd-report-'.$rndProject->id.'.pdf',
+        );
     }
 }

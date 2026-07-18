@@ -51,13 +51,13 @@ const visibleProducts = computed(() => {
 
 watch(
   () => props.show,
-      (open) => {
+  (open) => {
     if (!open) return;
     keyword.value = '';
     selectedId.value = '';
     page.value = 1;
     nextTick(() => searchInputRef.value?.focus());
-  }
+  },
 );
 
 watch(keyword, () => {
@@ -93,91 +93,86 @@ const hasStockColumn = computed(() => normalizedProducts.value.some((item) => it
 </script>
 
 <template>
-  <Modal :show="show" max-width="6xl" @close="emit('close')">
-    <div class="p-6">
-      <h3 class="font-bold text-xl">{{ title }}</h3>
-      <p class="text-sm text-base-content/60 mt-2">{{ subtitle }}</p>
+  <Modal :show="show" max-width="4xl" @close="emit('close')">
+    <div class="flex max-h-[min(85vh,640px)] flex-col p-5 sm:p-6">
+      <div class="shrink-0">
+        <h3 class="text-lg font-bold">{{ title }}</h3>
+        <p class="text-sm text-base-content/60 mt-1">{{ subtitle }}</p>
+      </div>
 
-      <div class="mt-5">
-        <label class="label pb-1"><span class="label-text text-sm text-base-content/70">{{ searchLabel }}</span></label>
+      <div class="mt-3 shrink-0">
+        <label class="label py-0"><span class="label-text text-xs font-medium">{{ searchLabel }}</span></label>
         <input
           ref="searchInputRef"
           v-model="keyword"
           type="text"
-          class="input input-bordered w-full h-12 text-base"
+          class="input input-bordered input-sm w-full"
           :placeholder="searchPlaceholder"
           @keydown.enter.prevent="pickFirstByEnter"
         />
       </div>
 
-      <div class="mt-5 rounded-2xl border border-base-300 overflow-hidden">
-        <div class="h-[31rem] overflow-y-auto">
-          <table class="table table-zebra table-pin-rows">
-          <thead class="sticky top-0 z-20">
+      <div class="mt-3 min-h-0 flex-1 overflow-x-auto overflow-y-auto rounded-lg border border-base-300">
+        <table class="table table-sm table-zebra table-pin-rows">
+          <thead>
             <tr>
-              <th class="w-14 bg-base-200"></th>
-              <th class="bg-base-200">SKU</th>
-              <th class="bg-base-200">BARCODE</th>
-              <th class="bg-base-200">PRODUK</th>
-              <th class="w-24 bg-base-200">UOM</th>
-              <th class="w-40 bg-base-200">HARGA</th>
-              <th v-if="hasStockColumn" class="w-28 bg-base-200">STOK</th>
+              <th class="w-10"></th>
+              <th>SKU</th>
+              <th>Barcode</th>
+              <th>Produk</th>
+              <th class="w-20">UOM</th>
+              <th class="w-28 text-right">Harga</th>
+              <th v-if="hasStockColumn" class="w-20 text-right">Stok</th>
             </tr>
           </thead>
           <tbody>
             <tr
               v-for="product in visibleProducts"
               :key="product._id"
-              :class="[
-                'cursor-pointer',
-                selectedId === product._id ? 'bg-primary/10' : '',
-              ]"
+              class="cursor-pointer hover"
+              :class="selectedId === product._id ? 'bg-primary/10' : ''"
               @click="selectedId = product._id"
             >
               <td class="text-center">
                 <input
-                  :value="product._id"
                   v-model="selectedId"
+                  :value="product._id"
                   type="radio"
                   :name="radioName"
-                  class="radio radio-sm"
+                  class="radio radio-sm radio-primary"
+                  @click.stop
                 />
               </td>
               <td class="font-mono text-xs">{{ product.sku }}</td>
               <td class="font-mono text-xs">{{ product.barcode || '-' }}</td>
-              <td class="font-medium">{{ product.name }}</td>
-              <td><span class="badge badge-ghost badge-sm">{{ product.uom || '-' }}</span></td>
-              <td class="tabular-nums">{{ format(product.price) }}</td>
-              <td v-if="hasStockColumn" class="tabular-nums">{{ product.stock ?? '-' }}</td>
+              <td>{{ product.name }}</td>
+              <td><span class="badge badge-ghost badge-xs">{{ product.uom || '-' }}</span></td>
+              <td class="text-right tabular-nums">{{ format(product.price) }}</td>
+              <td v-if="hasStockColumn" class="text-right tabular-nums">{{ product.stock ?? '-' }}</td>
             </tr>
             <tr v-if="filteredProducts.length === 0">
-              <td :colspan="hasStockColumn ? 7 : 6" class="py-10 text-center text-base-content/50">Produk tidak ditemukan.</td>
+              <td :colspan="hasStockColumn ? 7 : 6" class="py-8 text-center text-base-content/50">Produk tidak ditemukan.</td>
             </tr>
           </tbody>
         </table>
-        </div>
       </div>
 
-      <div class="mt-3 flex flex-col gap-2 text-sm text-base-content/60 sm:flex-row sm:items-center sm:justify-between">
+      <div class="mt-3 shrink-0 flex flex-col gap-2 text-xs text-base-content/60 sm:flex-row sm:items-center sm:justify-between">
         <p>
-          Menampilkan {{ visibleProducts.length }} dari {{ filteredProducts.length }} produk
-          <span v-if="filteredProducts.length">- halaman {{ page }} / {{ totalPages }}</span>
+          {{ visibleProducts.length }} / {{ filteredProducts.length }} produk
+          <span v-if="filteredProducts.length">· hal {{ page }}/{{ totalPages }}</span>
         </p>
         <div class="join">
-          <button type="button" class="btn btn-sm join-item" :disabled="page <= 1" @click="prevPage">
-            Prev
-          </button>
-          <button type="button" class="btn btn-sm join-item" :disabled="page >= totalPages" @click="nextPage">
-            Next
-          </button>
+          <button type="button" class="btn btn-xs join-item" :disabled="page <= 1" @click="prevPage">Prev</button>
+          <button type="button" class="btn btn-xs join-item" :disabled="page >= totalPages" @click="nextPage">Next</button>
         </div>
       </div>
 
-      <div class="modal-action mt-4">
-        <button type="button" class="btn btn-ghost" @click="emit('close')">Batal</button>
+      <div class="mt-3 shrink-0 flex justify-end gap-2 border-t border-base-200 pt-3">
+        <button type="button" class="btn btn-ghost btn-sm" @click="emit('close')">Batal</button>
         <button
           type="button"
-          class="btn btn-primary border-0"
+          class="btn btn-primary btn-sm"
           :disabled="!selectedId"
           @click="confirmSelection"
         >

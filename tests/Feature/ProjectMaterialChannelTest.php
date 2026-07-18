@@ -15,6 +15,7 @@ use App\Http\Middleware\ErpMaintenanceMode;
 use App\Http\Middleware\LogErpActivity;
 use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
+use App\Models\ProductStockMovement;
 use App\Models\Project;
 use App\Models\ProjectMaterial;
 use App\Models\User;
@@ -667,6 +668,336 @@ class ProjectMaterialChannelTest extends TestCase
         ]);
     }
 
+    public function test_ready_material_can_be_checked_as_used_from_project_detail(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $project = $this->createProject();
+        $warehouse = Warehouse::create([
+            'code' => 'WH-USE',
+            'name' => 'Gudang Pakai',
+            'is_active' => true,
+        ]);
+        $projectProduct = $this->createProjectProduct('MAT-USE-01');
+
+        ProjectMaterial::create([
+            'project_id' => $project->id,
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'planned_qty' => 5,
+            'reserved_qty' => 5,
+            'issued_qty' => 0,
+            'status' => 'ready',
+        ]);
+
+        MasterProductWarehouseStock::create([
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 5,
+            'reserved_qty' => 5,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->patch(route('projects.materials.usage', [
+                'project' => $project,
+                'material' => ProjectMaterial::query()->firstOrFail(),
+            ]), [
+                'used' => true,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('project_materials', [
+            'project_id' => $project->id,
+            'master_product_id' => $projectProduct->id,
+            'issued_qty' => '5.00',
+            'status' => 'issued',
+        ]);
+        $this->assertDatabaseHas('master_product_warehouse_stocks', [
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => '0.00',
+            'reserved_qty' => '0.00',
+        ]);
+        $this->assertDatabaseHas('product_stock_movements', [
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'movement_type' => 'project_issue_out',
+        ]);
+    }
+
+    public function test_used_material_can_be_unchecked_and_stock_is_returned(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $project = $this->createProject();
+        $warehouse = Warehouse::create([
+            'code' => 'WH-RET',
+            'name' => 'Gudang Return',
+            'is_active' => true,
+        ]);
+        $projectProduct = $this->createProjectProduct('MAT-RET-01');
+
+        $material = ProjectMaterial::create([
+            'project_id' => $project->id,
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'planned_qty' => 2,
+            'reserved_qty' => 2,
+            'issued_qty' => 2,
+            'status' => 'issued',
+        ]);
+
+        MasterProductWarehouseStock::create([
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 0,
+            'reserved_qty' => 0,
+        ]);
+
+        ProductStockMovement::create([
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'movement_date' => now()->toDateString(),
+            'movement_type' => 'project_issue_out',
+            'qty' => 2,
+            'note' => 'Project issue '.$project->id.' material '.$material->id.' - '.$project->name,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->patch(route('projects.materials.usage', [
+                'project' => $project,
+                'material' => $material,
+            ]), [
+                'used' => false,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('project_materials', [
+            'id' => $material->id,
+            'issued_qty' => '0.00',
+            'status' => 'ready',
+        ]);
+        $this->assertDatabaseHas('master_product_warehouse_stocks', [
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => '2.00',
+            'reserved_qty' => '2.00',
+        ]);
+        $this->assertDatabaseHas('product_stock_movements', [
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'movement_type' => 'project_issue_return_in',
+            'qty' => '2.00',
+        ]);
+    }
+
+    public function test_material_must_be_ready_before_it_can_be_checked_as_used(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $project = $this->createProject();
+        $warehouse = Warehouse::create([
+            'code' => 'WH-PART',
+            'name' => 'Gudang Partial',
+            'is_active' => true,
+        ]);
+        $projectProduct = $this->createProjectProduct('MAT-PART-01');
+
+        $material = ProjectMaterial::create([
+            'project_id' => $project->id,
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'planned_qty' => 5,
+            'reserved_qty' => 3,
+            'issued_qty' => 0,
+            'status' => 'partial',
+        ]);
+
+        MasterProductWarehouseStock::create([
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 5,
+            'reserved_qty' => 3,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->patch(route('projects.materials.usage', [
+                'project' => $project,
+                'material' => $material,
+            ]), [
+                'used' => true,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('used');
+
+        $this->assertDatabaseHas('project_materials', [
+            'id' => $material->id,
+            'issued_qty' => '0.00',
+            'status' => 'partial',
+        ]);
+        $this->assertDatabaseHas('master_product_warehouse_stocks', [
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'reserved_qty' => '3.00',
+        ]);
+    }
+
+    public function test_sync_project_issues_command_backfills_missing_project_issue_movements(): void
+    {
+        $this->disableErpMiddleware();
+
+        $project = $this->createProject();
+        $project->update([
+            'status' => 'selesai',
+            'finished_at' => '2026-07-05',
+        ]);
+        $warehouse = Warehouse::create([
+            'code' => 'WH-BF',
+            'name' => 'Gudang Backfill',
+            'is_active' => true,
+        ]);
+        $projectProduct = $this->createProjectProduct('MAT-BF-01');
+
+        ProjectMaterial::create([
+            'project_id' => $project->id,
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'planned_qty' => 1,
+            'reserved_qty' => 1,
+            'issued_qty' => 1,
+            'status' => 'issued',
+        ]);
+
+        MasterProductWarehouseStock::create([
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 1,
+            'reserved_qty' => 0,
+        ]);
+
+        $this->artisan('stock:sync-project-issues', [
+            'project_id' => $project->id,
+            '--apply' => true,
+        ])->assertSuccessful();
+
+        $this->assertDatabaseHas('master_product_warehouse_stocks', [
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => '0.00',
+            'reserved_qty' => '0.00',
+        ]);
+        $this->assertDatabaseHas('product_stock_movements', [
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'movement_type' => 'project_issue_out',
+            'qty' => '1.00',
+        ]);
+    }
+
+    public function test_project_show_exposes_stock_check_payload(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $project = $this->createProject();
+        $warehouse = Warehouse::create([
+            'code' => 'WH-SHOW',
+            'name' => 'Gudang Show',
+            'is_active' => true,
+        ]);
+        $projectProduct = $this->createProjectProduct('MAT-SHOW-01');
+
+        ProjectMaterial::create([
+            'project_id' => $project->id,
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'planned_qty' => 1,
+            'reserved_qty' => 1,
+            'issued_qty' => 1,
+            'status' => 'issued',
+        ]);
+
+        MasterProductWarehouseStock::create([
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 1,
+            'reserved_qty' => 0,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->get(route('projects.show', $project))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Projects/Show')
+                ->where('project.stock_check.summary.line_count', 1)
+                ->where('project.stock_check.summary.mismatch_count', 1)
+                ->where('project.stock_check.lines.0.sku', 'MAT-SHOW-01')
+                ->where('project.stock_check.lines.0.is_synced', false)
+                ->etc());
+    }
+
+    public function test_project_stock_sync_route_fixes_missing_issue_movements(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $project = $this->createProject();
+        $project->update([
+            'status' => 'selesai',
+            'finished_at' => '2026-07-05',
+        ]);
+        $warehouse = Warehouse::create([
+            'code' => 'WH-ROUTE',
+            'name' => 'Gudang Route',
+            'is_active' => true,
+        ]);
+        $projectProduct = $this->createProjectProduct('MAT-ROUTE-01');
+
+        ProjectMaterial::create([
+            'project_id' => $project->id,
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'planned_qty' => 1,
+            'reserved_qty' => 1,
+            'issued_qty' => 1,
+            'status' => 'issued',
+        ]);
+
+        MasterProductWarehouseStock::create([
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => 1,
+            'reserved_qty' => 0,
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->patch(route('projects.stock.sync', $project))
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('master_product_warehouse_stocks', [
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'qty' => '0.00',
+        ]);
+        $this->assertDatabaseHas('product_stock_movements', [
+            'master_product_id' => $projectProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'movement_type' => 'project_issue_out',
+            'qty' => '1.00',
+        ]);
+    }
+
     public function test_project_material_shortage_appears_in_reorder_planning(): void
     {
         $this->disableErpMiddleware();
@@ -828,6 +1159,7 @@ class ProjectMaterialChannelTest extends TestCase
             'sales_channel' => 'project',
             'product_type' => 'project_material',
             'status' => 'active',
+            'unit_cost' => 1000,
         ]);
     }
 }

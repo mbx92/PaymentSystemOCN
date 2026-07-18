@@ -19,6 +19,8 @@ use App\Models\TeamDistribution;
 use App\Models\TeamRole;
 use App\Models\User;
 use App\Services\ProjectMaterialReservationService;
+use App\Services\ProjectMaterialStockIssueService;
+use App\Services\ProjectStockCheckService;
 use App\Support\LegalVaultPath;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -252,7 +254,8 @@ class ProjectController extends Controller
             'description' => 'nullable|string',
             'payment_scheme' => 'nullable|in:terms,final',
             'payments' => 'nullable|array|min:1|max:20',
-            'payments.*.percentage' => 'required|numeric|min:0.01|max:100',
+            'payments.*.percentage' => 'nullable|numeric|min:0|max:100',
+            'payments.*.amount' => 'nullable|numeric|min:0',
             'payments.*.note' => 'nullable|string|max:500',
         ]);
 
@@ -261,6 +264,7 @@ class ProjectController extends Controller
             if (($validated['payment_scheme'] ?? 'terms') === 'final') {
                 $validated['payments'] = [[
                     'percentage' => 100,
+                    'amount' => $validated['total_value'],
                     'note' => 'Pelunasan di akhir',
                 ]];
             }
@@ -271,7 +275,7 @@ class ProjectController extends Controller
                 ]);
             }
 
-            $this->assertPaymentsTotalHundredPercent($validated['payments']);
+            $validated['payments'] = $this->normalizePaymentRows($validated['total_value'], $validated['payments']);
         } else {
             $validated['payments'] = [];
         }
@@ -321,6 +325,7 @@ class ProjectController extends Controller
 
         $availableWarehouses = $this->projectWarehouseQuery($request)->get(['id', 'code', 'name']);
         $availableWarehouseIds = $availableWarehouses->pluck('id');
+        $stockCheck = app(ProjectStockCheckService::class)->inspect($project);
 
         return Inertia::render('Projects/Show', [
             'project' => [
@@ -333,6 +338,7 @@ class ProjectController extends Controller
                 'project_type_label' => $project->projectTypeLabel(),
                 'supports_budget_items' => $project->supportsBudgetItems(),
                 'supports_project_board' => $project->supportsProjectBoard(),
+                'team_distribution_rate' => (float) ($project->team_distribution_rate ?? 30),
                 'total_value' => (float) $project->total_value,
                 'status' => $project->status,
                 'created_at' => $project->created_at?->format('Y-m-d'),
@@ -432,6 +438,7 @@ class ProjectController extends Controller
                         ? route('erp.sales.project-invoices.show', $project)
                         : null,
                 ],
+                'stock_check' => $stockCheck,
             ],
             'material_products' => MasterProduct::query()
                 ->where('status', 'active')
@@ -458,6 +465,38 @@ class ProjectController extends Controller
                 'out' => $cashOutCategories,
                 'labels' => $cashCategoryLabels,
             ],
+        ]);
+    }
+
+    public function syncIssuedStock(Project $project)
+    {
+        $rows = [];
+
+        DB::transaction(function () use ($project, &$rows): void {
+            $materials = ProjectMaterial::query()
+                ->with(['product', 'project'])
+                ->where('project_id', $project->id)
+                ->lockForUpdate()
+                ->get();
+
+            $issueService = app(ProjectMaterialStockIssueService::class);
+
+            foreach ($materials as $material) {
+                if (! $material->product?->isStockTracked() || (int) $material->warehouse_id <= 0) {
+                    continue;
+                }
+
+                $rows[] = $issueService->sync($material, (float) $material->issued_qty);
+            }
+        });
+
+        $changed = collect($rows)->filter(fn (array $row) => $row['action'] !== 'noop')->count();
+
+        return back()->with('flash', [
+            'type' => 'success',
+            'message' => $changed > 0
+                ? "Sinkron stok project selesai. {$changed} baris material diperbarui."
+                : 'Stock issue project sudah sinkron. Tidak ada perubahan.',
         ]);
     }
 
@@ -522,6 +561,8 @@ class ProjectController extends Controller
             'due_date' => 'nullable|date',
         ]);
 
+        $this->ensureAssignedUserBelongsToProjectTeam($project, $validated['assigned_user_id'] ?? null);
+
         $nextSortOrder = (int) ProjectTask::query()
             ->where('project_id', $project->id)
             ->max('sort_order') + 1;
@@ -553,9 +594,31 @@ class ProjectController extends Controller
             'due_date' => 'nullable|date',
         ]);
 
+        if (array_key_exists('assigned_user_id', $validated)) {
+            $this->ensureAssignedUserBelongsToProjectTeam($project, $validated['assigned_user_id']);
+        }
+
         $task->update($validated);
 
         return back()->with('flash', ['type' => 'success', 'message' => 'Task berhasil diperbarui.']);
+    }
+
+    private function ensureAssignedUserBelongsToProjectTeam(Project $project, mixed $assignedUserId): void
+    {
+        if (! $assignedUserId) {
+            return;
+        }
+
+        $isMember = TeamDistribution::query()
+            ->where('project_id', $project->id)
+            ->where('user_id', $assignedUserId)
+            ->exists();
+
+        if (! $isMember) {
+            throw ValidationException::withMessages([
+                'assigned_user_id' => 'Assignee task harus berasal dari tim project.',
+            ]);
+        }
     }
 
     public function destroyTask(Project $project, ProjectTask $task)
@@ -636,7 +699,8 @@ class ProjectController extends Controller
 
         if ($canEditPayments) {
             $rules['payments'] = 'nullable|array|min:1|max:20';
-            $rules['payments.*.percentage'] = 'required|numeric|min:0.01|max:100';
+            $rules['payments.*.percentage'] = 'nullable|numeric|min:0|max:100';
+            $rules['payments.*.amount'] = 'nullable|numeric|min:0';
             $rules['payments.*.note'] = 'nullable|string|max:500';
         }
 
@@ -666,7 +730,7 @@ class ProjectController extends Controller
                     ]);
                 }
 
-                $this->assertPaymentsTotalHundredPercent($validated['payments']);
+                $validated['payments'] = $this->normalizePaymentRows($validated['total_value'], $validated['payments']);
             } else {
                 $validated['payments'] = [];
             }
@@ -910,6 +974,51 @@ class ProjectController extends Controller
         return response()->json(['products' => $products]);
     }
 
+    public function toggleMaterialUsage(Request $request, Project $project, ProjectMaterial $material)
+    {
+        if ($material->project_id !== $project->id) {
+            abort(404);
+        }
+
+        $validated = $request->validate([
+            'used' => 'required|boolean',
+        ]);
+
+        DB::transaction(function () use ($material, $validated): void {
+            $material = ProjectMaterial::query()
+                ->with('product')
+                ->lockForUpdate()
+                ->findOrFail($material->id);
+
+            $product = $material->product;
+            if (! $product) {
+                throw ValidationException::withMessages([
+                    'used' => 'Produk material tidak ditemukan.',
+                ]);
+            }
+
+            $markAsUsed = (bool) $validated['used'];
+            $plannedQty = (float) $material->planned_qty;
+            $reservedQty = (float) $material->reserved_qty;
+
+            if ($markAsUsed && $product->isStockTracked() && $reservedQty + 0.00001 < $plannedQty) {
+                throw ValidationException::withMessages([
+                    'used' => 'Material belum ready. Pastikan qty reserve sudah memenuhi planned sebelum dicentang.',
+                ]);
+            }
+
+            app(ProjectMaterialStockIssueService::class)
+                ->sync($material, $markAsUsed ? $plannedQty : 0);
+        });
+
+        return back()->with('flash', [
+            'type' => 'success',
+            'message' => $validated['used']
+                ? 'Penggunaan material berhasil ditandai.'
+                : 'Penggunaan material berhasil dibatalkan.',
+        ]);
+    }
+
     private function caseInsensitiveLikeOperator(): string
     {
         return DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
@@ -978,11 +1087,20 @@ class ProjectController extends Controller
         return back()->with('flash', ['type' => 'success', 'message' => 'Folder dokumen project berhasil dibuat.']);
     }
 
-    private function projectMaterialStatus(ProjectMaterial $material): string
+    private function projectMaterialStatus(ProjectMaterial $material, ?MasterProduct $product = null): string
     {
+        $product ??= $material->relationLoaded('product') ? $material->product : null;
         $plannedQty = (float) $material->planned_qty;
         $reservedQty = (float) $material->reserved_qty;
         $issuedQty = (float) $material->issued_qty;
+
+        if ($product && ! $product->isStockTracked()) {
+            if ($plannedQty > 0 && $issuedQty >= $plannedQty) {
+                return 'issued';
+            }
+
+            return 'ready';
+        }
 
         if ($plannedQty > 0 && $issuedQty >= $plannedQty) {
             return 'issued';
@@ -1014,12 +1132,16 @@ class ProjectController extends Controller
 
             while ($cashIndex < $cashIns->count() && $paidRunning + 0.00001 < $requiredRunning) {
                 $cash = $cashIns[$cashIndex];
-                $paidRunning += (float) $cash->amount;
+                $paidRunning += (float) $cash->amount + (float) ($cash->discount_amount ?? 0);
                 $coveredAt = $cash->date?->format('Y-m-d');
                 $cashIndex++;
             }
 
             $isPaid = $payment->paid_at !== null || $paidRunning + 0.00001 >= $requiredRunning;
+
+            if ($isPaid && $coveredAt === null && $cashIndex > 0) {
+                $coveredAt = $cashIns[$cashIndex - 1]->date?->format('Y-m-d');
+            }
 
             return [
                 'id' => $payment->id,
@@ -1092,18 +1214,9 @@ class ProjectController extends Controller
 
     protected function createPaymentRows(Project $project, array $payments): void
     {
-        $totalValue = (float) $project->total_value;
-        $n = count($payments);
-        $assigned = 0.0;
-
         foreach ($payments as $i => $term) {
-            $pct = (float) $term['percentage'];
-            if ($i === $n - 1) {
-                $amount = round($totalValue - $assigned, 2);
-            } else {
-                $amount = round($totalValue * ($pct / 100), 2);
-                $assigned += $amount;
-            }
+            $pct = round((float) ($term['percentage'] ?? 0), 2);
+            $amount = round((float) ($term['amount'] ?? 0), 2);
 
             ProjectPayment::create([
                 'project_id' => $project->id,
@@ -1119,6 +1232,70 @@ class ProjectController extends Controller
     {
         $project->payments()->delete();
         $this->createPaymentRows($project, $payments);
+    }
+
+    /**
+     * @return array<int, array{percentage: float, amount: float, note: string|null}>
+     */
+    protected function normalizePaymentRows(float $totalValue, array $payments): array
+    {
+        if ($totalValue <= 0) {
+            return [];
+        }
+
+        $resolved = collect($payments)->values()->map(function (array $term, int $index) use ($totalValue): array {
+            $percentage = round((float) ($term['percentage'] ?? 0), 2);
+            $amount = round((float) ($term['amount'] ?? 0), 2);
+
+            if ($amount <= 0 && $percentage > 0) {
+                $amount = round($totalValue * ($percentage / 100), 2);
+            }
+
+            if ($amount <= 0) {
+                throw ValidationException::withMessages([
+                    "payments.{$index}.amount" => 'Nominal termin wajib diisi lebih dari 0 atau isi persentase termin.',
+                ]);
+            }
+
+            return [
+                'amount' => $amount,
+                'percentage' => $percentage,
+                'note' => $term['note'] ?? null,
+            ];
+        });
+
+        $totalAmount = round((float) $resolved->sum('amount'), 2);
+        if (abs($totalAmount - $totalValue) > 0.02) {
+            throw ValidationException::withMessages([
+                'payments' => 'Total nominal termin harus sama dengan nilai kontrak '.number_format($totalValue, 2, ',', '.').' (saat ini: '.number_format($totalAmount, 2, ',', '.').').',
+            ]);
+        }
+
+        $assignedAmount = 0.0;
+        $assignedPct = 0.0;
+        $lastIndex = $resolved->count() - 1;
+
+        $normalized = $resolved->map(function (array $term, int $index) use ($totalValue, &$assignedAmount, &$assignedPct, $lastIndex): array {
+            if ($index === $lastIndex) {
+                $amount = round($totalValue - $assignedAmount, 2);
+                $percentage = round(100 - $assignedPct, 2);
+            } else {
+                $amount = round((float) $term['amount'], 2);
+                $percentage = round(($amount / $totalValue) * 100, 2);
+                $assignedAmount += $amount;
+                $assignedPct += $percentage;
+            }
+
+            return [
+                'amount' => $amount,
+                'percentage' => $percentage,
+                'note' => $term['note'],
+            ];
+        })->all();
+
+        $this->assertPaymentsTotalHundredPercent($normalized);
+
+        return $normalized;
     }
 
     private function existingLegalVaultRelativePath(Project $project): ?string

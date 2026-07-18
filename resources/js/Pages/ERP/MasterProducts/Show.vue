@@ -10,6 +10,10 @@ import { BoltIcon } from '@heroicons/vue/20/solid';
 
 const props = defineProps({
   product: Object,
+  returnFilters: {
+    type: Object,
+    default: () => ({}),
+  },
   /** @type {{ available: boolean, hint: string|null }} */
   barcodePrint: {
     type: Object,
@@ -24,6 +28,7 @@ const props = defineProps({
 });
 
 const { format } = useCurrency();
+const backToIndexUrl = computed(() => route('erp.master-products.index', props.returnFilters ?? {}));
 
 const confirmDeleteProduct = () => {
   document.getElementById('modal-delete-product')?.showModal();
@@ -326,8 +331,8 @@ const regenerateEditBarcode = async () => {
               <p class="ocn-panel__desc mt-1">Detail informasi produk master untuk kebutuhan POS dan material project.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
-              <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.master-products.index')">
-              <ArrowLeftIcon class="h-4 w-4" />
+              <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="backToIndexUrl">
+                <ArrowLeftIcon class="h-4 w-4" />
               Back
             </Link>
             </div>

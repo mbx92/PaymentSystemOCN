@@ -156,6 +156,59 @@ class ProjectCrmCustomerTest extends TestCase
         ]);
     }
 
+    public function test_project_update_accepts_payment_amount_input_and_derives_percentages(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $customer = CrmCustomer::query()->create([
+            'code' => 'CUST-9012',
+            'name' => 'Amount Customer',
+            'company' => 'PT Amount Test',
+            'source' => 'manual',
+            'is_active' => true,
+        ]);
+        $project = Project::query()->create([
+            'name' => 'Project Amount Terms',
+            'crm_customer_id' => $customer->id,
+            'client_name' => 'PT Amount Test',
+            'total_value' => 10000000,
+            'status' => 'negosiasi',
+            'project_type' => 'system_website_development',
+        ]);
+
+        $this
+            ->actingAs($user)
+            ->put(route('projects.update', $project), [
+                'name' => 'Project Amount Terms',
+                'crm_customer_id' => $customer->id,
+                'project_type' => 'system_website_development',
+                'total_value' => 10000000,
+                'status' => 'negosiasi',
+                'payments' => [
+                    ['amount' => 2500000, 'note' => 'DP'],
+                    ['amount' => 7500000, 'note' => 'Pelunasan'],
+                ],
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect(route('projects.show', $project));
+
+        $this->assertDatabaseHas('project_payments', [
+            'project_id' => $project->id,
+            'term_number' => 1,
+            'amount' => '2500000.00',
+            'percentage' => '25.00',
+            'note' => 'DP',
+        ]);
+        $this->assertDatabaseHas('project_payments', [
+            'project_id' => $project->id,
+            'term_number' => 2,
+            'amount' => '7500000.00',
+            'percentage' => '75.00',
+            'note' => 'Pelunasan',
+        ]);
+    }
+
     public function test_project_create_accepts_active_type_from_project_type_master(): void
     {
         $this->disableErpMiddleware();

@@ -22,6 +22,7 @@ class CashIn extends Model
         'cash_account_id',
         'category',
         'amount',
+        'discount_amount',
         'document_status',
         'approved_at',
         'approved_by',
@@ -35,6 +36,7 @@ class CashIn extends Model
 
     protected $casts = [
         'amount' => 'decimal:2',
+        'discount_amount' => 'decimal:2',
         'approved_at' => 'datetime',
         'posted_at' => 'datetime',
         'date' => 'date',

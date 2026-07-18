@@ -4,7 +4,7 @@ import StatusBadge from '@/Components/StatusBadge.vue';
 import CurrencyInput from '@/Components/CurrencyInput.vue';
 import ConfirmModal from '@/Components/ConfirmModal.vue';
 import { Link, useForm, router } from '@inertiajs/vue3';
-import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
+import { ArrowLeftIcon, TrashIcon } from '@heroicons/vue/24/outline';
 import { computed, ref, watch } from 'vue';
 import { useCurrency } from '@/composables/useCurrency';
 import { useDateFormat } from '@/composables/useDateFormat';
@@ -24,9 +24,20 @@ const { formatDate } = useDateFormat();
 const activeTab = ref('info');
 const deletingMaterialId = ref(null);
 const createFolderForm = useForm({});
+const syncProjectStockForm = useForm({});
+const sidebarCanvasMode = ref(null);
+const openSidebarCanvas = (mode) => {
+    sidebarCanvasMode.value = mode;
+};
+const closeSidebarCanvas = () => {
+    sidebarCanvasMode.value = null;
+};
+const isProjectStockAuditCanvas = computed(() => sidebarCanvasMode.value === 'project-stock-audit');
+const isTeamCalculatorCanvas = computed(() => sidebarCanvasMode.value === 'team-calculator');
+const isReferralCalculatorCanvas = computed(() => sidebarCanvasMode.value === 'referral-calculator');
 
 // Mark term paid
-const payForm = useForm({ paid_at: new Date().toISOString().slice(0, 10), note: '' });
+const payForm = useForm({ paid_at: new Date().toISOString().slice(0, 10), cash_account_id: '', note: '' });
 const selectedTerm = ref(null);
 
 const openPayModal = (term) => {
@@ -274,6 +285,7 @@ const removeTeamMember = (id) => {
 };
 
 const openAssignTeamModal = () => {
+    closeSidebarCanvas();
     if (!teamForm.team_role_id && props.team_roles?.length) {
         teamForm.team_role_id = props.team_roles[0].id;
     }
@@ -301,6 +313,7 @@ const submitReferral = () => {
 };
 
 const openAddReferralModal = () => {
+    closeSidebarCanvas();
     document.getElementById('modal-add-referral')?.showModal();
 };
 
@@ -338,6 +351,328 @@ const deleteTask = (task) => {
 const projectTypeLabel = () => props.project?.project_type_label ?? props.project?.project_type ?? '-';
 
 const roleLabel = (role) => role;
+const defaultTeamCalculatorRole = computed(() => props.team_roles?.[0]?.name ?? 'developer');
+const teamCalculatorRate = ref(Number(props.project?.team_distribution_rate ?? 30));
+const clampPercentage = (value) => Math.min(100, Math.max(0, Number(value) || 0));
+const formatPercentageNumber = (value) => new Intl.NumberFormat('id-ID', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+}).format(Number(value) || 0);
+const formatPercentage = (value) => `${formatPercentageNumber(value)}%`;
+const parseLocalizedNumber = (value) => {
+    const normalized = String(value ?? '')
+        .replace(/[^\d,.-]/g, '')
+        .replace(/\./g, '')
+        .replace(',', '.');
+
+    return Number(normalized) || 0;
+};
+let teamCalculatorRowCounter = 0;
+const nextTeamCalculatorRowKey = () => `team-calculator-row-${teamCalculatorRowCounter++}`;
+const findTeamMemberName = (userId) => props.team_members.find((member) => String(member.id) === String(userId))?.name ?? '';
+const makeTeamCalculatorRow = (overrides = {}) => ({
+    key: overrides.key ?? nextTeamCalculatorRowKey(),
+    id: overrides.id ?? null,
+    user_id: overrides.user_id ? Number(overrides.user_id) : '',
+    user_name: overrides.user_name ?? findTeamMemberName(overrides.user_id),
+    role_in_project: overrides.role_in_project || defaultTeamCalculatorRole.value,
+    percentage: clampPercentage(overrides.percentage ?? 0),
+    base_pay: Math.max(0, Number(overrides.base_pay) || 0),
+    bonus: Math.max(0, Number(overrides.bonus) || 0),
+    paid_at: overrides.paid_at ?? null,
+    original_user_id: overrides.original_user_id ?? (overrides.user_id ? Number(overrides.user_id) : ''),
+    original_role_in_project: overrides.original_role_in_project ?? (overrides.role_in_project || defaultTeamCalculatorRole.value),
+    current_percentage: clampPercentage(overrides.current_percentage ?? overrides.percentage ?? 0),
+    current_base_pay: Math.max(0, Number(overrides.current_base_pay ?? overrides.base_pay) || 0),
+    current_bonus: Math.max(0, Number(overrides.current_bonus ?? overrides.bonus) || 0),
+    current_total_pay: Math.max(0, Number(overrides.current_total_pay ?? overrides.total_pay) || 0),
+});
+const buildTeamCalculatorRows = (rows = []) => (rows ?? []).map((row) => makeTeamCalculatorRow({
+    id: row.id,
+    user_id: row.user_id,
+    user_name: row.user_name,
+    role_in_project: row.role_in_project,
+    percentage: row.percentage,
+    base_pay: row.base_pay,
+    bonus: row.bonus,
+    total_pay: row.total_pay,
+    paid_at: row.paid_at,
+    current_percentage: row.percentage,
+    current_base_pay: row.base_pay,
+    current_bonus: row.bonus,
+    current_total_pay: row.total_pay,
+}));
+const teamCalculatorRows = ref(buildTeamCalculatorRows(props.project?.team_distributions ?? []));
+const teamCalculatorSaveForm = useForm({});
+const referralCalculatorRate = ref(5);
+const referralCalculatorBasis = ref('margin');
+const referralBasisOptions = [
+    { value: 'contract', label: 'Estimasi Revenue' },
+    { value: 'paid', label: 'Cash In Masuk' },
+    { value: 'margin', label: 'Margin Estimasi - Expense' },
+    { value: 'team_pool', label: 'Pool Tim Tersedia' },
+];
+watch(() => props.project?.team_distribution_rate, (value) => {
+    teamCalculatorRate.value = Number(value ?? 30);
+});
+watch(() => props.project?.team_distributions, (rows) => {
+    teamCalculatorRows.value = buildTeamCalculatorRows(rows ?? []);
+}, { deep: true, immediate: true });
+watch(sidebarCanvasMode, (mode) => {
+    if (mode === 'team-calculator') {
+        resetTeamCalculatorShares();
+    }
+});
+watch(() => props.project?.id, () => {
+    referralCalculatorRate.value = 5;
+    referralCalculatorBasis.value = 'margin';
+});
+const teamCalculatorContractValue = computed(() => {
+    const directValue = Number(props.project?.total_value) || 0;
+    if (directValue > 0) return directValue;
+    return cctvProjectValue.value;
+});
+const teamCalculatorEstimatedCost = computed(() => {
+    if ((Number(cctvEstimatedCost.value) || 0) > 0) {
+        return Number(cctvEstimatedCost.value) || 0;
+    }
+
+    return (props.project?.materials ?? []).reduce((sum, item) => sum + (Number(item.subtotal_cost) || 0), 0);
+});
+const teamCalculatorExpense = computed(() => Number(props.project?.summary?.total_operational) || 0);
+const teamCalculatorReferralTotal = computed(() => Number(props.project?.summary?.total_referral_commission) || 0);
+const teamCalculatorEstimatedMargin = computed(() => teamCalculatorContractValue.value - teamCalculatorEstimatedCost.value);
+const teamCalculatorNetEstimate = computed(() => teamCalculatorEstimatedMargin.value - teamCalculatorExpense.value);
+const teamCalculatorReserveAmount = computed(() => Math.max(teamCalculatorNetEstimate.value * ((Number(teamCalculatorRate.value) || 0) / 100), 0));
+const teamCalculatorPool = computed(() => Math.max(teamCalculatorNetEstimate.value - teamCalculatorReserveAmount.value, 0));
+const teamCalculatorDistributed = computed(() => (props.project?.team_distributions ?? []).reduce((sum, item) => sum + (Number(item.total_pay) || 0), 0));
+const teamCalculatorRemaining = computed(() => teamCalculatorPool.value - teamCalculatorDistributed.value);
+const calculateTeamCalculatorBasePay = (percentage) => Math.round(teamCalculatorPool.value * (clampPercentage(percentage) / 100));
+const teamCalculatorBasePay = (row) => Math.max(0, Number(row?.base_pay) || 0);
+const teamCalculatorRowTotalPay = (row) => teamCalculatorBasePay(row) + (Number(row?.bonus) || 0);
+const teamCalculatorAssignmentRows = computed(() => teamCalculatorRows.value.map((row) => {
+    const userName = findTeamMemberName(row.user_id) || row.user_name || 'Pilih anggota';
+    const simulatedBasePay = teamCalculatorBasePay(row);
+    const simulatedTotalPay = simulatedBasePay + (Number(row.bonus) || 0);
+
+    return {
+        ...row,
+        user_name: userName,
+        bonus: Number(row.bonus) || 0,
+        currentPercentage: clampPercentage(row.current_percentage ?? 0),
+        currentBasePay: Math.max(0, Number(row.current_base_pay) || 0),
+        currentTotalPay: Math.max(0, Number(row.current_total_pay) || 0),
+        currentBonus: Math.max(0, Number(row.current_bonus) || 0),
+        sliderPercentage: clampPercentage(row.percentage ?? 0),
+        simulatedBasePay,
+        simulatedTotalPay,
+        simulatedDeltaPay: simulatedTotalPay - (Math.max(0, Number(row.current_total_pay) || 0)),
+    };
+}));
+const teamCalculatorSimulatedPercentageTotal = computed(() => teamCalculatorAssignmentRows.value.reduce((sum, item) => sum + item.sliderPercentage, 0));
+const teamCalculatorSimulatedDistributed = computed(() => teamCalculatorAssignmentRows.value.reduce((sum, item) => sum + item.simulatedTotalPay, 0));
+const teamCalculatorSimulatedRemaining = computed(() => teamCalculatorPool.value - teamCalculatorSimulatedDistributed.value);
+const teamCalculatorSimulatedPercentageRemaining = computed(() => 100 - teamCalculatorSimulatedPercentageTotal.value);
+const normalizeTeamCalculatorRowsFromStoredData = (rows = []) => {
+    const preparedRows = buildTeamCalculatorRows(rows ?? []);
+
+    if (teamCalculatorPool.value <= 0) {
+        return preparedRows;
+    }
+
+    return preparedRows.map((row) => {
+        const storedBasePay = Math.max(0, Number(row.base_pay) || 0);
+        const storedPercentage = clampPercentage(row.percentage ?? 0);
+        const inferredPercentage = storedBasePay > 0
+            ? clampPercentage((storedBasePay / teamCalculatorPool.value) * 100)
+            : 0;
+        const effectivePercentage = storedPercentage > 0 ? storedPercentage : inferredPercentage;
+
+        return {
+            ...row,
+            percentage: effectivePercentage,
+            current_percentage: effectivePercentage,
+            base_pay: storedBasePay,
+            current_base_pay: storedBasePay,
+        };
+    });
+};
+const teamCalculatorDuplicateMemberIds = computed(() => {
+    const ids = teamCalculatorRows.value
+        .map((row) => row.user_id)
+        .filter((id) => id !== '' && id !== undefined && id !== null);
+
+    return ids.filter((id, index) => ids.indexOf(id) !== index);
+});
+const teamCalculatorHasDuplicates = computed(() => teamCalculatorDuplicateMemberIds.value.length > 0);
+const teamCalculatorRowsValid = computed(() => teamCalculatorRows.value.length > 0 && teamCalculatorRows.value.every((row) => row.user_id && row.role_in_project));
+const teamCalculatorRateValid = computed(() => Number(teamCalculatorRate.value) >= 0 && Number(teamCalculatorRate.value) <= 100);
+const teamCalculatorPercentageValid = computed(() => teamCalculatorSimulatedPercentageTotal.value <= 100.01);
+const teamCalculatorBudgetValid = computed(() => teamCalculatorSimulatedDistributed.value <= teamCalculatorPool.value + 0.01);
+const teamCalculatorMaxAllowedPercentage = (rowKey) => {
+    const otherTotal = teamCalculatorRows.value.reduce((sum, row) => (
+        row.key === rowKey ? sum : sum + clampPercentage(row.percentage)
+    ), 0);
+
+    return Math.max(0, 100 - otherTotal);
+};
+const teamCalculatorSimulationDirty = computed(() => {
+    if (Math.abs((Number(teamCalculatorRate.value) || 0) - (Number(props.project?.team_distribution_rate) || 0)) > 0.01) {
+        return true;
+    }
+
+    if (teamCalculatorRows.value.length !== (props.project?.team_distributions?.length ?? 0)) {
+        return true;
+    }
+
+    return teamCalculatorAssignmentRows.value.some((row) => (
+        !row.id
+        || String(row.user_id) !== String(row.original_user_id)
+        || row.role_in_project !== row.original_role_in_project
+        || Math.abs(row.sliderPercentage - row.currentPercentage) > 0.01
+        || Math.abs(row.simulatedBasePay - row.currentBasePay) > 0.01
+        || Math.abs((Number(row.bonus) || 0) - (Number(row.currentBonus) || 0)) > 0.01
+    ));
+});
+const canSaveTeamCalculator = computed(() => (
+    teamCalculatorSimulationDirty.value
+    && teamCalculatorRateValid.value
+    && teamCalculatorRowsValid.value
+    && teamCalculatorPercentageValid.value
+    && teamCalculatorBudgetValid.value
+    && !teamCalculatorHasDuplicates.value
+    && !teamCalculatorSaveForm.processing
+));
+const addTeamCalculatorRow = () => {
+    teamCalculatorRows.value.push(makeTeamCalculatorRow());
+};
+const removeTeamCalculatorRow = (key) => {
+    teamCalculatorRows.value = teamCalculatorRows.value.filter((row) => row.key !== key);
+};
+const setTeamCalculatorShare = (rowKey, value) => {
+    const maxAllowed = teamCalculatorMaxAllowedPercentage(rowKey);
+    const nextPercentage = Math.min(clampPercentage(value), maxAllowed);
+    const nextBasePay = calculateTeamCalculatorBasePay(nextPercentage);
+
+    teamCalculatorRows.value = teamCalculatorRows.value.map((row) => (
+        row.key === rowKey
+            ? { ...row, percentage: nextPercentage, base_pay: nextBasePay }
+            : row
+    ));
+};
+const setTeamCalculatorPercentageInput = (rowKey, value) => {
+    setTeamCalculatorShare(rowKey, parseLocalizedNumber(value));
+};
+const setTeamCalculatorAmount = (rowKey, value) => {
+    const amount = Math.max(0, parseLocalizedNumber(value));
+    const maxAmount = Math.round(teamCalculatorPool.value * (teamCalculatorMaxAllowedPercentage(rowKey) / 100));
+    const nextAmount = Math.min(amount, maxAmount);
+
+    if (teamCalculatorPool.value <= 0) {
+        teamCalculatorRows.value = teamCalculatorRows.value.map((row) => (
+            row.key === rowKey
+                ? { ...row, percentage: 0, base_pay: 0 }
+                : row
+        ));
+        return;
+    }
+
+    const nextPercentage = (nextAmount / teamCalculatorPool.value) * 100;
+
+    teamCalculatorRows.value = teamCalculatorRows.value.map((row) => (
+        row.key === rowKey
+            ? {
+                ...row,
+                percentage: Math.min(clampPercentage(nextPercentage), teamCalculatorMaxAllowedPercentage(rowKey)),
+                base_pay: nextAmount,
+            }
+            : row
+    ));
+};
+const setTeamCalculatorRole = (rowKey, value) => {
+    teamCalculatorRows.value = teamCalculatorRows.value.map((row) => (
+        row.key === rowKey
+            ? { ...row, role_in_project: value || defaultTeamCalculatorRole.value }
+            : row
+    ));
+};
+const setTeamCalculatorUser = (rowKey, value) => {
+    const nextUserId = value ? Number(value) : '';
+    teamCalculatorRows.value = teamCalculatorRows.value.map((row) => (
+        row.key === rowKey
+            ? { ...row, user_id: nextUserId, user_name: findTeamMemberName(nextUserId) }
+            : row
+    ));
+};
+const setTeamCalculatorBonus = (rowKey, value) => {
+    teamCalculatorRows.value = teamCalculatorRows.value.map((row) => (
+        row.key === rowKey
+            ? { ...row, bonus: Math.max(0, Number(value) || 0) }
+            : row
+    ));
+};
+const resetTeamCalculatorShares = () => {
+    teamCalculatorRate.value = Number(props.project?.team_distribution_rate ?? 30);
+    teamCalculatorRows.value = normalizeTeamCalculatorRowsFromStoredData(props.project?.team_distributions ?? []);
+};
+const saveTeamCalculator = () => {
+    activeTab.value = 'tim';
+
+    teamCalculatorSaveForm
+        .transform(() => ({
+            project_id: props.project.id,
+            distribution_rate: Number(teamCalculatorRate.value || 0),
+            distributions: teamCalculatorRows.value.map((row) => ({
+                user_id: row.user_id,
+                role_in_project: row.role_in_project,
+                percentage: Number(clampPercentage(row.percentage).toFixed(2)),
+                base_pay: teamCalculatorBasePay(row),
+                bonus: Number(row.bonus || 0),
+            })),
+        }))
+        .post(route('team-distribution.save'), {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => {
+                activeTab.value = 'tim';
+                closeSidebarCanvas();
+            },
+        });
+};
+const referralCalculatorBaseAmount = computed(() => {
+    switch (referralCalculatorBasis.value) {
+    case 'paid':
+        return Number(props.project?.summary?.total_cash_in) || 0;
+    case 'margin':
+        return Math.max(teamCalculatorNetEstimate.value, 0);
+    case 'team_pool':
+        return Math.max(teamCalculatorPool.value, 0);
+    case 'contract':
+    default:
+        return teamCalculatorContractValue.value;
+    }
+});
+const referralCalculatorAmount = computed(() => Math.round(referralCalculatorBaseAmount.value * ((Number(referralCalculatorRate.value) || 0) / 100)));
+const applyReferralCalculatorAmount = () => {
+    referralForm.commission_amount = referralCalculatorAmount.value;
+    closeSidebarCanvas();
+    openAddReferralModal();
+};
+const assignableTaskMembers = computed(() => {
+    const rows = props.project?.team_distributions ?? [];
+    const unique = new Map();
+
+    for (const row of rows) {
+        if (!row?.user_id || unique.has(row.user_id)) continue;
+        unique.set(row.user_id, {
+            id: row.user_id,
+            name: row.user_name,
+            role: row.role_in_project,
+        });
+    }
+
+    return Array.from(unique.values()).sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')));
+});
 
 const statusLabel = (status) => {
     if (status === 'todo') return 'To Do';
@@ -353,6 +688,85 @@ const taskCardClass = (status) => {
     return 'border-base-300';
 };
 
+const projectTasks = computed(() => {
+    const tasks = [...(props.project?.tasks ?? [])];
+
+    return tasks.sort((a, b) => {
+        const statusOrder = { in_progress: 0, todo: 1, done: 2 };
+        const statusGap = (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99);
+        if (statusGap !== 0) return statusGap;
+
+        const dateA = a.due_date ?? '9999-12-31';
+        const dateB = b.due_date ?? '9999-12-31';
+        if (dateA !== dateB) return dateA.localeCompare(dateB);
+
+        return String(a.title ?? '').localeCompare(String(b.title ?? ''));
+    });
+});
+
+const taskChecklistSummary = computed(() => {
+    const tasks = projectTasks.value;
+
+    return {
+        total: tasks.length,
+        done: tasks.filter((task) => task.status === 'done').length,
+        active: tasks.filter((task) => task.status === 'in_progress').length,
+        pending: tasks.filter((task) => task.status === 'todo').length,
+    };
+});
+
+const materialUsageChecklist = computed(() => {
+    const materials = props.project?.materials ?? [];
+
+    return materials
+        .map((item) => {
+            const plannedQty = Number(item.planned_qty) || 0;
+            const issuedQty = Number(item.issued_qty) || 0;
+            const reservedQty = Number(item.reserved_qty) || 0;
+            const isFullyUsed = plannedQty > 0 ? issuedQty >= plannedQty : issuedQty > 0;
+            const hasPartialUsage = issuedQty > 0 && !isFullyUsed;
+
+            return {
+                ...item,
+                plannedQty,
+                issuedQty,
+                reservedQty,
+                isFullyUsed,
+                hasPartialUsage,
+                canToggleUsage: item.status === 'ready' || item.status === 'issued',
+                usagePercent: plannedQty > 0 ? Math.min((issuedQty / plannedQty) * 100, 100) : 0,
+            };
+        })
+        .sort((a, b) => {
+            if (a.isFullyUsed !== b.isFullyUsed) return a.isFullyUsed ? -1 : 1;
+            if (a.hasPartialUsage !== b.hasPartialUsage) return a.hasPartialUsage ? -1 : 1;
+            return String(a.product ?? '').localeCompare(String(b.product ?? ''));
+        });
+});
+
+const materialUsageSummary = computed(() => {
+    const items = materialUsageChecklist.value;
+
+    return {
+        total: items.length,
+        used: items.filter((item) => item.isFullyUsed).length,
+        issuedQty: items.reduce((sum, item) => sum + item.issuedQty, 0),
+        reservedQty: items.reduce((sum, item) => sum + item.reservedQty, 0),
+    };
+});
+
+const toggleTaskChecklist = (task, checked) => {
+    updateTaskStatus(task, checked ? 'done' : 'todo');
+};
+
+const toggleMaterialUsage = (item, checked) => {
+    router.patch(
+        route('projects.materials.usage', { project: props.project.id, material: item.id }),
+        { used: checked },
+        { preserveScroll: true, preserveState: true },
+    );
+};
+
 const canShowKanban = computed(() => !!props.project?.supports_project_board);
 const isCctvProject = computed(() => !!props.project?.supports_budget_items);
 const materialSummary = computed(() => {
@@ -364,6 +778,28 @@ const materialSummary = computed(() => {
         readyQty: materials.reduce((sum, item) => sum + (Number(item.reserved_qty) || 0), 0),
     };
 });
+const projectStockCheck = computed(() => props.project?.stock_check ?? {
+    summary: { line_count: 0, warning_count: 0, total_issued_qty: 0, total_movement_net: 0, total_warehouse_qty: 0, mismatch_count: 0 },
+    lines: [],
+    warnings: [],
+});
+const projectStockCheckSummary = computed(() => projectStockCheck.value.summary ?? {
+    line_count: 0,
+    warning_count: 0,
+    total_issued_qty: 0,
+    total_movement_net: 0,
+    total_warehouse_qty: 0,
+    mismatch_count: 0,
+});
+const projectStockCheckLines = computed(() => projectStockCheck.value.lines ?? []);
+const projectStockCheckWarnings = computed(() => projectStockCheck.value.warnings ?? []);
+const stockCheckBadgeClass = (isSynced) => (isSynced ? 'badge-success' : 'badge-error');
+const syncProjectStock = () => {
+    syncProjectStockForm.patch(route('projects.stock.sync', props.project.id), {
+        preserveScroll: true,
+        preserveState: true,
+    });
+};
 const cctvBudgetSummary = computed(() => props.project?.budget_summary ?? {});
 const cctvProjectValue = computed(() => {
     const summaryPrice = Number(cctvBudgetSummary.value.total_price) || 0;
@@ -562,7 +998,7 @@ const deleteProject = () => {
 </script>
 
 <template>
-    <AppLayout>
+    <AppLayout :hide-assistant="!!sidebarCanvasMode">
         <div class="space-y-5">
             <!-- Header -->
             <div class="ocn-panel">
@@ -675,6 +1111,7 @@ const deleteProject = () => {
             <!-- Tabs -->
             <div class="tabs tabs-boxed bg-base-100">
                 <button :class="['tab', activeTab === 'info' ? 'tab-active' : '']" @click="activeTab = 'info'">Info & Termin</button>
+                <button :class="['tab', activeTab === 'work' ? 'tab-active' : '']" @click="activeTab = 'work'">Pekerjaan & Checklist</button>
                 <button :class="['tab', activeTab === 'materials' ? 'tab-active' : '']" @click="activeTab = 'materials'">Material / BOM</button>
                 <button :class="['tab', activeTab === 'kas' ? 'tab-active' : '']" @click="activeTab = 'kas'">Expenses</button>
                 <button :class="['tab', activeTab === 'tim' ? 'tab-active' : '']" @click="activeTab = 'tim'">Tim & Referral</button>
@@ -793,9 +1230,156 @@ const deleteProject = () => {
                 </div>
             </div>
 
+            <div v-if="activeTab === 'work'" class="space-y-4">
+                <div class="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+                    <div class="ocn-panel">
+                        <div class="ocn-panel__head flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                                <h2 class="ocn-panel__title">Task pekerjaan project</h2>
+                                <p class="ocn-panel__desc">Pantau pekerjaan aktif, PIC, due date, dan progres penyelesaian.</p>
+                            </div>
+                            <button class="btn btn-primary btn-sm shrink-0" @click="openTaskModal">+ Tambah task</button>
+                        </div>
+                        <div class="card-body space-y-4">
+                            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                <div class="rounded-xl border border-base-200 bg-base-200/30 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Total Task</p>
+                                    <p class="mt-2 text-2xl font-bold tabular-nums">{{ taskChecklistSummary.total }}</p>
+                                </div>
+                                <div class="rounded-xl border border-warning/30 bg-warning/10 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-warning/80">Sedang Jalan</p>
+                                    <p class="mt-2 text-2xl font-bold tabular-nums text-warning">{{ taskChecklistSummary.active }}</p>
+                                </div>
+                                <div class="rounded-xl border border-success/30 bg-success/10 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-success/80">Selesai</p>
+                                    <p class="mt-2 text-2xl font-bold tabular-nums text-success">{{ taskChecklistSummary.done }}</p>
+                                </div>
+                            </div>
+
+                            <div class="space-y-3">
+                                <div
+                                    v-for="task in projectTasks"
+                                    :key="task.id"
+                                    :class="[
+                                        'rounded-xl border p-4 transition-colors',
+                                        taskCardClass(task.status),
+                                    ]"
+                                >
+                                    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                        <label class="flex min-w-0 items-start gap-3">
+                                            <input
+                                                type="checkbox"
+                                                class="checkbox checkbox-sm mt-0.5"
+                                                :checked="task.status === 'done'"
+                                                @change="toggleTaskChecklist(task, $event.target.checked)"
+                                            >
+                                            <div class="min-w-0">
+                                                <p class="font-semibold" :class="task.status === 'done' ? 'line-through text-base-content/60' : ''">{{ task.title }}</p>
+                                                <p v-if="task.description" class="mt-1 text-sm text-base-content/70">{{ task.description }}</p>
+                                                <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-base-content/60">
+                                                    <span class="badge badge-ghost badge-sm">{{ statusLabel(task.status) }}</span>
+                                                    <span>PIC: {{ task.assigned_user_name ?? '-' }}</span>
+                                                    <span>Due: {{ formatDate(task.due_date) }}</span>
+                                                </div>
+                                            </div>
+                                        </label>
+                                        <div class="flex flex-wrap items-center gap-2 shrink-0">
+                                            <select class="select select-bordered select-xs" :value="task.status" @change="updateTaskStatus(task, $event.target.value)">
+                                                <option value="todo">To Do</option>
+                                                <option value="in_progress">In Progress</option>
+                                                <option value="done">Done</option>
+                                            </select>
+                                            <button class="btn btn-ghost btn-xs text-error" @click="deleteTask(task)">Hapus</button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div v-if="!projectTasks.length" class="rounded-xl border border-dashed border-base-300 px-4 py-10 text-center text-sm text-base-content/60">
+                                    Belum ada task pekerjaan untuk project ini.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ocn-panel">
+                        <div class="ocn-panel__head">
+                            <h2 class="ocn-panel__title">Checklist item digunakan</h2>
+                            <p class="ocn-panel__desc">Material yang sudah ready bisa dicentang untuk menandai qty planned sebagai sudah digunakan.</p>
+                        </div>
+                        <div class="card-body space-y-4">
+                            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:grid-cols-1">
+                                <div class="rounded-xl border border-base-200 bg-base-200/30 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Item Dipakai</p>
+                                    <p class="mt-2 text-2xl font-bold tabular-nums">{{ materialUsageSummary.used }} / {{ materialUsageSummary.total }}</p>
+                                </div>
+                                <div class="rounded-xl border border-info/30 bg-info/10 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-info/80">Qty Reserved</p>
+                                    <p class="mt-2 text-2xl font-bold tabular-nums text-info">{{ materialUsageSummary.reservedQty }}</p>
+                                </div>
+                                <div class="rounded-xl border border-primary/30 bg-primary/10 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-primary/80">Qty Used</p>
+                                    <p class="mt-2 text-2xl font-bold tabular-nums text-primary">{{ materialUsageSummary.issuedQty }}</p>
+                                </div>
+                            </div>
+
+                            <div class="space-y-3">
+                                <label
+                                    v-for="item in materialUsageChecklist"
+                                    :key="item.id"
+                                    class="flex items-start gap-3 rounded-xl border border-base-200 bg-base-100 px-4 py-3"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        class="checkbox checkbox-sm mt-0.5"
+                                        :checked="item.isFullyUsed"
+                                        :disabled="!item.canToggleUsage"
+                                        @change="toggleMaterialUsage(item, $event.target.checked)"
+                                    >
+                                    <div class="min-w-0 flex-1">
+                                        <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                            <div class="min-w-0">
+                                                <p class="font-semibold">{{ item.product }}</p>
+                                                <p class="text-xs text-base-content/60">{{ item.sku || '-' }} · {{ item.warehouse || '-' }}</p>
+                                            </div>
+                                            <span
+                                                class="badge badge-sm"
+                                                :class="item.isFullyUsed ? 'badge-success' : item.hasPartialUsage ? 'badge-info' : 'badge-ghost'"
+                                            >
+                                                {{ item.isFullyUsed ? 'Sudah dipakai' : item.hasPartialUsage ? 'Dipakai sebagian' : 'Belum dipakai' }}
+                                            </span>
+                                        </div>
+                                        <div class="mt-3 grid grid-cols-2 gap-3 text-xs text-base-content/70">
+                                            <div>
+                                                <p class="text-base-content/50">Qty digunakan</p>
+                                                <p class="font-semibold text-base-content">{{ item.issuedQty }} {{ item.uom }}</p>
+                                            </div>
+                                            <div>
+                                                <p class="text-base-content/50">Target / planned</p>
+                                                <p class="font-semibold text-base-content">{{ item.plannedQty }} {{ item.uom }}</p>
+                                            </div>
+                                        </div>
+                                        <p v-if="!item.canToggleUsage" class="mt-3 text-xs text-base-content/55">
+                                            Checklist aktif setelah material berstatus ready.
+                                        </p>
+                                        <progress class="progress progress-primary mt-3 h-2 w-full" :value="item.issuedQty" :max="item.plannedQty || 1" />
+                                    </div>
+                                </label>
+
+                                <div v-if="!materialUsageChecklist.length" class="rounded-xl border border-dashed border-base-300 px-4 py-10 text-center text-sm text-base-content/60">
+                                    Belum ada item material untuk project ini.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div v-if="activeTab === 'materials'" class="space-y-4">
-                <div class="flex">
+                <div class="flex flex-wrap gap-2">
                     <button class="btn btn-primary btn-sm" onclick="document.getElementById('modal-add-material').showModal()">+ Tambah Material</button>
+                    <button class="btn btn-outline btn-sm" @click="openSidebarCanvas('project-stock-audit')">
+                        Audit stok project
+                    </button>
                 </div>
 
                 <div class="ocn-panel">
@@ -824,6 +1408,490 @@ const deleteProject = () => {
                     </div>
                 </div>
             </div>
+
+            <teleport to="body">
+                <div
+                    v-if="sidebarCanvasMode"
+                    class="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-[1px]"
+                    @click="closeSidebarCanvas"
+                />
+                <aside
+                    class="fixed inset-y-0 right-0 z-50 flex w-full max-w-2xl flex-col border-l border-base-300 bg-base-100 shadow-2xl transition-transform duration-300 ease-out"
+                    :class="sidebarCanvasMode ? 'translate-x-0' : 'translate-x-full'"
+                >
+                    <div class="flex items-start justify-between gap-3 border-b border-base-200 px-5 py-4">
+                        <div>
+                            <h2 class="text-lg font-bold">
+                                {{ isProjectStockAuditCanvas ? 'Audit stok project' : isTeamCalculatorCanvas ? 'Kalkulator Tim' : 'Kalkulator Referral' }}
+                            </h2>
+                            <p class="mt-1 text-sm text-base-content/60">
+                                {{ isProjectStockAuditCanvas
+                                    ? 'Bandingkan issued material project dengan movement stok aktual di gudang.'
+                                    : isTeamCalculatorCanvas
+                                        ? 'Atur pembagian tim dari estimasi project setelah dikurangi HPP dan expense.'
+                                        : 'Hitung nominal komisi referral tanpa meninggalkan halaman project.' }}
+                            </p>
+                        </div>
+                        <button class="btn btn-ghost btn-sm" @click="closeSidebarCanvas">Tutup</button>
+                    </div>
+
+                    <div class="flex-1 overflow-y-auto px-5 py-4">
+                        <div v-if="isProjectStockAuditCanvas" class="space-y-4">
+                            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div class="rounded-xl border border-base-200 bg-base-200/30 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Item Dicek</p>
+                                    <p class="mt-2 text-2xl font-bold tabular-nums">{{ projectStockCheckSummary.line_count }}</p>
+                                </div>
+                                <div
+                                    class="rounded-xl p-4"
+                                    :class="projectStockCheckSummary.mismatch_count > 0 ? 'border border-error/30 bg-error/10' : 'border border-success/30 bg-success/10'"
+                                >
+                                    <p
+                                        class="text-xs font-semibold uppercase tracking-wide"
+                                        :class="projectStockCheckSummary.mismatch_count > 0 ? 'text-error/80' : 'text-success/80'"
+                                    >
+                                        Mismatch
+                                    </p>
+                                    <p
+                                        class="mt-2 text-2xl font-bold tabular-nums"
+                                        :class="projectStockCheckSummary.mismatch_count > 0 ? 'text-error' : 'text-success'"
+                                    >
+                                        {{ projectStockCheckSummary.mismatch_count }}
+                                    </p>
+                                </div>
+                                <div class="rounded-xl border border-primary/30 bg-primary/10 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-primary/80">Issued Qty</p>
+                                    <p class="mt-2 text-2xl font-bold tabular-nums text-primary">{{ projectStockCheckSummary.total_issued_qty }}</p>
+                                </div>
+                                <div class="rounded-xl border border-info/30 bg-info/10 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-info/80">Movement Net</p>
+                                    <p class="mt-2 text-2xl font-bold tabular-nums text-info">{{ projectStockCheckSummary.total_movement_net }}</p>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-wrap gap-2">
+                                <button
+                                    class="btn btn-outline btn-sm"
+                                    :disabled="syncProjectStockForm.processing || projectStockCheckLines.length === 0"
+                                    @click="syncProjectStock"
+                                >
+                                    {{ syncProjectStockForm.processing ? 'Menyinkronkan...' : 'Sinkronkan stok project' }}
+                                </button>
+                            </div>
+
+                            <div
+                                v-if="projectStockCheckWarnings.length"
+                                class="rounded-xl border border-error/30 bg-error/10 px-4 py-3 text-sm text-error"
+                            >
+                                <p class="font-semibold">Ditemukan selisih stok project.</p>
+                                <ul class="mt-2 list-disc pl-5">
+                                    <li v-for="warning in projectStockCheckWarnings" :key="warning">{{ warning }}</li>
+                                </ul>
+                            </div>
+
+                            <div v-if="projectStockCheckLines.length" class="space-y-3">
+                                <article
+                                    v-for="row in projectStockCheckLines"
+                                    :key="row.material_id"
+                                    class="rounded-2xl border border-base-200 bg-base-100 p-4"
+                                >
+                                    <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                        <div class="min-w-0">
+                                            <p class="font-semibold">{{ row.name }}</p>
+                                            <p class="text-xs text-base-content/60">{{ row.sku || '-' }} · {{ row.warehouse || '-' }}</p>
+                                        </div>
+                                        <span class="badge badge-sm" :class="stockCheckBadgeClass(row.is_synced)">
+                                            {{ row.is_synced ? 'Sinkron' : 'Mismatch' }}
+                                        </span>
+                                    </div>
+
+                                    <div class="mt-4 grid grid-cols-2 gap-3 text-sm md:grid-cols-3">
+                                        <div>
+                                            <p class="text-xs uppercase tracking-wide text-base-content/50">Issued</p>
+                                            <p class="mt-1 font-semibold">{{ row.issued_qty }}</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-xs uppercase tracking-wide text-base-content/50">Movement Net</p>
+                                            <p class="mt-1 font-semibold">{{ row.movement_net }}</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-xs uppercase tracking-wide text-base-content/50">Delta</p>
+                                            <p class="mt-1 font-semibold" :class="Math.abs(Number(row.delta_qty) || 0) > 0.00001 ? 'text-error' : 'text-success'">
+                                                {{ row.delta_qty }}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <p class="text-xs uppercase tracking-wide text-base-content/50">WH Qty</p>
+                                            <p class="mt-1 font-semibold">{{ row.warehouse_qty }}</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-xs uppercase tracking-wide text-base-content/50">WH Reserved</p>
+                                            <p class="mt-1 font-semibold">{{ row.warehouse_reserved }}</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-xs uppercase tracking-wide text-base-content/50">Status Material</p>
+                                            <p class="mt-1 font-semibold">{{ materialStatusLabel(row.status) }}</p>
+                                        </div>
+                                    </div>
+                                </article>
+                            </div>
+
+                            <div v-else class="rounded-xl border border-dashed border-base-300 px-4 py-8 text-center text-sm text-base-content/60">
+                                Tidak ada material stock-tracked yang perlu diaudit pada project ini.
+                            </div>
+                        </div>
+
+                        <div v-else-if="isTeamCalculatorCanvas" class="space-y-4">
+                            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div class="rounded-xl border border-base-200 bg-base-200/30 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Estimasi Revenue</p>
+                                    <p class="mt-2 text-xl font-bold">{{ format(teamCalculatorContractValue) }}</p>
+                                </div>
+                                <div class="rounded-xl border border-error/30 bg-error/10 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-error/80">HPP</p>
+                                    <p class="mt-2 text-xl font-bold text-error">{{ format(teamCalculatorEstimatedCost) }}</p>
+                                </div>
+                                <div class="rounded-xl border border-warning/30 bg-warning/10 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-warning/80">Expense Project</p>
+                                    <p class="mt-2 text-xl font-bold text-warning">{{ format(teamCalculatorExpense) }}</p>
+                                </div>
+                                <div class="rounded-xl border border-secondary/30 bg-secondary/10 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-secondary/80">Referral Tersimpan</p>
+                                    <p class="mt-2 text-xl font-bold text-secondary">{{ format(teamCalculatorReferralTotal) }}</p>
+                                </div>
+                            </div>
+
+                            <div class="rounded-2xl border border-base-200 bg-base-100 p-4">
+                                <label class="label px-0 pt-0"><span class="label-text font-semibold">Rate cadangan perusahaan (%)</span></label>
+                                <input
+                                    :value="formatPercentageNumber(teamCalculatorRate)"
+                                    type="text"
+                                    inputmode="decimal"
+                                    class="input input-bordered w-full"
+                                    @input="teamCalculatorRate = clampPercentage(parseLocalizedNumber($event.target.value))"
+                                >
+                                <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                    <div>
+                                        <p class="text-xs uppercase tracking-wide text-base-content/50">Margin Estimasi</p>
+                                        <p class="mt-1 font-semibold" :class="teamCalculatorEstimatedMargin >= 0 ? 'text-success' : 'text-error'">{{ format(teamCalculatorEstimatedMargin) }}</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs uppercase tracking-wide text-base-content/50">Nilai Dasar Kalkulator</p>
+                                        <p class="mt-1 font-semibold" :class="teamCalculatorNetEstimate >= 0 ? 'text-success' : 'text-error'">{{ format(teamCalculatorNetEstimate) }}</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs uppercase tracking-wide text-base-content/50">Cadangan</p>
+                                        <p class="mt-1 font-semibold">{{ format(teamCalculatorReserveAmount) }}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="rounded-2xl border border-base-200 bg-base-100 p-4">
+                                <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                    <div>
+                                        <p class="text-xs uppercase tracking-wide text-base-content/50">Pool Tim</p>
+                                        <p class="mt-1 font-semibold text-primary">{{ format(teamCalculatorPool) }}</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs uppercase tracking-wide text-base-content/50">Sudah Dialokasikan</p>
+                                        <p class="mt-1 font-semibold">{{ format(teamCalculatorDistributed) }}</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs uppercase tracking-wide text-base-content/50">Sisa Pool</p>
+                                        <p class="mt-1 font-semibold" :class="teamCalculatorRemaining >= 0 ? 'text-success' : 'text-error'">{{ format(teamCalculatorRemaining) }}</p>
+                                    </div>
+                                </div>
+                                <p class="mt-4 text-xs text-base-content/60">
+                                    Kalkulator ini memakai rumus estimasi revenue dikurangi HPP dan expense, jadi tetap bisa dipakai walaupun invoice atau cash in belum masuk.
+                                </p>
+                                <div class="mt-4 flex flex-wrap gap-2">
+                                    <button class="btn btn-primary btn-sm" @click="addTeamCalculatorRow">Tambah Tim</button>
+                                    <button class="btn btn-outline btn-sm" @click="openAssignTeamModal">Assign via modal</button>
+                                </div>
+                            </div>
+
+                            <div class="rounded-2xl border border-base-200 bg-base-100 p-4">
+                                <div class="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                        <h3 class="font-semibold">Pembagian tim di canvas</h3>
+                                        <p class="mt-1 text-sm text-base-content/60">
+                                            Tambah anggota, atur persen atau nominal rupiah, lalu simpan dari canvas ini. Hasil simpan akan masuk ke tabel Tim project.
+                                        </p>
+                                    </div>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button class="btn btn-outline btn-sm" @click="addTeamCalculatorRow">Tambah Baris</button>
+                                        <button
+                                            class="btn btn-ghost btn-sm"
+                                            :disabled="!teamCalculatorSimulationDirty"
+                                            @click="resetTeamCalculatorShares"
+                                        >
+                                            Reset
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div v-if="!teamCalculatorRateValid || !teamCalculatorPercentageValid || !teamCalculatorBudgetValid || !teamCalculatorRowsValid || teamCalculatorHasDuplicates || teamCalculatorSaveForm.errors.distributions" class="mt-4 space-y-2">
+                                    <div v-if="!teamCalculatorRateValid" class="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+                                        Rate cadangan perusahaan harus antara 0,00% sampai 100,00%.
+                                    </div>
+                                    <div v-if="!teamCalculatorPercentageValid" class="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+                                        Total pembagian saat ini {{ formatPercentage(teamCalculatorSimulatedPercentageTotal) }} dan tidak boleh melebihi 100,00%.
+                                    </div>
+                                    <div v-if="!teamCalculatorBudgetValid" class="rounded-xl border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
+                                        Total simulasi {{ format(teamCalculatorSimulatedDistributed) }} melebihi pool tim {{ format(teamCalculatorPool) }}.
+                                    </div>
+                                    <div v-if="!teamCalculatorRowsValid" class="rounded-xl border border-info/30 bg-info/10 px-4 py-3 text-sm text-info">
+                                        Setiap baris wajib punya anggota dan peran sebelum disimpan.
+                                    </div>
+                                    <div v-if="teamCalculatorHasDuplicates" class="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+                                        Anggota terpilih ganda:
+                                        {{ teamCalculatorDuplicateMemberIds.map(id => team_members.find(member => String(member.id) === String(id))?.name).filter(Boolean).join(', ') }}.
+                                    </div>
+                                    <div v-if="teamCalculatorSaveForm.errors.distributions" class="rounded-xl border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
+                                        {{ teamCalculatorSaveForm.errors.distributions }}
+                                    </div>
+                                </div>
+
+                                <div v-if="teamCalculatorAssignmentRows.length" class="mt-4 space-y-4">
+                                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                        <div class="rounded-xl border border-base-200 bg-base-200/30 p-4">
+                                            <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Total Persentase</p>
+                                            <p
+                                                class="mt-2 text-xl font-bold tabular-nums"
+                                                :class="Math.abs(teamCalculatorSimulatedPercentageRemaining) <= 0.01 ? 'text-success' : 'text-warning'"
+                                            >
+                                                {{ formatPercentage(teamCalculatorSimulatedPercentageTotal) }}
+                                            </p>
+                                        </div>
+                                        <div class="rounded-xl border border-primary/30 bg-primary/10 p-4">
+                                            <p class="text-xs font-semibold uppercase tracking-wide text-primary/80">Total Pembagian</p>
+                                            <p class="mt-2 text-xl font-bold tabular-nums text-primary">{{ format(teamCalculatorSimulatedDistributed) }}</p>
+                                        </div>
+                                        <div
+                                            class="rounded-xl p-4"
+                                            :class="teamCalculatorSimulatedRemaining >= 0 ? 'border border-success/30 bg-success/10' : 'border border-error/30 bg-error/10'"
+                                        >
+                                            <p
+                                                class="text-xs font-semibold uppercase tracking-wide"
+                                                :class="teamCalculatorSimulatedRemaining >= 0 ? 'text-success/80' : 'text-error/80'"
+                                            >
+                                                Sisa Pool
+                                            </p>
+                                            <p
+                                                class="mt-2 text-xl font-bold tabular-nums"
+                                                :class="teamCalculatorSimulatedRemaining >= 0 ? 'text-success' : 'text-error'"
+                                            >
+                                                {{ format(teamCalculatorSimulatedRemaining) }}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div
+                                        class="rounded-xl border px-4 py-3 text-sm"
+                                        :class="Math.abs(teamCalculatorSimulatedPercentageRemaining) <= 0.01 ? 'border-success/30 bg-success/10 text-success' : 'border-warning/30 bg-warning/10 text-warning'"
+                                    >
+                                        <span v-if="Math.abs(teamCalculatorSimulatedPercentageRemaining) <= 0.01">
+                                            Total pembagian sudah pas 100,00%.
+                                        </span>
+                                        <span v-else-if="teamCalculatorSimulatedPercentageRemaining > 0">
+                                            Masih ada sisa {{ formatPercentage(teamCalculatorSimulatedPercentageRemaining) }} yang belum dialokasikan.
+                                        </span>
+                                        <span v-else>
+                                            Alokasi melebihi 100% sebesar {{ formatPercentage(Math.abs(teamCalculatorSimulatedPercentageRemaining)) }}.
+                                        </span>
+                                    </div>
+
+                                    <article
+                                        v-for="distribution in teamCalculatorAssignmentRows"
+                                        :key="distribution.key"
+                                        class="rounded-2xl border border-base-200 bg-base-100 p-4"
+                                    >
+                                        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                            <div>
+                                                <p class="font-semibold">{{ distribution.user_name }}</p>
+                                                <p class="text-sm text-base-content/60">{{ roleLabel(distribution.role_in_project) }}</p>
+                                            </div>
+                                            <div class="flex flex-wrap items-center gap-2 text-xs">
+                                                <span class="badge badge-ghost badge-sm">Tersimpan {{ formatPercentage(distribution.currentPercentage) }}</span>
+                                                <span class="badge badge-primary badge-sm">Aktif {{ formatPercentage(distribution.sliderPercentage) }}</span>
+                                                <span v-if="distribution.paid_at" class="badge badge-success badge-sm">Sudah dibayar</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
+                                            <div>
+                                                <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-base-content/50">Anggota Tim</label>
+                                                <select
+                                                    :value="distribution.user_id"
+                                                    class="select select-bordered select-sm w-full"
+                                                    @change="setTeamCalculatorUser(distribution.key, $event.target.value)"
+                                                >
+                                                    <option value="">Pilih anggota</option>
+                                                    <option v-for="member in team_members" :key="member.id" :value="member.id">{{ member.name }}</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-base-content/50">Peran</label>
+                                                <select
+                                                    :value="distribution.role_in_project"
+                                                    class="select select-bordered select-sm w-full"
+                                                    @change="setTeamCalculatorRole(distribution.key, $event.target.value)"
+                                                >
+                                                    <option v-for="role in team_roles" :key="role.id" :value="role.name">{{ role.name }}</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="mt-4 rounded-xl border border-base-200 bg-base-200/20 p-3">
+                                            <div class="mb-2 flex items-center justify-between gap-3 text-xs font-semibold uppercase tracking-wide text-base-content/50">
+                                                <span>Slider Persentase</span>
+                                                <span>{{ formatPercentage(distribution.sliderPercentage) }}</span>
+                                            </div>
+                                            <input
+                                                :value="distribution.sliderPercentage"
+                                                type="range"
+                                                min="0"
+                                                :max="teamCalculatorMaxAllowedPercentage(distribution.key)"
+                                                step="0.01"
+                                                class="range range-primary"
+                                                @input="setTeamCalculatorShare(distribution.key, $event.target.value)"
+                                            >
+                                        </div>
+
+                                        <div class="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-[120px_minmax(0,1fr)_minmax(0,1fr)_44px]">
+                                            <div>
+                                                <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-base-content/50">Persen</label>
+                                                <input
+                                                    :value="formatPercentageNumber(distribution.sliderPercentage)"
+                                                    type="text"
+                                                    inputmode="decimal"
+                                                    class="input input-bordered input-sm w-full text-right"
+                                                    @input="setTeamCalculatorPercentageInput(distribution.key, $event.target.value)"
+                                                >
+                                                <p class="mt-1 text-[11px] text-base-content/50">
+                                                    Maks {{ formatPercentage(teamCalculatorMaxAllowedPercentage(distribution.key)) }}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-base-content/50">Nominal Rupiah</label>
+                                                <CurrencyInput
+                                                    :model-value="distribution.simulatedBasePay"
+                                                    @update:modelValue="setTeamCalculatorAmount(distribution.key, $event)"
+                                                />
+                                                <p class="mt-1 text-[11px] text-base-content/50">
+                                                    Maks {{ format(Math.round(teamCalculatorPool * (teamCalculatorMaxAllowedPercentage(distribution.key) / 100))) }}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-base-content/50">Bonus</label>
+                                                <CurrencyInput
+                                                    :model-value="distribution.bonus"
+                                                    @update:modelValue="setTeamCalculatorBonus(distribution.key, $event)"
+                                                />
+                                            </div>
+                                            <div class="flex items-start justify-end xl:pt-6">
+                                                <button
+                                                    class="btn btn-ghost btn-square btn-sm text-error"
+                                                    :disabled="!!distribution.paid_at"
+                                                    @click="removeTeamCalculatorRow(distribution.key)"
+                                                    :title="distribution.paid_at ? 'Baris yang sudah dibayar tidak bisa dihapus' : 'Hapus baris tim'"
+                                                    aria-label="Hapus baris tim"
+                                                >
+                                                    <TrashIcon class="h-4 w-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div class="mt-4 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
+                                            <div>
+                                                <p class="text-xs uppercase tracking-wide text-base-content/50">Base Pay</p>
+                                                <p class="mt-1 font-semibold">{{ format(distribution.simulatedBasePay) }}</p>
+                                            </div>
+                                            <div>
+                                                <p class="text-xs uppercase tracking-wide text-base-content/50">Bonus</p>
+                                                <p class="mt-1 font-semibold">{{ format(distribution.bonus) }}</p>
+                                            </div>
+                                            <div>
+                                                <p class="text-xs uppercase tracking-wide text-base-content/50">Total</p>
+                                                <p class="mt-1 font-semibold text-primary">{{ format(teamCalculatorRowTotalPay(distribution)) }}</p>
+                                            </div>
+                                            <div v-if="distribution.id">
+                                                <p class="text-xs uppercase tracking-wide text-base-content/50">Tersimpan</p>
+                                                <p class="mt-1 font-semibold">{{ format(distribution.currentTotalPay) }}</p>
+                                            </div>
+                                        </div>
+                                    </article>
+
+                                    <div class="flex flex-col gap-3 border-t border-base-300 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                                        <div>
+                                            <p class="text-sm font-semibold">Total pembagian: {{ format(teamCalculatorSimulatedDistributed) }}</p>
+                                            <p class="text-xs text-base-content/60">Klik simpan untuk menulis pembagian tim ke project dan memperbarui tabel Tim.</p>
+                                        </div>
+                                        <div class="flex flex-wrap gap-2">
+                                            <Link
+                                                class="btn btn-outline btn-sm"
+                                                :href="route('team-distribution.calculator', { project_id: project.id })"
+                                            >
+                                                Buka kalkulator penuh
+                                            </Link>
+                                            <button class="btn btn-primary btn-sm" :disabled="!canSaveTeamCalculator" @click="saveTeamCalculator">
+                                                {{ teamCalculatorSaveForm.processing ? 'Menyimpan...' : 'Simpan ke Tim' }}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div v-else class="mt-4 rounded-xl border border-dashed border-base-300 px-4 py-8 text-center text-sm text-base-content/60">
+                                    <p>Belum ada anggota tim di canvas ini.</p>
+                                    <div class="mt-4 flex flex-wrap justify-center gap-2">
+                                        <button class="btn btn-primary btn-sm" @click="addTeamCalculatorRow">Tambah Tim</button>
+                                        <button class="btn btn-outline btn-sm" @click="openAssignTeamModal">Assign via modal</button>
+                                        <Link
+                                            class="btn btn-primary btn-sm"
+                                            :href="route('team-distribution.calculator', { project_id: project.id })"
+                                        >
+                                            Buka kalkulator penuh
+                                        </Link>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div v-else-if="isReferralCalculatorCanvas" class="space-y-4">
+                            <div class="rounded-2xl border border-base-200 bg-base-100 p-4">
+                                <label class="label px-0 pt-0"><span class="label-text font-semibold">Basis Perhitungan</span></label>
+                                <select v-model="referralCalculatorBasis" class="select select-bordered w-full">
+                                    <option v-for="option in referralBasisOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                                </select>
+
+                                <label class="label mt-3 px-0"><span class="label-text font-semibold">Persentase Komisi (%)</span></label>
+                                <input v-model.number="referralCalculatorRate" type="number" min="0" max="100" step="0.01" class="input input-bordered w-full" />
+                            </div>
+
+                            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div class="rounded-xl border border-base-200 bg-base-200/30 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">Nilai Basis</p>
+                                    <p class="mt-2 text-xl font-bold">{{ format(referralCalculatorBaseAmount) }}</p>
+                                </div>
+                                <div class="rounded-xl border border-secondary/30 bg-secondary/10 p-4">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-secondary/80">Nominal Komisi</p>
+                                    <p class="mt-2 text-xl font-bold text-secondary">{{ format(referralCalculatorAmount) }}</p>
+                                </div>
+                            </div>
+
+                            <div class="rounded-2xl border border-base-200 bg-base-100 p-4">
+                                <p class="text-sm text-base-content/70">
+                                    Gunakan kalkulator ini untuk menentukan nominal komisi referral dengan basis estimasi project atau nilai real yang sudah masuk.
+                                </p>
+                                <div class="mt-4 flex flex-wrap gap-2">
+                                    <button class="btn btn-primary btn-sm" @click="applyReferralCalculatorAmount">Gunakan nominal ini</button>
+                                    <button class="btn btn-outline btn-sm" @click="openAddReferralModal">Input referral manual</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+            </teleport>
 
             <!-- Tab: Expenses -->
             <div v-if="activeTab === 'kas'" class="space-y-4">
@@ -944,9 +2012,9 @@ const deleteProject = () => {
                         <h2 class="ocn-panel__title">Pembagian tim</h2>
                         <div class="flex gap-2 shrink-0">
                                 <button class="btn btn-outline btn-sm" @click="openAssignTeamModal">Assign Tim</button>
-                                <Link :href="route('team-distribution.calculator') + '?project_id=' + project.id" class="btn btn-primary btn-sm">
+                                <button class="btn btn-primary btn-sm" @click="openSidebarCanvas('team-calculator')">
                                     Kalkulator
-                                </Link>
+                                </button>
                         </div>
                     </div>
                     <div class="card-body">
@@ -973,7 +2041,10 @@ const deleteProject = () => {
                 <div class="ocn-panel">
                     <div class="ocn-panel__head flex flex-wrap items-center justify-between gap-2">
                         <h2 class="ocn-panel__title">Komisi referral</h2>
-                        <button class="btn btn-outline btn-sm shrink-0" @click="openAddReferralModal">Add referral</button>
+                        <div class="flex gap-2 shrink-0">
+                            <button class="btn btn-outline btn-sm" @click="openSidebarCanvas('referral-calculator')">Kalkulator</button>
+                            <button class="btn btn-outline btn-sm" @click="openAddReferralModal">Add referral</button>
+                        </div>
                     </div>
                     <div class="card-body">
                         <div class="overflow-x-auto">
@@ -1068,8 +2139,14 @@ const deleteProject = () => {
                         <label class="label"><span class="label-text">Assignee</span></label>
                         <select v-model="taskForm.assigned_user_id" class="select select-bordered w-full">
                             <option value="">Unassigned</option>
-                            <option v-for="user in team_members" :key="user.id" :value="user.id">{{ user.name }}</option>
+                            <option v-for="user in assignableTaskMembers" :key="user.id" :value="user.id">
+                                {{ user.name }}<template v-if="user.role"> - {{ user.role }}</template>
+                            </option>
                         </select>
+                        <p v-if="taskForm.errors.assigned_user_id" class="text-error text-xs mt-1">{{ taskForm.errors.assigned_user_id }}</p>
+                        <p v-else-if="!assignableTaskMembers.length" class="text-xs text-base-content/60 mt-1">
+                            Assign tim project dulu agar task bisa punya assignee.
+                        </p>
                     </div>
                     <div>
                         <label class="label"><span class="label-text">Status</span></label>
@@ -1183,6 +2260,14 @@ const deleteProject = () => {
                         <label class="label"><span class="label-text">Tanggal Bayar</span></label>
                         <input v-model="payForm.paid_at" type="date" class="input input-bordered w-full" />
                         <p v-if="payForm.errors.paid_at" class="text-error text-xs mt-1">{{ payForm.errors.paid_at }}</p>
+                    </div>
+                    <div>
+                        <label class="label"><span class="label-text">Sumber Dana Kas / Bank</span></label>
+                        <select v-model="payForm.cash_account_id" class="select select-bordered w-full">
+                            <option value="">Pilih akun kas/bank</option>
+                            <option v-for="account in cash_accounts" :key="account.id" :value="account.id">{{ account.code }} - {{ account.name }}</option>
+                        </select>
+                        <p v-if="payForm.errors.cash_account_id" class="text-error text-xs mt-1">{{ payForm.errors.cash_account_id }}</p>
                     </div>
                     <div>
                         <label class="label"><span class="label-text">Catatan</span></label>

@@ -13,6 +13,7 @@ use App\Models\CategoryCoaMapping;
 use App\Models\ErpSetting;
 use App\Models\Project;
 use App\Models\ProjectPayment;
+use App\Services\GeneratedFileArchiveService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -25,6 +26,7 @@ class ProjectPaymentController extends Controller
     public function __construct(
         private readonly GlPostingService $glPostingService,
         private readonly FiscalPeriodService $fiscalPeriodService,
+        private readonly GeneratedFileArchiveService $generatedFileArchiveService,
     ) {}
 
     public function markPaid(Request $request, ProjectPayment $payment)
@@ -160,7 +162,7 @@ class ProjectPaymentController extends Controller
 
         $filename = 'Invoice-Payment-'.str_replace(' ', '-', $project->name).'-'.now()->format('Ymd').'.pdf';
 
-        return $pdf->download($filename);
+        return $this->generatedFileArchiveService->downloadPdf($pdf, $filename);
     }
 
     /**

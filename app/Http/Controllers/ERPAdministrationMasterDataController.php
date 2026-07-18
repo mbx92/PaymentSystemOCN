@@ -27,6 +27,7 @@ use App\Models\ProcurementImportStaging;
 use App\Models\ProductStockMovement;
 use App\Models\ProjectMaterial;
 use App\Services\DatabaseBackupService;
+use App\Services\GeneratedFileArchiveService;
 use App\Services\LandingSiteBuilderService;
 use App\Services\LanEscPosPrinter;
 use App\Services\LanTsplPrinter;
@@ -63,6 +64,7 @@ class ERPAdministrationMasterDataController extends Controller
 {
     public function __construct(
         private readonly DatabaseBackupService $databaseBackupService,
+        private readonly GeneratedFileArchiveService $generatedFileArchiveService,
     ) {}
 
     public function erpSettings(): Response
@@ -70,7 +72,7 @@ class ERPAdministrationMasterDataController extends Controller
         $setting = ErpSetting::query()->first();
 
         return Inertia::render('ERP/Admin/ErpSettings', [
-            'setting' => [
+            'setting' => array_merge([
                 'app_name' => $setting?->app_name ?? 'OCN ERP Suite',
                 'app_tagline' => $setting?->app_tagline ?? 'Integrated Business Platform',
                 'app_logo_path' => $setting?->app_logo_path,
@@ -78,12 +80,26 @@ class ERPAdministrationMasterDataController extends Controller
                 'module_menu_layout' => $setting?->resolvedModuleMenuLayout() ?? ErpSetting::MODULE_MENU_LAYOUT_GRID,
                 'screen_mode' => $setting?->resolvedScreenMode() ?? ErpSetting::SCREEN_MODE_AUTO,
                 'screen_density' => $setting?->resolvedScreenDensity() ?? ErpSetting::SCREEN_DENSITY_COMFORTABLE,
-            ],
+            ], $setting?->objectStorageSettingsPayload() ?? [
+                'object_storage_enabled' => false,
+                'object_storage_access_key' => null,
+                'object_storage_secret_key_configured' => false,
+                'object_storage_bucket' => null,
+                'object_storage_region' => 'us-east-1',
+                'object_storage_endpoint' => null,
+                'object_storage_use_path_style' => false,
+                'object_storage_prefix' => 'erp-archive',
+                'object_storage_archive_pdf' => true,
+                'object_storage_archive_excel' => true,
+                'object_storage_archive_database' => true,
+            ]),
         ]);
     }
 
     public function updateErpSettings(Request $request): RedirectResponse
     {
+        $existingSetting = ErpSetting::query()->first();
+
         $validated = $request->validate([
             'app_name' => 'required|string|max:120',
             'app_tagline' => 'nullable|string|max:190',
@@ -92,7 +108,31 @@ class ERPAdministrationMasterDataController extends Controller
             'module_menu_layout' => ['required', Rule::in(ErpSetting::moduleMenuLayoutOptions())],
             'screen_mode' => ['required', Rule::in(ErpSetting::screenModeOptions())],
             'screen_density' => ['required', Rule::in(ErpSetting::screenDensityOptions())],
+            'object_storage_enabled' => 'nullable|boolean',
+            'object_storage_access_key' => 'nullable|string|max:190',
+            'object_storage_secret_key' => 'nullable|string|max:190',
+            'object_storage_bucket' => 'nullable|string|max:190',
+            'object_storage_region' => 'nullable|string|max:64',
+            'object_storage_endpoint' => 'nullable|string|max:255',
+            'object_storage_use_path_style' => 'nullable|boolean',
+            'object_storage_prefix' => 'nullable|string|max:120',
+            'object_storage_archive_pdf' => 'nullable|boolean',
+            'object_storage_archive_excel' => 'nullable|boolean',
+            'object_storage_archive_database' => 'nullable|boolean',
         ]);
+
+        if ($request->boolean('object_storage_enabled')) {
+            $request->validate([
+                'object_storage_access_key' => 'required|string|max:190',
+                'object_storage_bucket' => 'required|string|max:190',
+            ]);
+
+            if (! filled($request->input('object_storage_secret_key')) && ! $existingSetting?->object_storage_secret_key) {
+                throw ValidationException::withMessages([
+                    'object_storage_secret_key' => 'Secret key wajib diisi saat mengaktifkan object storage.',
+                ]);
+            }
+        }
 
         $setting = ErpSetting::query()->firstOrCreate([], [
             'app_name' => 'OCN ERP Suite',
@@ -119,9 +159,52 @@ class ERPAdministrationMasterDataController extends Controller
             'module_menu_layout' => $validated['module_menu_layout'],
             'screen_mode' => $validated['screen_mode'],
             'screen_density' => $validated['screen_density'],
+            'object_storage_enabled' => $request->boolean('object_storage_enabled'),
+            'object_storage_access_key' => filled($validated['object_storage_access_key'] ?? null)
+                ? $validated['object_storage_access_key']
+                : null,
+            'object_storage_bucket' => filled($validated['object_storage_bucket'] ?? null)
+                ? $validated['object_storage_bucket']
+                : null,
+            'object_storage_region' => filled($validated['object_storage_region'] ?? null)
+                ? $validated['object_storage_region']
+                : 'us-east-1',
+            'object_storage_endpoint' => filled($validated['object_storage_endpoint'] ?? null)
+                ? $validated['object_storage_endpoint']
+                : null,
+            'object_storage_use_path_style' => $request->boolean('object_storage_use_path_style'),
+            'object_storage_prefix' => filled($validated['object_storage_prefix'] ?? null)
+                ? $validated['object_storage_prefix']
+                : 'erp-archive',
+            'object_storage_archive_pdf' => $request->boolean('object_storage_archive_pdf'),
+            'object_storage_archive_excel' => $request->boolean('object_storage_archive_excel'),
+            'object_storage_archive_database' => $request->boolean('object_storage_archive_database'),
         ]);
 
+        if (filled($validated['object_storage_secret_key'] ?? null)) {
+            $setting->update([
+                'object_storage_secret_key' => $validated['object_storage_secret_key'],
+            ]);
+        }
+
         return back()->with('flash', ['type' => 'success', 'message' => 'ERP Setting berhasil diperbarui.']);
+    }
+
+    public function testObjectStorageConnection(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'object_storage_access_key' => 'nullable|string|max:190',
+            'object_storage_secret_key' => 'nullable|string|max:190',
+            'object_storage_bucket' => 'nullable|string|max:190',
+            'object_storage_region' => 'nullable|string|max:64',
+            'object_storage_endpoint' => 'nullable|string|max:255',
+            'object_storage_use_path_style' => 'nullable|boolean',
+            'object_storage_prefix' => 'nullable|string|max:120',
+        ]);
+
+        $result = $this->generatedFileArchiveService->testConnection($validated);
+
+        return response()->json($result, $result['success'] ? 200 : 422);
     }
 
     public function landingSites(Request $request): Response

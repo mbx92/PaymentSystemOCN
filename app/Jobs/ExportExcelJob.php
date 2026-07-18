@@ -6,11 +6,13 @@ use App\Exports\MemberPaymentsExport;
 use App\Exports\MonthlyReportExport;
 use App\Exports\ProjectProfitExport;
 use App\Models\User;
+use App\Services\GeneratedFileArchiveService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Storage;
 use Maatwebsite\Excel\Facades\Excel;
 
 class ExportExcelJob implements ShouldQueue
@@ -48,6 +50,13 @@ class ExportExcelJob implements ShouldQueue
 
         $path = 'exports/'.$this->user->id.'/'.$fileName;
         Excel::store($export, $path, 'public');
+
+        app(GeneratedFileArchiveService::class)->archiveLocalFile(
+            Storage::disk('public')->path($path),
+            GeneratedFileArchiveService::CATEGORY_EXCEL,
+            $fileName,
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
 
         activity()
             ->performedOn($this->user)

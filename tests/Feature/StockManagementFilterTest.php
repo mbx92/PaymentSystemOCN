@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\ERP\Accounting\Models\Account;
+use App\ERP\Core\Models\Company;
 use App\ERP\Inventory\Models\Warehouse;
 use App\Http\Middleware\ErpMaintenanceMode;
 use App\Http\Middleware\LogErpActivity;
@@ -457,15 +459,35 @@ class StockManagementFilterTest extends TestCase
     {
         $this->disableErpMiddleware();
 
-        $user = User::factory()->create();
+        $company = Company::query()->create([
+            'name' => 'OCN Main',
+            'is_active' => true,
+        ]);
+        $user = User::factory()->create(['company_id' => $company->id]);
+        Account::query()->updateOrCreate(['code' => '1201'], [
+            'name' => 'Persediaan Barang Dagang',
+            'type' => 'asset',
+            'normal_balance' => 'debit',
+            'is_active' => true,
+            'is_cash_bank' => false,
+        ]);
+        Account::query()->updateOrCreate(['code' => '5013'], [
+            'name' => 'Beban Lain-lain',
+            'type' => 'expense',
+            'normal_balance' => 'debit',
+            'is_active' => true,
+            'is_cash_bank' => false,
+        ]);
         $warehouseA = Warehouse::query()->create([
             'code' => 'WH-A',
             'name' => 'Gudang A',
+            'company_id' => $company->id,
             'is_active' => true,
         ]);
         $warehouseB = Warehouse::query()->create([
             'code' => 'WH-B',
             'name' => 'Gudang B',
+            'company_id' => $company->id,
             'is_active' => true,
         ]);
         $product = $this->createProduct('OPN-001', 'Produk Opname', 2);
@@ -580,6 +602,7 @@ class StockManagementFilterTest extends TestCase
             'min_stock' => $minStock,
             'total_sold' => 0,
             'selling_price' => 10000,
+            'unit_cost' => 5000,
         ]);
     }
 

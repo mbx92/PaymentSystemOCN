@@ -13,6 +13,7 @@ use App\Services\ErpChatbot\InvoiceQueryService;
 use App\Services\ErpChatbot\ProductQueryService;
 use App\Services\ErpChatbot\ProjectQueryService;
 use App\Services\ErpChatbot\SalesQueryService;
+use App\Services\GeneratedFileArchiveService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -848,6 +849,13 @@ class ErpChatbotController extends Controller
 
             $pdfBinary = $pdf->output();
             $fileName = ($invoice['number'] ?? 'invoice').'.pdf';
+
+            app(GeneratedFileArchiveService::class)->archiveContent(
+                $pdfBinary,
+                GeneratedFileArchiveService::CATEGORY_PDF,
+                $fileName,
+                'application/pdf',
+            );
 
             Mail::to($recipientEmail)->send(new ProjectInvoiceMail(
                 invoice: $invoice,

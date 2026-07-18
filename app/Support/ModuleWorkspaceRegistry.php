@@ -68,6 +68,7 @@ final class ModuleWorkspaceRegistry
                     ['key' => 'stock-movement', 'title' => 'Stock Movement', 'description' => 'Lihat histori pergerakan stok per produk dan warehouse.', 'route' => 'erp.inventory.stock-movements', 'icon' => 'arrows-up-down'],
                     ['key' => 'stok-opname', 'title' => 'Stok Opname', 'description' => 'Penyesuaian stok fisik berkala untuk akurasi inventory.', 'route' => 'erp.inventory.stock-opname', 'icon' => 'clipboard-check'],
                     ['key' => 'report-stok', 'title' => 'Report Stok', 'description' => 'Grafik stok, alert stok rendah, dan top selling produk.', 'route' => 'erp.inventory.stock-report', 'icon' => 'presentation-chart-line'],
+                    ['key' => 'peta-rak', 'title' => 'Peta Rak', 'description' => 'Visualisasi denah rak toko, status stok per slot, dan manajemen isi rak.', 'route' => 'erp.inventory.shelf-map', 'icon' => 'map'],
                 ],
             ],
             'projects' => [
@@ -76,6 +77,7 @@ final class ModuleWorkspaceRegistry
                     ['key' => 'overview-project', 'title' => 'Overview Project', 'description' => 'Dashboard statistik seluruh project: status, nilai kontrak, pembayaran, task, dan material.', 'route' => 'projects.overview', 'icon' => 'chart-bar'],
                     ['key' => 'tipe-project', 'title' => 'Tipe Project', 'description' => 'Master tipe project, label, default, dan capability seperti board task atau budget item.', 'route' => 'erp.projects.project-types.index', 'icon' => 'tag'],
                     ['key' => 'budgeting-project', 'title' => 'Budgeting Project', 'description' => 'Siapkan budget calon project sebelum deal, lalu convert ke project.', 'route' => 'erp.projects.budgets.index', 'icon' => 'clipboard-list'],
+                    ['key' => 'katalog-supplier', 'title' => 'Katalog Supplier', 'description' => 'Referensi harga supplier (PL Tunas Jaya Elektronik) — di-sync harian dari Google Sheets.', 'route' => 'erp.projects.supplier-catalog', 'icon' => 'book-open'],
                     ['key' => 'daftar-project', 'title' => 'Daftar Project', 'description' => 'Kelola proyek, status, dan termin pembayaran.', 'route' => 'projects.index', 'icon' => 'git-branch'],
                     ['key' => 'role-tim-project', 'title' => 'Role Tim Project', 'description' => 'Master role global untuk assign tim project.', 'route' => 'erp.projects.team-roles.index', 'icon' => 'identification'],
                     ['key' => 'pembagian-tim', 'title' => 'Pembagian Tim', 'description' => 'Atur komposisi dan distribusi pembagian tim.', 'route' => 'team-distribution.calculator', 'icon' => 'users'],
@@ -119,6 +121,7 @@ final class ModuleWorkspaceRegistry
                     ['key' => 'maintenance-mode', 'title' => 'Maintenance mode', 'description' => 'Matikan seluruh area ERP atau per modul. Role admin tetap bisa mengakses semua halaman.', 'route' => 'erp.admin.maintenance-mode', 'icon' => 'clipboard-check'],
                     ['key' => 'erp-setting', 'title' => 'ERP Setting', 'description' => 'Atur identitas aplikasi ERP seperti logo, nama aplikasi, dan tagline.', 'route' => 'erp.admin.erp-settings', 'icon' => 'document-text'],
                     ['key' => 'setting-nomor-dokumen', 'title' => 'Setting Nomor Dokumen', 'description' => 'Atur prefix dan sequence nomor dokumen agar konsisten lintas modul.', 'route' => 'erp.admin.document-sequences', 'icon' => 'document-text'],
+                    ['key' => 'template-dokumen', 'title' => 'Template Dokumen', 'description' => 'Rancang template invoice, nota penjualan, dan struk POS dengan susunan blok drag-and-drop.', 'route' => 'erp.settings.document-templates.index', 'icon' => 'clipboard-list'],
                     ['key' => 'metode-pembayaran', 'title' => 'Metode Pembayaran', 'description' => 'Kelola daftar metode pembayaran global untuk POS dan invoice.', 'route' => 'erp.admin.payment-methods', 'icon' => 'credit-card'],
                     ['key' => 'parser-rules-chatbot', 'title' => 'Parser Rules Chatbot', 'description' => 'Atur rule parser berbasis keyword untuk chatbot ERP tanpa LLM.', 'route' => 'erp.admin.parser-rules', 'icon' => 'sparkles'],
                     ['key' => 'monitoring-log', 'title' => 'Monitoring Log', 'description' => 'Pantau aktivitas ERP, transaksi, dan error aplikasi secara terpusat.', 'route' => 'erp.admin.system-logs.index', 'icon' => 'circle-stack'],
