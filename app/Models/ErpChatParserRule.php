@@ -18,6 +18,14 @@ class ErpChatParserRule extends Model
         'help',
     ];
 
+    /**
+     * @return list<string>
+     */
+    public static function validIntentKeys(): array
+    {
+        return self::VALID_INTENT_KEYS;
+    }
+
     protected $fillable = [
         'name',
         'intent_key',

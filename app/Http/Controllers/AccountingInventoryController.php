@@ -60,7 +60,15 @@ class AccountingInventoryController extends Controller
             $term = '%'.$request->string('q')->toString().'%';
             $query->where(function ($q) use ($term): void {
                 $q->where('item_name', 'like', $term)
-                    ->orWhere('note', 'like', $term);
+                    ->orWhere('note', 'like', $term)
+                    ->orWhereHas('assetAccount', fn ($aq) => $aq
+                        ->where('name', 'like', $term)
+                        ->orWhere('code', 'like', $term))
+                    ->orWhereHas('cashAccount', fn ($aq) => $aq
+                        ->where('name', 'like', $term)
+                        ->orWhere('code', 'like', $term))
+                    ->orWhereHas('journalEntry', fn ($jq) => $jq->where('entry_no', 'like', $term))
+                    ->orWhereHas('creator', fn ($cq) => $cq->where('name', 'like', $term));
             });
         }
 

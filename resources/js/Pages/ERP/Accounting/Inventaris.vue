@@ -28,13 +28,18 @@ const filters = ref({
   date_to: props.filters?.date_to ?? '',
   asset_account_id: props.filters?.asset_account_id ?? '',
   q: props.filters?.q ?? '',
+  per_page: Number(props.filters?.per_page ?? props.records?.per_page ?? 25),
 });
 
 let timer;
-watch(filters, () => {
+watch(filters, (val) => {
   clearTimeout(timer);
   timer = setTimeout(() => {
-    router.get(route('erp.accounting.inventaris'), filters.value, { preserveState: true, replace: true });
+    router.get(route('erp.accounting.inventaris'), { ...val, page: 1 }, {
+      preserveState: true,
+      preserveScroll: true,
+      replace: true,
+    });
   }, 300);
 }, { deep: true });
 
@@ -184,7 +189,12 @@ const accountName = (label) => {
             </div>
             <div>
               <label class="label py-0"><span class="label-text text-xs uppercase tracking-wide">Cari</span></label>
-              <input v-model="filters.q" type="text" class="input input-sm input-bordered w-full" placeholder="Nama barang / catatan">
+              <input
+                v-model="filters.q"
+                type="search"
+                class="input input-sm input-bordered w-full"
+                placeholder="Cari nama, catatan, akun, jurnal, pembuat..."
+              >
             </div>
           </div>
         </div>
@@ -196,8 +206,9 @@ const accountName = (label) => {
       </div>
 
       <div class="ocn-panel">
-        <div class="ocn-panel__head">
+        <div class="ocn-panel__head flex items-center justify-between gap-2">
           <h2 class="ocn-panel__title">Riwayat pencatatan</h2>
+          <span class="text-xs text-base-content/60">{{ records?.total ?? 0 }} data</span>
         </div>
         <div class="w-full">
           <table class="table table-zebra table-sm w-full">
@@ -242,7 +253,7 @@ const accountName = (label) => {
         </div>
         <DataTablePagination
           :paginator="records"
-          @update:per-page="(n) => router.get(route('erp.accounting.inventaris'), { ...filters, per_page: n }, { preserveState: true, replace: true })"
+          @update:per-page="(n) => { filters.per_page = n; }"
         />
       </div>
     </div>

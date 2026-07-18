@@ -124,6 +124,64 @@ class AccountingInventoryTest extends TestCase
             );
     }
 
+    public function test_inventaris_index_supports_server_side_search_and_pagination(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $peralatan = $this->assetAccount('1401', 'Peralatan');
+        $bank = $this->cashAccount('1002', 'Bank BCA');
+
+        foreach (range(1, 26) as $index) {
+            $this
+                ->actingAs($user)
+                ->post(route('erp.accounting.inventaris.store'), [
+                    'item_name' => $index === 1 ? 'Laptop Admin' : "Inventaris #{$index}",
+                    'qty' => 1,
+                    'amount' => 1000000 + $index,
+                    'acquisition_date' => '2026-05-17',
+                    'asset_account_id' => $peralatan->id,
+                    'cash_account_id' => $bank->id,
+                ])
+                ->assertSessionHasNoErrors();
+        }
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.accounting.inventaris', ['q' => 'Laptop', 'per_page' => 25]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Accounting/Inventaris')
+                ->has('records.data', 1)
+                ->where('records.data.0.item_name', 'Laptop Admin')
+                ->where('records.total', 1)
+                ->where('filters.q', 'Laptop')
+                ->where('filters.per_page', 25)
+            );
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.accounting.inventaris', ['per_page' => 25, 'page' => 1]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Accounting/Inventaris')
+                ->has('records.data', 25)
+                ->where('records.per_page', 25)
+                ->where('records.last_page', 2)
+                ->where('records.total', 26)
+            );
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.accounting.inventaris', ['per_page' => 25, 'page' => 2]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Accounting/Inventaris')
+                ->has('records.data', 1)
+                ->where('records.current_page', 2)
+            );
+    }
+
     public function test_inventory_record_can_be_updated_with_reverse_and_repost(): void
     {
         $this->disableErpMiddleware();

@@ -67,6 +67,10 @@ class ErpSetting extends Model
         'maintenance_global_enabled',
         'maintenance_global_message',
         'maintenance_modules',
+        'chatbot_llm_enabled',
+        'chatbot_llm_api_url',
+        'chatbot_llm_api_key',
+        'chatbot_llm_model',
     ];
 
     protected function casts(): array
@@ -90,6 +94,8 @@ class ErpSetting extends Model
             'label_lan_profile_id' => 'integer',
             'maintenance_global_enabled' => 'boolean',
             'maintenance_modules' => 'array',
+            'chatbot_llm_enabled' => 'boolean',
+            'chatbot_llm_api_key' => 'encrypted',
         ];
     }
 
