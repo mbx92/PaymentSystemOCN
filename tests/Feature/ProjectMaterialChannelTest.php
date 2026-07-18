@@ -666,6 +666,12 @@ class ProjectMaterialChannelTest extends TestCase
             'qty' => '5.00',
             'reserved_qty' => '0.00',
         ]);
+        $this->assertDatabaseHas('project_materials', [
+            'project_id' => $project->id,
+            'master_product_id' => $projectProduct->id,
+            'reserved_qty' => '0.00',
+            'status' => 'planned',
+        ]);
     }
 
     public function test_ready_material_can_be_checked_as_used_from_project_detail(): void

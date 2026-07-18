@@ -6,6 +6,7 @@ use App\Models\MasterProduct;
 use App\Models\MasterProductWarehouseStock;
 use App\Models\ProductStockMovement;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class WarehouseStockRebuildService
 {
@@ -37,7 +38,15 @@ class WarehouseStockRebuildService
 
     public function rebuildFromMovements(): array
     {
-        return $this->scan(true);
+        return DB::transaction(function (): array {
+            $result = $this->scan(true);
+
+            $reservationResult = app(ProjectMaterialReservationService::class)->syncAllWarehouseReservations();
+            $result['reservation_rows_updated'] = $reservationResult['warehouse_rows_updated'] ?? 0;
+            $result['reservation_rows_cleared'] = $reservationResult['warehouse_rows_cleared'] ?? 0;
+
+            return $result;
+        });
     }
 
     /**
@@ -51,6 +60,42 @@ class WarehouseStockRebuildService
         return Cache::remember($cacheKey, $cacheTtl, function () use ($warehouseId, $productIds) {
             return $this->computeMismatchSummary($warehouseId, $productIds);
         });
+    }
+
+    /**
+     * @return list<array{sku: string|null, product_name: string|null, warehouse_id: int, actual_qty: float, expected_qty: float, delta_qty: float}>
+     */
+    public function mismatchSamples(int $limit = 30): array
+    {
+        $scan = $this->scan(false);
+        $mismatches = $scan['mismatches'] ?? [];
+
+        if ($mismatches === []) {
+            return [];
+        }
+
+        $productIds = collect($mismatches)->pluck('master_product_id')->unique()->values()->all();
+        $products = MasterProduct::query()
+            ->whereIn('id', $productIds)
+            ->get(['id', 'sku', 'name'])
+            ->keyBy('id');
+
+        return collect($mismatches)
+            ->take($limit)
+            ->map(function (array $row) use ($products): array {
+                $product = $products->get($row['master_product_id']);
+
+                return [
+                    'sku' => $product?->sku,
+                    'product_name' => $product?->name,
+                    'warehouse_id' => $row['warehouse_id'],
+                    'actual_qty' => $row['actual_qty'],
+                    'expected_qty' => $row['expected_qty'],
+                    'delta_qty' => $row['delta_qty'],
+                ];
+            })
+            ->values()
+            ->all();
     }
 
     private function computeMismatchSummary(?int $warehouseId = null, ?array $productIds = null): array
@@ -149,14 +194,16 @@ class WarehouseStockRebuildService
         unset($pair);
 
         $existingRows = MasterProductWarehouseStock::query()
-            ->get(['master_product_id', 'warehouse_id', 'qty', 'reserved_qty']);
+            ->get(['id', 'master_product_id', 'warehouse_id', 'qty', 'reserved_qty']);
 
         $checked = 0;
         $updated = 0;
         $created = 0;
+        $zeroed = 0;
         $totalBefore = 0.0;
         $totalAfter = 0.0;
         $productIds = [];
+        $mismatches = [];
 
         $existingMap = [];
         foreach ($existingRows as $row) {
@@ -174,6 +221,13 @@ class WarehouseStockRebuildService
             if (abs($before - $after) > 0.00001) {
                 $updated++;
                 $productIds[$expected['master_product_id']] = true;
+                $mismatches[] = [
+                    'master_product_id' => $expected['master_product_id'],
+                    'warehouse_id' => $expected['warehouse_id'],
+                    'actual_qty' => $before,
+                    'expected_qty' => $after,
+                    'delta_qty' => round($after - $before, 2),
+                ];
 
                 if ($apply) {
                     if ($current) {
@@ -189,6 +243,33 @@ class WarehouseStockRebuildService
                     }
                 }
             }
+
+            unset($existingMap[$pairKey]);
+        }
+
+        // Rows with stock but no movement history must be zeroed for validity.
+        foreach ($existingMap as $orphan) {
+            $before = (float) $orphan->qty;
+            $checked++;
+            $totalBefore += $before;
+            $totalAfter += 0;
+
+            if (abs($before) > 0.00001) {
+                $updated++;
+                $zeroed++;
+                $productIds[(int) $orphan->master_product_id] = true;
+                $mismatches[] = [
+                    'master_product_id' => (int) $orphan->master_product_id,
+                    'warehouse_id' => (int) $orphan->warehouse_id,
+                    'actual_qty' => $before,
+                    'expected_qty' => 0.0,
+                    'delta_qty' => round(0 - $before, 2),
+                ];
+
+                if ($apply) {
+                    $orphan->update(['qty' => '0.00']);
+                }
+            }
         }
 
         if ($apply && count($productIds) > 0) {
@@ -199,8 +280,10 @@ class WarehouseStockRebuildService
             'warehouse_rows_checked' => $checked,
             'warehouse_rows_updated' => $updated,
             'warehouse_rows_created' => $created,
+            'warehouse_rows_zeroed' => $zeroed,
             'total_qty_before' => round($totalBefore, 2),
             'total_qty_after' => round($totalAfter, 2),
+            'mismatches' => $mismatches,
         ];
     }
 
