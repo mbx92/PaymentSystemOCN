@@ -3,13 +3,16 @@
 namespace Tests\Feature;
 
 use App\Models\ErpChatParserRule;
+use App\Models\ErpSetting;
 use App\Models\MasterProduct;
 use App\Models\PosSale;
 use App\Models\PosSaleItem;
 use App\Models\Project;
 use App\Models\ProjectPayment;
 use App\Models\User;
+use App\Services\ErpChatbot\ChatbotLlmIntentClassifier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class ErpChatbotControllerTest extends TestCase
@@ -619,5 +622,101 @@ class ErpChatbotControllerTest extends TestCase
             ->assertOk()
             ->assertJsonPath('intent', 'pos_sales_today')
             ->assertJsonPath('answer', "**POS hari ini**\nTransaksi: 1\nTotal penjualan: Rp 300.000\nRata-rata/trx: Rp 300.000");
+    }
+
+    public function test_chatbot_uses_llm_fallback_when_parser_does_not_match(): void
+    {
+        $user = User::factory()->create();
+
+        // Satu rule DB aktif menonaktifkan built-in rules, tapi tidak match pesan uji.
+        ErpChatParserRule::query()->create([
+            'name' => 'Dummy',
+            'intent_key' => 'help',
+            'keywords' => ['zzz_parser_only_token'],
+            'match_mode' => 'and',
+            'priority' => 1,
+            'is_active' => true,
+        ]);
+
+        ErpSetting::query()->firstOrCreate([], [
+            'app_name' => 'OCN ERP Suite',
+            'app_tagline' => 'Integrated Business Platform',
+        ])->update([
+            'chatbot_llm_enabled' => true,
+            'chatbot_llm_api_url' => ChatbotLlmIntentClassifier::DEFAULT_API_URL,
+            'chatbot_llm_model' => ChatbotLlmIntentClassifier::DEFAULT_MODEL,
+            'chatbot_llm_api_key' => 'test-deepseek-key',
+        ]);
+
+        MasterProduct::query()->create([
+            'sku' => 'KBL-LLM',
+            'name' => 'Kabel LAN',
+            'category' => 'Kabel',
+            'uom' => 'pcs',
+            'sales_channel' => 'both',
+            'product_type' => MasterProduct::PRODUCT_TYPE_FINISHED_GOODS,
+            'status' => 'active',
+            'selling_price' => 25000,
+            'stock' => 8,
+            'min_stock' => 2,
+            'low_stock_alert_enabled' => true,
+        ]);
+
+        Http::fake([
+            ChatbotLlmIntentClassifier::DEFAULT_API_URL => Http::response([
+                'choices' => [
+                    ['message' => ['content' => '{"intent_key":"stock_lookup"}']],
+                ],
+            ], 200),
+        ]);
+
+        $this->actingAs($user)
+            ->postJson(route('erp.chatbot.ask'), [
+                'message' => 'tolong cek kabel lan',
+            ])
+            ->assertOk()
+            ->assertJsonPath('intent', 'stock_lookup')
+            ->assertJsonPath('resolved_by', 'llm')
+            ->assertJsonPath('answer', "**Kabel LAN**\nStok: 8 pcs\n\n💡 Tanya lagi: \"harganya?\" atau \"detailnya?\"");
+
+        Http::assertSent(function ($request) {
+            return $request->url() === ChatbotLlmIntentClassifier::DEFAULT_API_URL
+                && $request->hasHeader('Authorization', 'Bearer test-deepseek-key');
+        });
+    }
+
+    public function test_chatbot_skips_llm_when_disabled(): void
+    {
+        $user = User::factory()->create();
+
+        ErpChatParserRule::query()->create([
+            'name' => 'Dummy',
+            'intent_key' => 'help',
+            'keywords' => ['zzz_parser_only_token'],
+            'match_mode' => 'and',
+            'priority' => 1,
+            'is_active' => true,
+        ]);
+
+        ErpSetting::query()->firstOrCreate([], [
+            'app_name' => 'OCN ERP Suite',
+            'app_tagline' => 'Integrated Business Platform',
+        ])->update([
+            'chatbot_llm_enabled' => false,
+            'chatbot_llm_api_url' => ChatbotLlmIntentClassifier::DEFAULT_API_URL,
+            'chatbot_llm_api_key' => 'test-deepseek-key',
+        ]);
+
+        Http::fake();
+
+        $this->actingAs($user)
+            ->postJson(route('erp.chatbot.ask'), [
+                'message' => 'tolong cek kabel lan',
+            ])
+            ->assertOk()
+            ->assertJsonPath('intent', null)
+            ->assertJsonPath('resolved_by', 'none');
+
+        Http::assertNothingSent();
     }
 }

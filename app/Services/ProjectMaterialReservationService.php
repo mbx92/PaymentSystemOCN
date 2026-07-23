@@ -45,7 +45,34 @@ class ProjectMaterialReservationService
         return $stock->fresh();
     }
 
+    /**
+     * Release warehouse reservation for a finished/cancelled project.
+     * Also clears unissued reserved_qty on the project material rows so UI no longer shows stale reserved.
+     */
     public function releaseProjectReservations(Project $project): void
+    {
+        $materials = $project->materials()
+            ->whereNotNull('warehouse_id')
+            ->get();
+
+        foreach ($materials as $material) {
+            $issuedQty = (float) $material->issued_qty;
+            $reservedQty = (float) $material->reserved_qty;
+
+            if ($reservedQty > $issuedQty + 0.00001) {
+                $material->reserved_qty = $issuedQty;
+                $material->status = $this->resolveMaterialStatus($material);
+                $material->save();
+            }
+        }
+
+        $this->syncProjectWarehouseReservations($project);
+    }
+
+    /**
+     * Recompute warehouse reserved_qty for all product/warehouse pairs on the project.
+     */
+    public function syncProjectWarehouseReservations(Project $project): void
     {
         $pairs = $project->materials()
             ->select(['master_product_id', 'warehouse_id'])
@@ -58,9 +85,64 @@ class ProjectMaterialReservationService
         }
     }
 
+    /**
+     * Repair all selesai/dibatalkan projects that still hold unissued reserved_qty.
+     *
+     * @return array{projects_touched: int, materials_cleared: int}
+     */
+    public function repairClosedProjectReservations(): array
+    {
+        $projects = Project::query()
+            ->whereIn('status', ['selesai', 'dibatalkan'])
+            ->whereHas('materials', fn ($q) => $q->whereColumn('reserved_qty', '>', 'issued_qty'))
+            ->with('materials')
+            ->get();
+
+        $materialsCleared = 0;
+
+        foreach ($projects as $project) {
+            $before = $project->materials
+                ->filter(fn (ProjectMaterial $m) => (float) $m->reserved_qty > (float) $m->issued_qty + 0.00001)
+                ->count();
+
+            $this->releaseProjectReservations($project);
+            $materialsCleared += $before;
+        }
+
+        return [
+            'projects_touched' => $projects->count(),
+            'materials_cleared' => $materialsCleared,
+        ];
+    }
+
     public function outstandingReservedQty(ProjectMaterial $material): float
     {
         return max((float) $material->reserved_qty - (float) $material->issued_qty, 0);
+    }
+
+    private function resolveMaterialStatus(ProjectMaterial $material): string
+    {
+        $plannedQty = (float) $material->planned_qty;
+        $reservedQty = (float) $material->reserved_qty;
+        $issuedQty = (float) $material->issued_qty;
+
+        if ($plannedQty > 0 && $issuedQty >= $plannedQty) {
+            return 'issued';
+        }
+
+        if ($issuedQty > 0) {
+            return 'partial';
+        }
+
+        if ($plannedQty > 0 && $reservedQty >= $plannedQty) {
+            return 'ready';
+        }
+
+        if ($reservedQty > 0) {
+            return 'partial';
+        }
+
+        return 'planned';
     }
 
     private function scanAllWarehouseReservations(bool $apply): array

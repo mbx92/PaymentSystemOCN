@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 
 abstract class Controller
 {
-    protected const ALLOWED_PER_PAGE = [25, 50, 75, 100, 125, 150, 175, 200, 225, 250];
+    protected const ALLOWED_PER_PAGE = [10, 15, 25, 50, 75, 100, 125, 150, 175, 200, 225, 250];
 
     protected const MAX_DEADLOCK_RETRIES = 3;
 

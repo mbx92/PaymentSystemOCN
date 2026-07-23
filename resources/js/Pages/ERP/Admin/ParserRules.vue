@@ -9,7 +9,26 @@ const props = defineProps({
   rules: Object,
   filters: Object,
   capabilities: Object,
+  llmSettings: Object,
 });
+
+const llmForm = useForm({
+  chatbot_llm_enabled: !!props.llmSettings?.enabled,
+  chatbot_llm_api_url: props.llmSettings?.api_url || 'https://api.deepseek.com/v1/chat/completions',
+  chatbot_llm_model: props.llmSettings?.model || 'deepseek-chat',
+  chatbot_llm_api_key: '',
+  clear_api_key: false,
+});
+
+const submitLlmSettings = () => {
+  llmForm.patch(route('erp.admin.parser-rules.llm.update'), {
+    preserveScroll: true,
+    onSuccess: () => {
+      llmForm.chatbot_llm_api_key = '';
+      llmForm.clear_api_key = false;
+    },
+  });
+};
 
 const filterSearch = ref(props.filters?.search || '');
 const filterStatus = ref(props.filters?.status || '');
@@ -235,7 +254,9 @@ const confirmDelete = () => {
             <div>
               <p class="text-xs font-bold uppercase tracking-[0.16em] text-primary/70">Administration Workspace</p>
               <h1 class="ocn-panel__title mt-1">Parser Rules Chatbot</h1>
-              <p class="ocn-panel__desc mt-1">Atur rule berbasis keyword untuk intent chatbot ERP. Tahap 1 backend sudah dipisah ke query service per domain, jadi rule di halaman ini tetap mengenali intent, sementara sebagian jawaban sudah mengambil data live.</p>
+              <p class="ocn-panel__desc mt-1">
+                Atur rule keyword dan opsional LLM untuk klasifikasi intent. Parser dijalankan dulu; jika tidak cocok dan LLM aktif, API DeepSeek/OpenAI-compatible memilih intent — data tetap diambil dari backend.
+              </p>
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">
               <Link class="btn btn-ghost btn-sm shrink-0 gap-1.5" :href="route('erp.administration')">
@@ -243,6 +264,71 @@ const confirmDelete = () => {
               Back
             </Link>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ocn-panel">
+        <div class="ocn-panel__head">
+          <h2 class="ocn-panel__title">Pengaturan LLM</h2>
+          <p class="ocn-panel__desc">
+            Endpoint OpenAI-compatible (default DeepSeek). LLM hanya mengklasifikasi intent; tidak menulis query database.
+          </p>
+        </div>
+        <div class="card-body space-y-4">
+          <label class="label cursor-pointer justify-start gap-3 py-0">
+            <input v-model="llmForm.chatbot_llm_enabled" type="checkbox" class="toggle toggle-primary toggle-sm" />
+            <span class="label-text">Aktifkan fallback LLM saat parser tidak cocok</span>
+          </label>
+          <div class="grid gap-3 md:grid-cols-2">
+            <div class="md:col-span-2">
+              <label class="label py-0"><span class="label-text text-xs uppercase tracking-wide">API URL</span></label>
+              <input
+                v-model="llmForm.chatbot_llm_api_url"
+                type="url"
+                class="input input-bordered input-sm w-full font-mono"
+                placeholder="https://api.deepseek.com/v1/chat/completions"
+              >
+              <p v-if="llmForm.errors.chatbot_llm_api_url" class="mt-1 text-xs text-error">{{ llmForm.errors.chatbot_llm_api_url }}</p>
+            </div>
+            <div>
+              <label class="label py-0"><span class="label-text text-xs uppercase tracking-wide">Model</span></label>
+              <input
+                v-model="llmForm.chatbot_llm_model"
+                type="text"
+                class="input input-bordered input-sm w-full font-mono"
+                placeholder="deepseek-chat"
+              >
+              <p v-if="llmForm.errors.chatbot_llm_model" class="mt-1 text-xs text-error">{{ llmForm.errors.chatbot_llm_model }}</p>
+            </div>
+            <div>
+              <label class="label py-0"><span class="label-text text-xs uppercase tracking-wide">API key</span></label>
+              <input
+                v-model="llmForm.chatbot_llm_api_key"
+                type="password"
+                class="input input-bordered input-sm w-full font-mono"
+                :placeholder="llmSettings?.api_key_set ? `Tersimpan: ${llmSettings.api_key_hint}` : 'sk-...'"
+                autocomplete="new-password"
+              >
+              <p class="mt-1 text-[11px] text-base-content/50">
+                Kosongkan untuk mempertahankan key yang sudah tersimpan. Key dienkripsi di database.
+              </p>
+              <p v-if="llmForm.errors.chatbot_llm_api_key" class="mt-1 text-xs text-error">{{ llmForm.errors.chatbot_llm_api_key }}</p>
+              <label v-if="llmSettings?.api_key_set" class="label mt-1 cursor-pointer justify-start gap-2 py-0">
+                <input v-model="llmForm.clear_api_key" type="checkbox" class="checkbox checkbox-xs checkbox-error" />
+                <span class="label-text text-xs text-error">Hapus API key tersimpan</span>
+              </label>
+            </div>
+          </div>
+          <div class="flex justify-end">
+            <button
+              type="button"
+              class="btn btn-primary btn-sm"
+              :disabled="llmForm.processing"
+              @click="submitLlmSettings"
+            >
+              {{ llmForm.processing ? 'Menyimpan...' : 'Simpan pengaturan LLM' }}
+            </button>
           </div>
         </div>
       </div>

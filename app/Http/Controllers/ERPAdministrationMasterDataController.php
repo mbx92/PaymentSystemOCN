@@ -507,9 +507,23 @@ class ERPAdministrationMasterDataController extends Controller
             $query->where('is_active', $status === 'active');
         }
 
+        $setting = ErpSetting::query()->first();
+        $apiKey = (string) ($setting?->chatbot_llm_api_key ?? '');
+
         return Inertia::render('ERP/Admin/ParserRules', [
             'rules' => $query->paginate($this->resolvedPerPage($request))->withQueryString(),
             'filters' => $this->filtersWithPerPage($request, ['search', 'status']),
+            'llmSettings' => [
+                'enabled' => (bool) ($setting?->chatbot_llm_enabled ?? false),
+                'api_url' => $setting?->chatbot_llm_api_url
+                    ?: \App\Services\ErpChatbot\ChatbotLlmIntentClassifier::DEFAULT_API_URL,
+                'model' => $setting?->chatbot_llm_model
+                    ?: \App\Services\ErpChatbot\ChatbotLlmIntentClassifier::DEFAULT_MODEL,
+                'api_key_set' => $apiKey !== '',
+                'api_key_hint' => $apiKey !== ''
+                    ? str_repeat('•', max(0, strlen($apiKey) - 4)).substr($apiKey, -4)
+                    : '',
+            ],
             'capabilities' => [
                 'built_in_intents' => [
                     [
@@ -618,11 +632,57 @@ class ERPAdministrationMasterDataController extends Controller
                     ],
                 ],
                 'notes' => [
-                    'Tahap 1 memindahkan query chatbot ke service domain terpisah agar lebih mudah dikembangkan.',
-                    'Rule parser tetap dipakai untuk mengenali intent, tetapi banyak jawaban sekarang mengambil data live dari database.',
+                    'Rule parser tetap dipakai dulu untuk mengenali intent; jika tidak cocok dan LLM aktif, DeepSeek/OpenAI-compatible API dipakai untuk klasifikasi intent.',
+                    'LLM hanya memilih intent_key — query data tetap dijalankan oleh backend (bukan SQL bebas dari model).',
                     'Custom reply bertemplate placeholder saat ini aman dipakai khusus untuk intent stok dan harga produk.',
                 ],
             ],
+        ]);
+    }
+
+    public function updateChatbotLlmSettings(Request $request): RedirectResponse
+    {
+        $existing = ErpSetting::query()->first();
+
+        $validated = $request->validate([
+            'chatbot_llm_enabled' => 'required|boolean',
+            'chatbot_llm_api_url' => 'required|string|max:500|url',
+            'chatbot_llm_model' => 'required|string|max:120',
+            'chatbot_llm_api_key' => 'nullable|string|max:500',
+            'clear_api_key' => 'nullable|boolean',
+        ]);
+
+        if ($request->boolean('chatbot_llm_enabled')) {
+            $hasKey = filled($validated['chatbot_llm_api_key'] ?? null)
+                || (filled($existing?->chatbot_llm_api_key) && ! $request->boolean('clear_api_key'));
+
+            if (! $hasKey) {
+                throw ValidationException::withMessages([
+                    'chatbot_llm_api_key' => 'API key wajib diisi saat LLM diaktifkan.',
+                ]);
+            }
+        }
+
+        $setting = ErpSetting::query()->firstOrCreate([], [
+            'app_name' => 'OCN ERP Suite',
+            'app_tagline' => 'Integrated Business Platform',
+        ]);
+
+        $setting->update([
+            'chatbot_llm_enabled' => $request->boolean('chatbot_llm_enabled'),
+            'chatbot_llm_api_url' => rtrim(trim($validated['chatbot_llm_api_url']), '/'),
+            'chatbot_llm_model' => trim($validated['chatbot_llm_model']),
+        ]);
+
+        if ($request->boolean('clear_api_key')) {
+            $setting->update(['chatbot_llm_api_key' => null]);
+        } elseif (filled($validated['chatbot_llm_api_key'] ?? null)) {
+            $setting->update(['chatbot_llm_api_key' => trim((string) $validated['chatbot_llm_api_key'])]);
+        }
+
+        return back()->with('flash', [
+            'type' => 'success',
+            'message' => 'Pengaturan LLM chatbot berhasil disimpan.',
         ]);
     }
 

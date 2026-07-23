@@ -9,6 +9,7 @@ use App\Models\MasterProduct;
 use App\Models\Project;
 use App\Models\ProjectPayment;
 use App\Services\ErpChatbot\CashflowQueryService;
+use App\Services\ErpChatbot\ChatbotLlmIntentClassifier;
 use App\Services\ErpChatbot\InvoiceQueryService;
 use App\Services\ErpChatbot\ProductQueryService;
 use App\Services\ErpChatbot\ProjectQueryService;
@@ -31,6 +32,7 @@ class ErpChatbotController extends Controller
         private readonly CashflowQueryService $cashflowQueries,
         private readonly ProjectQueryService $projectQueries,
         private readonly InvoiceQueryService $invoiceQueries,
+        private readonly ChatbotLlmIntentClassifier $llmIntentClassifier,
     ) {}
 
     public function ask(Request $request, RuleBasedErpChatParser $parser): JsonResponse
@@ -54,17 +56,40 @@ class ErpChatbotController extends Controller
         if (! $parsed['matched']) {
             $followUp = $this->tryFollowUp($message, $history);
             if ($followUp !== null) {
-                return response()->json(['ok' => true, 'intent' => 'follow_up', 'answer' => $followUp]);
+                return response()->json([
+                    'ok' => true,
+                    'intent' => 'follow_up',
+                    'resolved_by' => 'follow_up',
+                    'answer' => $followUp,
+                ]);
             }
 
             $projectFollowUp = $this->tryFollowUpFromProjectContext($message, $history);
             if ($projectFollowUp !== null) {
-                return response()->json(['ok' => true, 'intent' => 'follow_up_project', 'answer' => $projectFollowUp]);
+                return response()->json([
+                    'ok' => true,
+                    'intent' => 'follow_up_project',
+                    'resolved_by' => 'follow_up',
+                    'answer' => $projectFollowUp,
+                ]);
+            }
+
+            $llmIntent = $this->llmIntentClassifier->classify($message, $history);
+            if ($llmIntent) {
+                $this->rememberIntent($llmIntent);
+
+                return response()->json([
+                    'ok' => true,
+                    'intent' => $llmIntent,
+                    'resolved_by' => 'llm',
+                    'answer' => $this->answerForIntent($llmIntent, $message),
+                ]);
             }
 
             return response()->json([
                 'ok' => true,
                 'intent' => null,
+                'resolved_by' => 'none',
                 'answer' => $this->answerNoMatch($message, $parser),
             ]);
         }
@@ -78,11 +103,22 @@ class ErpChatbotController extends Controller
             return response()->json([
                 'ok' => true,
                 'intent' => $intent,
+                'resolved_by' => 'parser',
                 'answer' => $this->formatParserRuleResponse($intent, $customResponse, $message),
             ]);
         }
 
-        $answer = match ($intent) {
+        return response()->json([
+            'ok' => true,
+            'intent' => $intent,
+            'resolved_by' => 'parser',
+            'answer' => $this->answerForIntent((string) $intent, $message),
+        ]);
+    }
+
+    private function answerForIntent(string $intent, string $message): string
+    {
+        return match ($intent) {
             'greeting' => $this->answerGreeting(),
             'stock_lookup' => $this->answerStockLookup($message),
             'product_price_lookup' => $this->answerPriceLookup($message),
@@ -106,12 +142,6 @@ class ErpChatbotController extends Controller
             'help' => $this->answerHelp(),
             default => 'Fitur yang Anda minta sedang dalam pengembangan. Coba ketik **bantuan** untuk melihat fitur yang tersedia.',
         };
-
-        return response()->json([
-            'ok' => true,
-            'intent' => $intent,
-            'answer' => $answer,
-        ]);
     }
 
     // ──────────────────────────────────────────────────────────────────────────

@@ -178,6 +178,8 @@ Route::middleware(['auth', 'throttle:120,1'])->group(function () {
         Route::post('erp/accounting/utilities/backfill-material-cogs', [ERPAccountingUtilityController::class, 'backfillMaterialCogs'])->name('erp.accounting.utilities.backfill-material-cogs');
         Route::post('erp/accounting/mutasi-kas-bank', [CashBankTransferController::class, 'store'])->name('erp.accounting.cash-bank-transfer.store');
         Route::post('erp/accounting/inventaris', [AccountingInventoryController::class, 'store'])->name('erp.accounting.inventaris.store');
+        Route::patch('erp/accounting/inventaris/{record}', [AccountingInventoryController::class, 'update'])->name('erp.accounting.inventaris.update');
+        Route::delete('erp/accounting/inventaris/{record}', [AccountingInventoryController::class, 'destroy'])->name('erp.accounting.inventaris.destroy');
     });
 
     // Projects (Admin + Manajer)
@@ -475,6 +477,7 @@ Route::middleware(['auth', 'throttle:120,1'])->group(function () {
         Route::post('erp/admin/parser-rules', [ERPAdministrationMasterDataController::class, 'storeParserRule'])->name('erp.admin.parser-rules.store');
         Route::patch('erp/admin/parser-rules/{parserRule}', [ERPAdministrationMasterDataController::class, 'updateParserRule'])->name('erp.admin.parser-rules.update');
         Route::delete('erp/admin/parser-rules/{parserRule}', [ERPAdministrationMasterDataController::class, 'destroyParserRule'])->name('erp.admin.parser-rules.destroy');
+        Route::patch('erp/admin/parser-rules-llm', [ERPAdministrationMasterDataController::class, 'updateChatbotLlmSettings'])->name('erp.admin.parser-rules.llm.update');
         Route::get('erp/admin/system-logs', [ErpSystemLogController::class, 'index'])->name('erp.admin.system-logs.index');
         Route::get('erp/admin/printer-and-label', [ERPAdministrationMasterDataController::class, 'printerAndLabelSettings'])->name('erp.admin.printer-and-label');
         Route::get('erp/admin/data-import', [ERPAdministrationMasterDataController::class, 'dataImport'])->name('erp.admin.data-import');

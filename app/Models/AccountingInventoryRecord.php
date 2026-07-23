@@ -12,6 +12,7 @@ class AccountingInventoryRecord extends Model
     protected $fillable = [
         'item_name',
         'qty',
+        'unit_price',
         'amount',
         'acquisition_date',
         'asset_account_id',
@@ -26,6 +27,7 @@ class AccountingInventoryRecord extends Model
         return [
             'acquisition_date' => 'date',
             'qty' => 'decimal:2',
+            'unit_price' => 'decimal:2',
             'amount' => 'decimal:2',
         ];
     }

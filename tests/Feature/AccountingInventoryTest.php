@@ -33,7 +33,7 @@ class AccountingInventoryTest extends TestCase
             ->post(route('erp.accounting.inventaris.store'), [
                 'item_name' => 'Laptop Admin',
                 'qty' => 2,
-                'amount' => 15000000,
+                'unit_price' => 7500000,
                 'acquisition_date' => '2026-05-17',
                 'asset_account_id' => $peralatan->id,
                 'cash_account_id' => $bank->id,
@@ -44,6 +44,9 @@ class AccountingInventoryTest extends TestCase
 
         $record = AccountingInventoryRecord::query()->firstOrFail();
         $this->assertSame('Laptop Admin', $record->item_name);
+        $this->assertSame(2.0, (float) $record->qty);
+        $this->assertSame(7500000.0, (float) $record->unit_price);
+        $this->assertSame(15000000.0, (float) $record->amount);
         $this->assertSame($peralatan->id, (int) $record->asset_account_id);
         $this->assertSame($bank->id, (int) $record->cash_account_id);
 
@@ -82,7 +85,7 @@ class AccountingInventoryTest extends TestCase
             ->post(route('erp.accounting.inventaris.store'), [
                 'item_name' => 'Printer Thermal',
                 'qty' => 1,
-                'amount' => 2500000,
+                'unit_price' => 2500000,
                 'acquisition_date' => '2026-05-17',
                 'asset_account_id' => $peralatan->id,
                 'cash_account_id' => $bank->id,
@@ -122,6 +125,162 @@ class AccountingInventoryTest extends TestCase
                 ->where('defaultAssetAccountId', $peralatan->id)
                 ->has('assetAccounts', 1)
             );
+    }
+
+    public function test_inventaris_index_supports_server_side_search_and_pagination(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $peralatan = $this->assetAccount('1401', 'Peralatan');
+        $bank = $this->cashAccount('1002', 'Bank BCA');
+
+        foreach (range(1, 26) as $index) {
+            $this
+                ->actingAs($user)
+                ->post(route('erp.accounting.inventaris.store'), [
+                    'item_name' => $index === 1 ? 'Laptop Admin' : "Inventaris #{$index}",
+                    'qty' => 1,
+                    'unit_price' => 1000000 + $index,
+                    'acquisition_date' => '2026-05-17',
+                    'asset_account_id' => $peralatan->id,
+                    'cash_account_id' => $bank->id,
+                ])
+                ->assertSessionHasNoErrors();
+        }
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.accounting.inventaris', ['q' => 'Laptop', 'per_page' => 25]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Accounting/Inventaris')
+                ->has('records.data', 1)
+                ->where('records.data.0.item_name', 'Laptop Admin')
+                ->where('records.total', 1)
+                ->where('filters.q', 'Laptop')
+                ->where('filters.per_page', 25)
+            );
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.accounting.inventaris', ['per_page' => 10, 'page' => 1]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Accounting/Inventaris')
+                ->has('records.data', 10)
+                ->where('records.per_page', 10)
+                ->where('records.last_page', 3)
+                ->where('records.total', 26)
+                ->has('records.links')
+            );
+
+        $this
+            ->actingAs($user)
+            ->get(route('erp.accounting.inventaris', ['per_page' => 10, 'page' => 3]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ERP/Accounting/Inventaris')
+                ->has('records.data', 6)
+                ->where('records.current_page', 3)
+            );
+    }
+
+    public function test_inventory_record_can_be_updated_with_reverse_and_repost(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $peralatan = $this->assetAccount('1401', 'Peralatan');
+        $kendaraan = $this->assetAccount('1402', 'Kendaraan');
+        $bank = $this->cashAccount('1002', 'Bank BCA');
+
+        $this
+            ->actingAs($user)
+            ->post(route('erp.accounting.inventaris.store'), [
+                'item_name' => 'Laptop Admin',
+                'qty' => 1,
+                'unit_price' => 10000000,
+                'acquisition_date' => '2026-05-17',
+                'asset_account_id' => $peralatan->id,
+                'cash_account_id' => $bank->id,
+            ])
+            ->assertSessionHasNoErrors();
+
+        $record = AccountingInventoryRecord::query()->firstOrFail();
+        $originalEntryId = $record->journal_entry_id;
+
+        $this
+            ->actingAs($user)
+            ->patch(route('erp.accounting.inventaris.update', $record), [
+                'item_name' => 'Laptop Admin Pro',
+                'qty' => 2,
+                'unit_price' => 6000000,
+                'acquisition_date' => '2026-05-18',
+                'asset_account_id' => $kendaraan->id,
+                'cash_account_id' => $bank->id,
+                'note' => 'Upgrade',
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect();
+
+        $record->refresh();
+        $this->assertSame('Laptop Admin Pro', $record->item_name);
+        $this->assertSame(2.0, (float) $record->qty);
+        $this->assertSame(6000000.0, (float) $record->unit_price);
+        $this->assertSame(12000000.0, (float) $record->amount);
+        $this->assertSame($kendaraan->id, (int) $record->asset_account_id);
+        $this->assertNotSame($originalEntryId, $record->journal_entry_id);
+
+        $this->assertDatabaseHas('journal_entries', [
+            'id' => $originalEntryId,
+        ]);
+        $this->assertDatabaseHas('journal_entries', [
+            'reversed_entry_id' => $originalEntryId,
+            'source_module' => 'reversal',
+        ]);
+        $this->assertDatabaseHas('journal_lines', [
+            'journal_entry_id' => $record->journal_entry_id,
+            'account_id' => $kendaraan->id,
+            'debit' => '12000000.00',
+            'credit' => '0.00',
+        ]);
+    }
+
+    public function test_inventory_record_can_be_deleted_with_reversal(): void
+    {
+        $this->disableErpMiddleware();
+
+        $user = User::factory()->create();
+        $peralatan = $this->assetAccount('1401', 'Peralatan');
+        $bank = $this->cashAccount('1002', 'Bank BCA');
+
+        $this
+            ->actingAs($user)
+            ->post(route('erp.accounting.inventaris.store'), [
+                'item_name' => 'Printer Thermal',
+                'qty' => 1,
+                'unit_price' => 2500000,
+                'acquisition_date' => '2026-05-17',
+                'asset_account_id' => $peralatan->id,
+                'cash_account_id' => $bank->id,
+            ])
+            ->assertSessionHasNoErrors();
+
+        $record = AccountingInventoryRecord::query()->firstOrFail();
+        $originalEntryId = $record->journal_entry_id;
+
+        $this
+            ->actingAs($user)
+            ->delete(route('erp.accounting.inventaris.destroy', $record))
+            ->assertSessionHasNoErrors()
+            ->assertRedirect();
+
+        $this->assertDatabaseMissing('accounting_inventory_records', ['id' => $record->id]);
+        $this->assertDatabaseHas('journal_entries', [
+            'reversed_entry_id' => $originalEntryId,
+            'source_module' => 'reversal',
+        ]);
     }
 
     private function disableErpMiddleware(): void

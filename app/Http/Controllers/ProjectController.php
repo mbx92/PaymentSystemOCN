@@ -736,11 +736,25 @@ class ProjectController extends Controller
             }
         }
 
-        DB::transaction(function () use ($project, $validated, $canEditPayments) {
+        $previousStatus = $project->status;
+
+        DB::transaction(function () use ($project, $validated, $canEditPayments, $previousStatus) {
             $project->update(Arr::except($validated, ['payments']));
 
             if ($canEditPayments) {
                 $this->replacePaymentSchedule($project, $validated['payments']);
+            }
+
+            $nextStatus = $validated['status'];
+            $closedStatuses = ['selesai', 'dibatalkan'];
+            $reservationService = app(ProjectMaterialReservationService::class);
+            $fresh = $project->fresh('materials');
+
+            if (in_array($nextStatus, $closedStatuses, true) && ! in_array($previousStatus, $closedStatuses, true)) {
+                $reservationService->releaseProjectReservations($fresh);
+            } elseif ($nextStatus === 'berjalan' && in_array($previousStatus, $closedStatuses, true)) {
+                // Reopen via edit: only resync warehouse totals (do not wipe material reserved again).
+                $reservationService->syncProjectWarehouseReservations($fresh);
             }
         });
 

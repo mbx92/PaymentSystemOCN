@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\ERP\Core\Services\ErpCompanyResolver;
 use App\ERP\CRM\Models\CrmCustomer;
 use App\ERP\Inventory\Models\Warehouse;
 use App\Models\MasterProduct;
@@ -763,10 +764,35 @@ class ProjectBudgetController extends Controller
             });
     }
 
+    /**
+     * Prefer company-scoped WH-OCN for project convert.
+     * Never pick WH-NUMA just because it has more free stock when project context is OCN.
+     */
     private function warehouseForBudgetMaterial(MasterProduct $product): ?Warehouse
     {
+        $companyId = ErpCompanyResolver::currentCompanyIdForSession(request());
+
+        $scoped = Warehouse::query()->where('is_active', true);
+        if ($companyId) {
+            $companyWarehouseIds = Warehouse::query()
+                ->where('is_active', true)
+                ->where('company_id', $companyId)
+                ->pluck('id');
+
+            if ($companyWarehouseIds->isNotEmpty()) {
+                $scoped->whereIn('id', $companyWarehouseIds);
+            }
+        }
+
+        $preferred = (clone $scoped)->where('code', 'WH-OCN')->first();
+        if ($preferred) {
+            return $preferred;
+        }
+
+        $scopedIds = (clone $scoped)->pluck('id');
         $stockWarehouseId = MasterProductWarehouseStock::query()
             ->where('master_product_id', $product->id)
+            ->when($scopedIds->isNotEmpty(), fn ($q) => $q->whereIn('warehouse_id', $scopedIds))
             ->orderByRaw('(qty - reserved_qty) desc')
             ->value('warehouse_id');
 
@@ -774,9 +800,8 @@ class ProjectBudgetController extends Controller
             return Warehouse::query()->whereKey($stockWarehouseId)->where('is_active', true)->first();
         }
 
-        return Warehouse::query()
-            ->where('is_active', true)
-            ->orderByRaw("case when code = 'WH-MAIN' then 0 else 1 end")
+        return (clone $scoped)
+            ->orderByRaw("case when code = 'WH-OCN' then 0 when code = 'WH-MAIN' then 1 else 2 end")
             ->orderBy('name')
             ->first();
     }
