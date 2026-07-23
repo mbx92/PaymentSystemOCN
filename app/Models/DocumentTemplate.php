@@ -36,7 +36,6 @@ class DocumentTemplate extends Model
     {
         return [
             ['id' => 'header',       'type' => 'header',       'enabled' => true,  'config' => ['show_logo' => true, 'show_tagline' => true, 'accent_color' => '#1E3A5F', 'title' => 'NOTA PENJUALAN', 'subtitle' => 'Lampiran Item Penjualan']],
-            ['id' => 'doc_meta',     'type' => 'doc_meta',     'enabled' => true,  'config' => ['show_number' => true, 'show_date' => true, 'show_status' => true]],
             ['id' => 'client_info',  'type' => 'client_info',  'enabled' => true,  'config' => ['label' => 'Customer', 'show_contact' => true]],
             ['id' => 'items_table',  'type' => 'items_table',  'enabled' => true,  'config' => ['show_no' => true, 'show_uom' => true, 'show_unit_price' => true]],
             ['id' => 'totals',       'type' => 'totals',       'enabled' => true,  'config' => ['show_subtotal' => true, 'show_tax' => false, 'show_discount' => true, 'label_total' => 'Total Dokumen']],

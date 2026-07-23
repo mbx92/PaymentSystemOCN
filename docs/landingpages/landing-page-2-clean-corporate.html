@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SecureLink Teknologi — Jasa Pasang CCTV & Jaringan</title>
+<style>
+  :root{
+    --primary:#1d4ed8; --primary-dark:#1e3a8a; --orange:#f97316;
+    --bg:#ffffff; --bg-soft:#f1f5f9; --text:#0f172a; --muted:#64748b;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',system-ui,sans-serif}
+  body{background:var(--bg);color:var(--text);line-height:1.65}
+  a{text-decoration:none;color:inherit}
+  .container{max-width:1100px;margin:0 auto;padding:0 24px}
+
+  /* Topbar */
+  .topbar{background:var(--primary-dark);color:#dbeafe;font-size:.85rem;padding:8px 0}
+  .topbar .container{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+
+  nav{background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.06);position:sticky;top:0;z-index:100}
+  .nav-inner{display:flex;justify-content:space-between;align-items:center;height:70px}
+  .logo{font-size:1.35rem;font-weight:800;color:var(--primary-dark)}
+  .logo span{color:var(--orange)}
+  .nav-links{display:flex;gap:26px;font-size:.95rem;font-weight:500}
+  .nav-links a:hover{color:var(--primary)}
+  .btn{display:inline-block;padding:13px 30px;border-radius:8px;font-weight:600;transition:.2s}
+  .btn-primary{background:var(--orange);color:#fff}
+  .btn-primary:hover{background:#ea580c;transform:translateY(-2px)}
+  .btn-blue{background:var(--primary);color:#fff}
+  .btn-blue:hover{background:var(--primary-dark)}
+  .btn-white{background:#fff;color:var(--primary-dark)}
+
+  /* Hero */
+  .hero{background:linear-gradient(135deg,var(--primary-dark),var(--primary));color:#fff;padding:90px 0}
+  .hero-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:48px;align-items:center}
+  h1{font-size:2.7rem;line-height:1.2;margin-bottom:18px}
+  h1 span{color:#fdba74}
+  .hero p{color:#dbeafe;font-size:1.1rem;margin-bottom:30px}
+  .hero-cta{display:flex;gap:14px;flex-wrap:wrap}
+  .trust{display:flex;gap:24px;margin-top:36px;flex-wrap:wrap;font-size:.9rem;color:#bfdbfe}
+  .trust b{color:#fff}
+  .hero-card{background:#fff;color:var(--text);border-radius:14px;padding:30px;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+  .hero-card h3{margin-bottom:6px;color:var(--primary-dark)}
+  .hero-card p{color:var(--muted);font-size:.9rem;margin-bottom:18px}
+  .hero-card input,.hero-card select{width:100%;padding:12px;margin-bottom:12px;border:1px solid #cbd5e1;border-radius:8px;font-size:.95rem}
+  .hero-card button{width:100%;border:none;cursor:pointer;font-size:1rem}
+
+  section{padding:80px 0}
+  .section-title{text-align:center;margin-bottom:48px}
+  .section-title .eyebrow{color:var(--orange);font-weight:700;text-transform:uppercase;letter-spacing:1.5px;font-size:.85rem}
+  .section-title h2{font-size:2rem;margin-top:8px;color:var(--primary-dark)}
+
+  .services{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+  .card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:32px 26px;transition:.2s}
+  .card:hover{box-shadow:0 12px 30px rgba(29,78,216,.12);transform:translateY(-4px)}
+  .card .icon{width:54px;height:54px;background:#eff6ff;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.6rem;margin-bottom:18px}
+  .card h3{margin-bottom:10px;font-size:1.12rem;color:var(--primary-dark)}
+  .card p{color:var(--muted);font-size:.94rem}
+
+  .soft{background:var(--bg-soft)}
+
+  /* Steps */
+  .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:24px;text-align:center}
+  .step .num{width:52px;height:52px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.2rem;margin:0 auto 16px}
+  .step h4{margin-bottom:8px;color:var(--primary-dark)}
+  .step p{color:var(--muted);font-size:.9rem}
+
+  /* Testimonials */
+  .testis{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+  .testi{background:#fff;border-radius:14px;padding:28px;border:1px solid #e2e8f0}
+  .stars{color:#f59e0b;margin-bottom:12px}
+  .testi p{color:var(--muted);font-size:.94rem;font-style:italic;margin-bottom:16px}
+  .testi .who b{display:block;color:var(--text)}
+  .testi .who small{color:var(--muted)}
+
+  /* FAQ */
+  .faq{max-width:760px;margin:0 auto}
+  details{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:18px 22px;margin-bottom:12px}
+  summary{font-weight:600;cursor:pointer;color:var(--primary-dark)}
+  details p{margin-top:10px;color:var(--muted);font-size:.94rem}
+
+  /* CTA */
+  .cta{background:linear-gradient(135deg,var(--primary-dark),var(--primary));color:#fff;text-align:center}
+  .cta h2{font-size:2rem;margin-bottom:12px}
+  .cta p{color:#dbeafe;margin-bottom:28px}
+
+  footer{background:#0f172a;color:#94a3b8;padding:48px 0 24px;font-size:.92rem}
+  .footer-grid{display:grid;grid-template-columns:2fr 1fr 1fr;gap:36px;margin-bottom:32px}
+  footer h4{color:#fff;margin-bottom:14px}
+  footer li{list-style:none;padding:4px 0}
+  footer a:hover{color:#fff}
+  .copy{border-top:1px solid #1e293b;padding-top:20px;text-align:center}
+
+  .wa-float{position:fixed;bottom:24px;right:24px;background:#25d366;color:#fff;width:58px;height:58px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.8rem;box-shadow:0 6px 20px rgba(0,0,0,.3);z-index:200}
+
+  @media(max-width:800px){
+    .hero-grid,.services,.steps,.testis,.footer-grid{grid-template-columns:1fr}
+    h1{font-size:2rem}
+    .nav-links{display:none}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="container">
+    <span><svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2C10 21 3 14 3 6a2 2 0 0 1 2-2Z"/></svg> 0812-3456-7890 &nbsp;&middot;&nbsp; <svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg> info@securelink.co.id</span>
+    <span><svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg> Senin&ndash;Sabtu 08.00&ndash;17.00 WITA</span>
+  </div>
+</div>
+
+<nav>
+  <div class="container nav-inner">
+    <div class="logo">Secure<span>Link</span></div>
+    <div class="nav-links">
+      <a href="#layanan">Layanan</a>
+      <a href="#cara-kerja">Cara Kerja</a>
+      <a href="#testimoni">Testimoni</a>
+      <a href="#faq">FAQ</a>
+    </div>
+    <a href="https://wa.me/6281234567890" class="btn btn-primary">Survey Gratis</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="container hero-grid">
+    <div>
+      <h1>Amankan Aset Bisnis Anda dengan <span>CCTV & Jaringan Handal</span></h1>
+      <p>Jasa instalasi CCTV, jaringan LAN/WiFi, dan sistem keamanan terintegrasi untuk kantor, toko, gudang, dan perumahan. Melayani seluruh Bali dan sekitarnya.</p>
+      <div class="hero-cta">
+        <a href="https://wa.me/6281234567890" class="btn btn-primary">Konsultasi Sekarang</a>
+        <a href="#layanan" class="btn btn-white">Lihat Layanan</a>
+      </div>
+      <div class="trust">
+        <span><b>500+</b> Klien Puas</span>
+        <span><b>8 Tahun</b> Berpengalaman</span>
+        <span><b>Garansi</b> 1 Tahun</span>
+      </div>
+    </div>
+    <div class="hero-card">
+      <h3>Dapatkan Penawaran Gratis</h3>
+      <p>Isi form ini, tim kami akan menghubungi Anda dalam 1×24 jam.</p>
+      <input type="text" placeholder="Nama Lengkap">
+      <input type="tel" placeholder="No. WhatsApp">
+      <select>
+        <option>Pilih Kebutuhan</option>
+        <option>Instalasi CCTV</option>
+        <option>Instalasi Jaringan / WiFi</option>
+        <option>Maintenance</option>
+        <option>Lainnya</option>
+      </select>
+      <button class="btn btn-blue" onclick="kirimForm()">Kirim Permintaan</button>
+    </div>
+  </div>
+</header>
+
+<section id="layanan">
+  <div class="container">
+    <div class="section-title">
+      <span class="eyebrow">Layanan Kami</span>
+      <h2>Solusi Keamanan & Konektivitas Terpadu</h2>
+    </div>
+    <div class="services">
+      <div class="card"><div class="icon"><svg viewBox="0 0 24 24" style="width:1.6rem;height:1.6rem;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8a2 2 0 0 1 2-2h1.5l1-1.5h9l1 1.5H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8Z"/><circle cx="12" cy="13" r="3.5"/></svg></div><h3>Pemasangan CCTV</h3><p>CCTV analog & IP camera Full HD/4K untuk rumah, toko, kantor, dan pabrik. Bisa dipantau dari HP kapan saja.</p></div>
+      <div class="card"><div class="icon"><svg viewBox="0 0 24 24" style="width:1.6rem;height:1.6rem;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 8.5a15 15 0 0 1 20 0"/><path d="M5.5 12.5a10 10 0 0 1 13 0"/><path d="M9 16.5a5 5 0 0 1 6 0"/><circle cx="12" cy="20" r="1.1" fill="currentColor" stroke="none"/></svg></div><h3>Instalasi Jaringan</h3><p>Kabel LAN, WiFi access point, router, dan switch untuk koneksi stabil di seluruh area gedung.</p></div>
+      <div class="card"><div class="icon"><svg viewBox="0 0 24 24" style="width:1.6rem;height:1.6rem;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><circle cx="7" cy="7" r="0.8" fill="currentColor" stroke="none"/><circle cx="7" cy="17" r="0.8" fill="currentColor" stroke="none"/></svg></div><h3>Setting Mikrotik</h3><p>Manajemen bandwidth, hotspot, VPN, dan firewall untuk kebutuhan kantor maupun RT/RW Net.</p></div>
+      <div class="card"><div class="icon"><svg viewBox="0 0 24 24" style="width:1.6rem;height:1.6rem;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="5.5" cy="18.5" r="1.5" fill="currentColor" stroke="none"/><path d="M8 14a6 6 0 0 1 6-6"/><path d="M8 18a10 10 0 0 1 10-10"/><path d="M8 22a14 14 0 0 1 14-14"/></svg></div><h3>Fiber Optic</h3><p>Penarikan dan splicing kabel FO untuk backbone antar gedung dengan kecepatan maksimal.</p></div>
+      <div class="card"><div class="icon"><svg viewBox="0 0 24 24" style="width:1.6rem;height:1.6rem;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="3" width="14" height="18" rx="1"/><circle cx="14.5" cy="12" r="0.9" fill="currentColor" stroke="none"/></svg></div><h3>Access Door &amp; Alarm</h3><p>Fingerprint, kartu akses, face recognition, dan sistem alarm terintegrasi CCTV.</p></div>
+      <div class="card"><div class="icon"><svg viewBox="0 0 24 24" style="width:1.6rem;height:1.6rem;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.8 2.8-2-2 2.8-2.8Z"/></svg></div><h3>Maintenance Rutin</h3><p>Kontrak servis berkala agar CCTV dan jaringan Anda selalu dalam kondisi prima.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="cara-kerja" class="soft">
+  <div class="container">
+    <div class="section-title">
+      <span class="eyebrow">Cara Kerja</span>
+      <h2>Proses Mudah, Hasil Profesional</h2>
+    </div>
+    <div class="steps">
+      <div class="step"><div class="num">1</div><h4>Konsultasi</h4><p>Hubungi kami via WhatsApp atau form, ceritakan kebutuhan Anda.</p></div>
+      <div class="step"><div class="num">2</div><h4>Survey Gratis</h4><p>Tim kami datang mengecek lokasi dan memberikan penawaran terbaik.</p></div>
+      <div class="step"><div class="num">3</div><h4>Instalasi</h4><p>Pemasangan rapi dan cepat oleh teknisi berpengalaman.</p></div>
+      <div class="step"><div class="num">4</div><h4>Garansi & Support</h4><p>Garansi 1 tahun plus dukungan teknis kapan pun dibutuhkan.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="testimoni">
+  <div class="container">
+    <div class="section-title">
+      <span class="eyebrow">Testimoni</span>
+      <h2>Apa Kata Klien Kami</h2>
+    </div>
+    <div class="testis">
+      <div class="testi">
+        <div class="stars">★★★★★</div>
+        <p>"Pemasangan CCTV di toko saya cepat dan rapi. Sekarang bisa pantau toko dari rumah lewat HP. Recommended!"</p>
+        <div class="who"><b>Made Wirawan</b><small>Pemilik Toko Bangunan</small></div>
+      </div>
+      <div class="testi">
+        <div class="stars">★★★★★</div>
+        <p>"Jaringan WiFi di hotel kami jadi stabil di semua lantai. Timnya profesional dan responsif saat ada kendala."</p>
+        <div class="who"><b>Ayu Lestari</b><small>Manager Hotel</small></div>
+      </div>
+      <div class="testi">
+        <div class="stars">★★★★★</div>
+        <p>"Harga bersaing, survey gratis, dan hasilnya memuaskan. Sudah 2 tahun pakai jasa maintenance mereka."</p>
+        <div class="who"><b>Budi Santoso</b><small>Pemilik Gudang Distribusi</small></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="faq" class="soft">
+  <div class="container">
+    <div class="section-title">
+      <span class="eyebrow">FAQ</span>
+      <h2>Pertanyaan yang Sering Diajukan</h2>
+    </div>
+    <div class="faq">
+      <details><summary>Apakah survey lokasi dikenakan biaya?</summary><p>Tidak. Survey dan penawaran sepenuhnya gratis untuk area Bali dan sekitarnya.</p></details>
+      <details><summary>Berapa lama proses pemasangan CCTV?</summary><p>Untuk paket 2–4 kamera umumnya selesai dalam 1 hari kerja. Proyek besar menyesuaikan hasil survey.</p></details>
+      <details><summary>Apakah CCTV bisa dipantau dari HP?</summary><p>Bisa. Semua paket kami sudah termasuk setting akses smartphone (Android/iOS) tanpa biaya tambahan.</p></details>
+      <details><summary>Bagaimana dengan garansinya?</summary><p>Garansi instalasi 1 tahun dan garansi produk resmi dari distributor sesuai merek yang dipilih.</p></details>
+    </div>
+  </div>
+</section>
+
+<section class="cta">
+  <div class="container">
+    <h2>Siap Mengamankan Properti Anda?</h2>
+    <p>Konsultasi dan survey lokasi gratis — tanpa komitmen apa pun.</p>
+    <a href="https://wa.me/6281234567890" class="btn btn-primary"><svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v11H8l-4 4V5Z"/></svg> Hubungi via WhatsApp</a>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <h4>SecureLink Teknologi</h4>
+        <p>Jasa instalasi CCTV dan jaringan profesional. Jl. Contoh Raya No. 123, Denpasar, Bali.</p>
+      </div>
+      <div>
+        <h4>Layanan</h4>
+        <ul>
+          <li><a href="#layanan">Pemasangan CCTV</a></li>
+          <li><a href="#layanan">Instalasi Jaringan</a></li>
+          <li><a href="#layanan">Setting Mikrotik</a></li>
+          <li><a href="#layanan">Maintenance</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Kontak</h4>
+        <ul>
+          <li><svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2C10 21 3 14 3 6a2 2 0 0 1 2-2Z"/></svg> 0812-3456-7890</li>
+          <li><svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg> info@securelink.co.id</li>
+          <li><svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg> Senin&ndash;Sabtu 08.00&ndash;17.00</li>
+        </ul>
+      </div>
+    </div>
+    <div class="copy">© 2026 SecureLink Teknologi. All rights reserved.</div>
+  </div>
+</footer>
+
+<a href="https://wa.me/6281234567890" class="wa-float" aria-label="WhatsApp"><svg viewBox="0 0 24 24" style="width:1.6rem;height:1.6rem;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v11H8l-4 4V5Z"/></svg></a>
+
+<script>
+function kirimForm(){
+  const nama=document.querySelector('input[type=text]').value||'-';
+  const wa=document.querySelector('input[type=tel]').value||'-';
+  const keb=document.querySelector('select').value;
+  const pesan=encodeURIComponent(`Halo, saya ${nama} (${wa}). Saya ingin konsultasi: ${keb}`);
+  window.open(`https://wa.me/6281234567890?text=${pesan}`,'_blank');
+}
+</script>
+
+</body>
+</html>

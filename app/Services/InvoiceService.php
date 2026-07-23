@@ -35,7 +35,7 @@ class InvoiceService
         $total = $subtotal;
 
         return [
-            'invoice' => $invoice + [
+            'invoice' => array_merge($invoice, [
                 'items' => $items,
                 'subtotal' => $subtotal,
                 'tax_amount' => $taxAmount,
@@ -44,7 +44,7 @@ class InvoiceService
                 'formatted_due_date' => $this->formatDateIndo($invoice['due_date']),
                 'status_label' => $this->statusLabel($invoice['status']),
                 'status_color' => $this->statusColor($invoice['status']),
-            ],
+            ]),
             'companyLogoPath' => file_exists(public_path('images/logo.png'))
                 ? public_path('images/logo.png')
                 : null,

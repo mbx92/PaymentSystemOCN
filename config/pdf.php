@@ -1,16 +1,18 @@
 <?php
 
 /**
- * Warna PDF mengikuti theme daisyUI "ocn" di resources/css/app.css.
+ * Palet warna dokumen PDF (invoice, kwitansi, laporan, dll).
+ * Sengaja dibuat gelap/netral (navy) agar dokumen cetak terasa formal
+ * dan tenang, terlepas dari warna terang tema UI aplikasi.
  */
 return [
     'theme' => [
-        'primary' => '#1d4ed8',
+        'primary' => '#1E3A5F',
         'primary_content' => '#ffffff',
         'base_100' => '#ffffff',
-        'base_200' => '#f3f6fb',
-        'base_300' => '#dbe3ef',
-        'base_content' => '#111827',
+        'base_200' => '#f4f5f7',
+        'base_300' => '#d9dde3',
+        'base_content' => '#1f2937',
         'muted' => '#6b7280',
     ],
 

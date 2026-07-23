@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arkanet — Instalasi Jaringan & CCTV</title>
+<style>
+  :root{
+    --ink:#18181b; --ink-soft:#52525b; --line:#e4e4e7;
+    --bg:#fafafa; --surface:#ffffff; --accent:#16a34a;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',system-ui,sans-serif}
+  body{background:var(--bg);color:var(--ink);line-height:1.7}
+  a{text-decoration:none;color:inherit}
+  .container{max-width:1000px;margin:0 auto;padding:0 24px}
+  .ic{width:1em;height:1em;vertical-align:-0.15em}
+
+  nav{border-bottom:1px solid var(--line);background:var(--surface)}
+  .nav-inner{display:flex;justify-content:space-between;align-items:center;height:76px}
+  .logo{font-size:1.2rem;font-weight:700;letter-spacing:-0.02em}
+  .logo .dot{color:var(--accent)}
+  .nav-links{display:flex;gap:32px;font-size:.92rem;color:var(--ink-soft)}
+  .nav-links a:hover{color:var(--ink)}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:12px 24px;border-radius:4px;font-size:.92rem;font-weight:600;border:1px solid var(--ink)}
+  .btn-solid{background:var(--ink);color:#fff}
+  .btn-solid:hover{background:#000}
+  .btn-line{border-color:var(--line);color:var(--ink-soft)}
+  .btn-line:hover{border-color:var(--ink);color:var(--ink)}
+
+  header.hero{padding:110px 0 90px;border-bottom:1px solid var(--line)}
+  .kicker{font-size:.8rem;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:22px}
+  h1{font-size:3rem;font-weight:700;letter-spacing:-0.03em;max-width:680px;margin-bottom:22px}
+  .hero p{max-width:560px;color:var(--ink-soft);font-size:1.08rem;margin-bottom:36px}
+  .hero-cta{display:flex;gap:14px}
+  .hero-meta{display:flex;gap:48px;margin-top:64px;padding-top:32px;border-top:1px solid var(--line)}
+  .hero-meta div b{display:block;font-size:1.6rem;font-weight:700}
+  .hero-meta div span{font-size:.85rem;color:var(--ink-soft)}
+
+  section{padding:80px 0;border-bottom:1px solid var(--line)}
+  .section-head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:48px;gap:24px;flex-wrap:wrap}
+  .section-head h2{font-size:1.9rem;font-weight:700;letter-spacing:-0.02em}
+  .section-head p{color:var(--ink-soft);max-width:380px;font-size:.95rem}
+
+  .list-services{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line)}
+  .svc{background:var(--surface);padding:32px}
+  .svc .num{font-size:.8rem;color:var(--ink-soft);font-weight:700;margin-bottom:14px}
+  .svc .ic-wrap{width:40px;height:40px;border:1px solid var(--line);border-radius:6px;display:flex;align-items:center;justify-content:center;margin-bottom:16px}
+  .svc h3{font-size:1.08rem;margin-bottom:8px;font-weight:600}
+  .svc p{color:var(--ink-soft);font-size:.92rem}
+
+  .process{display:flex;flex-direction:column;gap:0}
+  .p-row{display:grid;grid-template-columns:60px 220px 1fr;gap:24px;padding:24px 0;border-top:1px solid var(--line);align-items:baseline}
+  .p-row:last-child{border-bottom:1px solid var(--line)}
+  .p-row .idx{font-weight:700;color:var(--accent)}
+  .p-row h4{font-weight:600}
+  .p-row p{color:var(--ink-soft);font-size:.92rem}
+
+  .specs{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+  .spec-card{border:1px solid var(--line);border-radius:6px;padding:28px;background:var(--surface)}
+  .spec-card.hi{border-color:var(--ink);position:relative}
+  .spec-card .flag{position:absolute;top:-11px;left:24px;background:var(--ink);color:#fff;font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:3px}
+  .spec-card h3{font-size:1.05rem;margin-bottom:4px}
+  .spec-card .p{font-size:1.9rem;font-weight:700;margin:14px 0}
+  .spec-card .p sub{font-size:.85rem;font-weight:400;color:var(--ink-soft)}
+  .spec-card ul{list-style:none;font-size:.88rem;color:var(--ink-soft);margin-bottom:24px}
+  .spec-card li{padding:6px 0;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center}
+  .spec-card li .ic{color:var(--accent)}
+
+  .cta-final{padding:90px 0;text-align:center}
+  .cta-final h2{font-size:2.1rem;font-weight:700;letter-spacing:-0.02em;margin-bottom:14px}
+  .cta-final p{color:var(--ink-soft);margin-bottom:32px}
+
+  footer{padding:40px 0;font-size:.85rem;color:var(--ink-soft);display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
+
+  @media(max-width:820px){
+    h1{font-size:2.1rem}
+    .list-services,.specs{grid-template-columns:1fr}
+    .nav-links{display:none}
+    .p-row{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="container nav-inner">
+    <div class="logo">Arkanet<span class="dot">.</span></div>
+    <div class="nav-links">
+      <a href="#layanan">Layanan</a>
+      <a href="#proses">Proses</a>
+      <a href="#paket">Paket</a>
+    </div>
+    <a href="https://wa.me/6281234567890" class="btn btn-solid">Hubungi Kami</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="container">
+    <div class="kicker">Jaringan &amp; Keamanan CCTV</div>
+    <h1>Infrastruktur jaringan dan pengawasan yang bekerja tanpa gangguan.</h1>
+    <p>Kami merancang, memasang, dan merawat sistem CCTV serta jaringan untuk bisnis yang tidak punya ruang untuk downtime.</p>
+    <div class="hero-cta">
+      <a href="https://wa.me/6281234567890" class="btn btn-solid">Jadwalkan Survey</a>
+      <a href="#layanan" class="btn btn-line">Lihat Layanan</a>
+    </div>
+    <div class="hero-meta">
+      <div><b>500+</b><span>Instalasi selesai</span></div>
+      <div><b>8 tahun</b><span>Beroperasi</span></div>
+      <div><b>99.9%</b><span>Uptime jaringan klien</span></div>
+    </div>
+  </div>
+</header>
+
+<section id="layanan">
+  <div class="container">
+    <div class="section-head">
+      <h2>Layanan</h2>
+      <p>Enam bidang inti yang kami tangani dari perencanaan hingga perawatan jangka panjang.</p>
+    </div>
+    <div class="list-services">
+      <div class="svc">
+        <div class="ic-wrap"><svg class="ic" style="width:1.3em;height:1.3em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8a2 2 0 0 1 2-2h1.5l1-1.5h9l1 1.5H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8Z"/><circle cx="12" cy="13" r="3.5"/></svg></div>
+        <div class="num">01</div>
+        <h3>Instalasi CCTV</h3>
+        <p>Kamera analog dan IP camera resolusi tinggi dengan akses jarak jauh via aplikasi.</p>
+      </div>
+      <div class="svc">
+        <div class="ic-wrap"><svg class="ic" style="width:1.3em;height:1.3em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 8.5a15 15 0 0 1 20 0"/><path d="M5.5 12.5a10 10 0 0 1 13 0"/><path d="M9 16.5a5 5 0 0 1 6 0"/></svg></div>
+        <div class="num">02</div>
+        <h3>Jaringan LAN &amp; WiFi</h3>
+        <p>Perancangan topologi, kabel terstruktur, dan cakupan WiFi merata di seluruh area.</p>
+      </div>
+      <div class="svc">
+        <div class="ic-wrap"><svg class="ic" style="width:1.3em;height:1.3em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/></svg></div>
+        <div class="num">03</div>
+        <h3>Server &amp; Mikrotik</h3>
+        <p>Manajemen bandwidth, VLAN, VPN, dan konfigurasi hotspot untuk kebutuhan skala apa pun.</p>
+      </div>
+      <div class="svc">
+        <div class="ic-wrap"><svg class="ic" style="width:1.3em;height:1.3em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.8 2.8-2-2 2.8-2.8Z"/></svg></div>
+        <div class="num">04</div>
+        <h3>Maintenance Berkala</h3>
+        <p>Pemeriksaan rutin, pembersihan perangkat, dan perbaikan cepat saat terjadi gangguan.</p>
+      </div>
+      <div class="svc">
+        <div class="ic-wrap"><svg class="ic" style="width:1.3em;height:1.3em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="3" width="14" height="18" rx="1"/><circle cx="14.5" cy="12" r="0.9" fill="currentColor" stroke="none"/></svg></div>
+        <div class="num">05</div>
+        <h3>Access Control</h3>
+        <p>Fingerprint, kartu RFID, dan face recognition terintegrasi dengan sistem CCTV.</p>
+      </div>
+      <div class="svc">
+        <div class="ic-wrap"><svg class="ic" style="width:1.3em;height:1.3em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="5.5" cy="18.5" r="1.5" fill="currentColor" stroke="none"/><path d="M8 14a6 6 0 0 1 6-6"/><path d="M8 18a10 10 0 0 1 10-10"/></svg></div>
+        <div class="num">06</div>
+        <h3>Fiber Optic</h3>
+        <p>Penarikan dan penyambungan kabel FO untuk konektivitas antar gedung yang stabil.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="proses">
+  <div class="container">
+    <div class="section-head">
+      <h2>Cara Kami Bekerja</h2>
+      <p>Empat tahap sederhana dari kontak pertama hingga sistem berjalan.</p>
+    </div>
+    <div class="process">
+      <div class="p-row"><div class="idx">01</div><h4>Konsultasi</h4><p>Diskusikan kebutuhan dan kondisi lokasi Anda dengan tim kami.</p></div>
+      <div class="p-row"><div class="idx">02</div><h4>Survey Lapangan</h4><p>Kami datang mengukur, memetakan titik pemasangan, dan menyusun proposal.</p></div>
+      <div class="p-row"><div class="idx">03</div><h4>Instalasi</h4><p>Pemasangan dilakukan oleh teknisi bersertifikat sesuai jadwal yang disepakati.</p></div>
+      <div class="p-row"><div class="idx">04</div><h4>Serah Terima &amp; Garansi</h4><p>Pelatihan penggunaan sistem, dokumentasi lengkap, dan garansi satu tahun.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="paket">
+  <div class="container">
+    <div class="section-head">
+      <h2>Paket CCTV</h2>
+      <p>Sudah termasuk kamera, perekam, penyimpanan, kabel, dan instalasi.</p>
+    </div>
+    <div class="specs">
+      <div class="spec-card">
+        <h3>Hemat</h3>
+        <div class="p">Rp 2,5jt<sub> /paket</sub></div>
+        <ul>
+          <li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg> 2 kamera 2MP</li>
+          <li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg> DVR 4 channel</li>
+          <li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg> Penyimpanan 500GB</li>
+          <li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg> Akses smartphone</li>
+        </ul>
+        <a href="https://wa.me/6281234567890" class="btn btn-line" style="width:100%;justify-content:center">Pilih Paket</a>
+      </div>
+      <div class="spec-card hi">
+        <span class="flag">Terpopuler</span>
+        <h3>Bisnis</h3>
+        <div class="p">Rp 4,8jt<sub> /paket</sub></div>
+        <ul>
+          <li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg> 4 kamera 2MP</li>
+          <li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg> DVR 8 channel</li>
+          <li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg> Penyimpanan 1TB</li>
+          <li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg> Maintenance 3 bulan</li>
+        </ul>
+        <a href="https://wa.me/6281234567890" class="btn btn-solid" style="width:100%;justify-content:center">Pilih Paket</a>
+      </div>
+      <div class="spec-card">
+        <h3>Pro IP Cam</h3>
+        <div class="p">Rp 8,9jt<sub> /paket</sub></div>
+        <ul>
+          <li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg> 4 IP camera 4MP</li>
+          <li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg> NVR 8 channel PoE</li>
+          <li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg> Penyimpanan 2TB</li>
+          <li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg> Night vision berwarna</li>
+        </ul>
+        <a href="https://wa.me/6281234567890" class="btn btn-line" style="width:100%;justify-content:center">Pilih Paket</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="cta-final" style="border-bottom:none">
+  <div class="container">
+    <h2>Mulai dengan survey lokasi gratis.</h2>
+    <p>Tanpa komitmen. Kami datang, mengukur, dan memberi rekomendasi terbaik.</p>
+    <a href="https://wa.me/6281234567890" class="btn btn-solid">Jadwalkan Sekarang</a>
+  </div>
+</section>
+
+<footer>
+  <div class="container" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <div>Arkanet — Jl. Contoh Raya No. 123, Denpasar, Bali</div>
+    <div>0812-3456-7890 &middot; info@arkanet.co.id</div>
+    <div>&copy; 2026 Arkanet</div>
+  </div>
+</footer>
+
+</body>
+</html>

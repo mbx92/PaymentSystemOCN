@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NetVision Security — Solusi Jaringan & CCTV Profesional</title>
+<style>
+  :root{
+    --bg:#0b1120; --bg2:#111a2e; --card:#16213b;
+    --accent:#22d3ee; --accent2:#0ea5e9;
+    --text:#e2e8f0; --muted:#94a3b8;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',system-ui,sans-serif}
+  body{background:var(--bg);color:var(--text);line-height:1.6}
+  a{text-decoration:none;color:inherit}
+  .container{max-width:1100px;margin:0 auto;padding:0 24px}
+
+  /* Nav */
+  nav{position:sticky;top:0;background:rgba(11,17,32,.9);backdrop-filter:blur(10px);border-bottom:1px solid #1e293b;z-index:100}
+  .nav-inner{display:flex;justify-content:space-between;align-items:center;height:68px}
+  .logo{font-size:1.3rem;font-weight:800}
+  .logo span{color:var(--accent)}
+  .nav-links{display:flex;gap:28px;font-size:.95rem}
+  .nav-links a:hover{color:var(--accent)}
+  .btn{display:inline-block;padding:12px 28px;border-radius:8px;font-weight:600;transition:.2s}
+  .btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#0b1120}
+  .btn-primary:hover{opacity:.85;transform:translateY(-2px)}
+  .btn-outline{border:1px solid var(--accent);color:var(--accent)}
+  .btn-outline:hover{background:var(--accent);color:#0b1120}
+
+  /* Hero */
+  .hero{padding:90px 0;background:
+    radial-gradient(600px 300px at 80% 20%, rgba(34,211,238,.12), transparent),
+    radial-gradient(500px 300px at 10% 80%, rgba(14,165,233,.1), transparent)}
+  .hero-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:48px;align-items:center}
+  .badge{display:inline-block;background:rgba(34,211,238,.12);color:var(--accent);padding:6px 16px;border-radius:99px;font-size:.85rem;margin-bottom:20px}
+  h1{font-size:2.8rem;line-height:1.15;margin-bottom:20px}
+  h1 span{color:var(--accent)}
+  .hero p{color:var(--muted);font-size:1.1rem;margin-bottom:32px}
+  .hero-cta{display:flex;gap:16px;flex-wrap:wrap}
+  .hero-visual{background:var(--card);border:1px solid #1e293b;border-radius:16px;padding:32px;text-align:center}
+  .hero-visual .icon{font-size:4rem}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:24px}
+  .stat{background:var(--bg2);border-radius:10px;padding:16px}
+  .stat b{display:block;font-size:1.5rem;color:var(--accent)}
+  .stat small{color:var(--muted)}
+
+  /* Sections */
+  section{padding:80px 0}
+  .section-title{text-align:center;margin-bottom:48px}
+  .section-title h2{font-size:2rem;margin-bottom:12px}
+  .section-title p{color:var(--muted)}
+
+  .services{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+  .card{background:var(--card);border:1px solid #1e293b;border-radius:14px;padding:32px 24px;transition:.2s}
+  .card:hover{border-color:var(--accent);transform:translateY(-4px)}
+  .card .icon{font-size:2.2rem;margin-bottom:16px}
+  .card h3{margin-bottom:10px;font-size:1.15rem}
+  .card p{color:var(--muted);font-size:.95rem}
+
+  /* Why */
+  .why{background:var(--bg2)}
+  .why-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:24px;text-align:center}
+  .why-item .icon{font-size:2rem;margin-bottom:12px}
+  .why-item h4{margin-bottom:8px}
+  .why-item p{color:var(--muted);font-size:.9rem}
+
+  /* Pricing */
+  .pricing{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+  .price-card{background:var(--card);border:1px solid #1e293b;border-radius:14px;padding:36px 28px;text-align:center;position:relative}
+  .price-card.featured{border-color:var(--accent);transform:scale(1.04)}
+  .tag{position:absolute;top:-14px;left:50%;transform:translateX(-50%);background:var(--accent);color:#0b1120;font-size:.78rem;font-weight:700;padding:5px 16px;border-radius:99px}
+  .price-card h3{margin-bottom:6px}
+  .price{font-size:2rem;font-weight:800;color:var(--accent);margin:16px 0}
+  .price small{font-size:.9rem;color:var(--muted);font-weight:400}
+  .price-card ul{list-style:none;text-align:left;margin:20px 0 28px;color:var(--muted);font-size:.93rem}
+  .price-card li{padding:7px 0;border-bottom:1px dashed #1e293b}
+  .price-card li::before{content:"✓ ";color:var(--accent);font-weight:700}
+
+  /* CTA */
+  .cta-band{background:linear-gradient(135deg,#0e7490,#0ea5e9);border-radius:18px;padding:56px 40px;text-align:center}
+  .cta-band h2{font-size:1.9rem;margin-bottom:12px}
+  .cta-band p{margin-bottom:28px;color:#e0f2fe}
+  .cta-band .btn{background:#0b1120;color:#fff}
+
+  footer{border-top:1px solid #1e293b;padding:40px 0;text-align:center;color:var(--muted);font-size:.9rem}
+  footer .logo{margin-bottom:10px}
+
+  .wa-float{position:fixed;bottom:24px;right:24px;background:#25d366;color:#fff;width:58px;height:58px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.8rem;box-shadow:0 6px 20px rgba(0,0,0,.4);z-index:200}
+
+  @media(max-width:800px){
+    .hero-grid,.services,.why-grid,.pricing{grid-template-columns:1fr}
+    h1{font-size:2rem}
+    .nav-links{display:none}
+    .price-card.featured{transform:none}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="container nav-inner">
+    <div class="logo">Net<span>Vision</span></div>
+    <div class="nav-links">
+      <a href="#layanan">Layanan</a>
+      <a href="#keunggulan">Keunggulan</a>
+      <a href="#paket">Paket</a>
+      <a href="#kontak">Kontak</a>
+    </div>
+    <a href="https://wa.me/6281234567890" class="btn btn-primary">Konsultasi Gratis</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="container hero-grid">
+    <div>
+      <span class="badge"><svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="9" r="5.5"/><path d="M8.5 13.5 7 21l5-2.5L17 21l-1.5-7.5"/></svg> Teknisi Bersertifikat &amp; Bergaransi</span>
+      <h1>Solusi <span>Jaringan & CCTV</span> untuk Rumah dan Bisnis Anda</h1>
+      <p>Instalasi jaringan internet, WiFi, dan sistem keamanan CCTV profesional. Pantau properti Anda 24 jam dari mana saja lewat smartphone.</p>
+      <div class="hero-cta">
+        <a href="https://wa.me/6281234567890" class="btn btn-primary">Minta Penawaran</a>
+        <a href="#layanan" class="btn btn-outline">Lihat Layanan</a>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <div class="icon" style="display:flex;gap:14px;justify-content:center"><svg viewBox="0 0 24 24" style="width:2.2rem;height:2.2rem;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8a2 2 0 0 1 2-2h1.5l1-1.5h9l1 1.5H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8Z"/><circle cx="12" cy="13" r="3.5"/></svg><svg viewBox="0 0 24 24" style="width:2.2rem;height:2.2rem;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V6l7-3Z"/></svg><svg viewBox="0 0 24 24" style="width:2.2rem;height:2.2rem;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 8.5a15 15 0 0 1 20 0"/><path d="M5.5 12.5a10 10 0 0 1 13 0"/><path d="M9 16.5a5 5 0 0 1 6 0"/><circle cx="12" cy="20" r="1.1" fill="currentColor" stroke="none"/></svg></div>
+      <div class="stats">
+        <div class="stat"><b>500+</b><small>Proyek Selesai</small></div>
+        <div class="stat"><b>8 Thn</b><small>Pengalaman</small></div>
+        <div class="stat"><b>24/7</b><small>Support</small></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="layanan">
+  <div class="container">
+    <div class="section-title">
+      <h2>Layanan Kami</h2>
+      <p>Solusi lengkap dari instalasi hingga perawatan</p>
+    </div>
+    <div class="services">
+      <div class="card"><div class="icon"><svg viewBox="0 0 24 24" style="width:2rem;height:2rem;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8a2 2 0 0 1 2-2h1.5l1-1.5h9l1 1.5H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8Z"/><circle cx="12" cy="13" r="3.5"/></svg></div><h3>Instalasi CCTV</h3><p>Pemasangan kamera analog & IP camera indoor/outdoor dengan kualitas gambar Full HD hingga 4K, akses via smartphone.</p></div>
+      <div class="card"><div class="icon"><svg viewBox="0 0 24 24" style="width:2rem;height:2rem;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 8.5a15 15 0 0 1 20 0"/><path d="M5.5 12.5a10 10 0 0 1 13 0"/><path d="M9 16.5a5 5 0 0 1 6 0"/><circle cx="12" cy="20" r="1.1" fill="currentColor" stroke="none"/></svg></div><h3>Jaringan LAN &amp; WiFi</h3><p>Instalasi kabel LAN, setup router, access point, dan optimalisasi jaringan untuk kantor, sekolah, hotel, dan pabrik.</p></div>
+      <div class="card"><div class="icon"><svg viewBox="0 0 24 24" style="width:2rem;height:2rem;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><circle cx="7" cy="7" r="0.8" fill="currentColor" stroke="none"/><circle cx="7" cy="17" r="0.8" fill="currentColor" stroke="none"/></svg></div><h3>Server &amp; Mikrotik</h3><p>Konfigurasi server, manajemen bandwidth Mikrotik, VLAN, VPN, dan hotspot voucher untuk bisnis RT/RW Net.</p></div>
+      <div class="card"><div class="icon"><svg viewBox="0 0 24 24" style="width:2rem;height:2rem;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.8 2.8-2-2 2.8-2.8Z"/></svg></div><h3>Maintenance &amp; Perbaikan</h3><p>Kontrak perawatan berkala CCTV dan jaringan, serta perbaikan cepat saat terjadi gangguan.</p></div>
+      <div class="card"><div class="icon"><svg viewBox="0 0 24 24" style="width:2rem;height:2rem;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="3" width="14" height="18" rx="1"/><circle cx="14.5" cy="12" r="0.9" fill="currentColor" stroke="none"/></svg></div><h3>Access Control</h3><p>Sistem akses pintu fingerprint, kartu RFID, dan face recognition terintegrasi dengan CCTV.</p></div>
+      <div class="card"><div class="icon"><svg viewBox="0 0 24 24" style="width:2rem;height:2rem;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="5.5" cy="18.5" r="1.5" fill="currentColor" stroke="none"/><path d="M8 14a6 6 0 0 1 6-6"/><path d="M8 18a10 10 0 0 1 10-10"/><path d="M8 22a14 14 0 0 1 14-14"/></svg></div><h3>Fiber Optic</h3><p>Instalasi dan splicing kabel fiber optic untuk koneksi antar gedung yang stabil dan cepat.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="keunggulan" class="why">
+  <div class="container">
+    <div class="section-title">
+      <h2>Kenapa Memilih Kami?</h2>
+      <p>Kepercayaan ratusan klien adalah prioritas kami</p>
+    </div>
+    <div class="why-grid">
+      <div class="why-item"><div class="icon"><svg viewBox="0 0 24 24" style="width:1.8rem;height:1.8rem;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="9" r="5.5"/><path d="M8.5 13.5 7 21l5-2.5L17 21l-1.5-7.5"/></svg></div><h4>Teknisi Berpengalaman</h4><p>Tim bersertifikat dengan pengalaman 8+ tahun di bidangnya.</p></div>
+      <div class="why-item"><div class="icon"><svg viewBox="0 0 24 24" style="width:1.8rem;height:1.8rem;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V6l7-3Z"/></svg></div><h4>Garansi Resmi</h4><p>Garansi pemasangan 1 tahun dan garansi produk resmi distributor.</p></div>
+      <div class="why-item"><div class="icon"><svg viewBox="0 0 24 24" style="width:1.8rem;height:1.8rem;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M9.5 15.5c0 1 1 1.8 2.5 1.8s2.5-.8 2.5-1.8c0-2.4-5-1.4-5-3.8 0-1 1-1.8 2.5-1.8s2.5.8 2.5 1.8"/></svg></div><h4>Harga Transparan</h4><p>Survey dan penawaran gratis, tanpa biaya tersembunyi.</p></div>
+      <div class="why-item"><div class="icon"><svg viewBox="0 0 24 24" style="width:1.8rem;height:1.8rem;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 3 14h6l-1 8 10-13h-6l1-7Z"/></svg></div><h4>Respon Cepat</h4><p>Layanan darurat siap datang dalam hitungan jam.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="paket">
+  <div class="container">
+    <div class="section-title">
+      <h2>Paket CCTV Populer</h2>
+      <p>Sudah termasuk kamera, DVR/NVR, hard disk, kabel, dan instalasi</p>
+    </div>
+    <div class="pricing">
+      <div class="price-card">
+        <h3>Paket Hemat</h3>
+        <div class="price">Rp 2,5 Jt<small>/paket</small></div>
+        <ul>
+          <li>2 Kamera 2MP Full HD</li>
+          <li>DVR 4 Channel</li>
+          <li>HDD 500GB</li>
+          <li>Akses via Smartphone</li>
+          <li>Garansi 1 Tahun</li>
+        </ul>
+        <a href="https://wa.me/6281234567890" class="btn btn-outline">Pilih Paket</a>
+      </div>
+      <div class="price-card featured">
+        <span class="tag">PALING LARIS</span>
+        <h3>Paket Bisnis</h3>
+        <div class="price">Rp 4,8 Jt<small>/paket</small></div>
+        <ul>
+          <li>4 Kamera 2MP Full HD</li>
+          <li>DVR 8 Channel</li>
+          <li>HDD 1TB</li>
+          <li>Akses via Smartphone</li>
+          <li>Gratis Maintenance 3 Bulan</li>
+          <li>Garansi 1 Tahun</li>
+        </ul>
+        <a href="https://wa.me/6281234567890" class="btn btn-primary">Pilih Paket</a>
+      </div>
+      <div class="price-card">
+        <h3>Paket Pro IP Cam</h3>
+        <div class="price">Rp 8,9 Jt<small>/paket</small></div>
+        <ul>
+          <li>4 IP Camera 4MP</li>
+          <li>NVR 8 Channel PoE</li>
+          <li>HDD 2TB</li>
+          <li>Night Vision Color</li>
+          <li>Gratis Maintenance 6 Bulan</li>
+          <li>Garansi 1 Tahun</li>
+        </ul>
+        <a href="https://wa.me/6281234567890" class="btn btn-outline">Pilih Paket</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="kontak">
+  <div class="container">
+    <div class="cta-band">
+      <h2>Butuh Survey Lokasi? Gratis!</h2>
+      <p>Hubungi kami sekarang, tim kami siap membantu menentukan solusi terbaik untuk kebutuhan Anda.</p>
+      <a href="https://wa.me/6281234567890" class="btn"><svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v11H8l-4 4V5Z"/></svg> Chat WhatsApp: 0812-3456-7890</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <div class="logo">Net<span style="color:var(--accent)">Vision</span></div>
+    <p>Jl. Contoh Raya No. 123, Denpasar, Bali · info@netvision.co.id</p>
+    <p>© 2026 NetVision Security. All rights reserved.</p>
+  </div>
+</footer>
+
+<a href="https://wa.me/6281234567890" class="wa-float" aria-label="WhatsApp"><svg viewBox="0 0 24 24" style="width:1.6rem;height:1.6rem;vertical-align:-0.15em" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v11H8l-4 4V5Z"/></svg></a>
+
+</body>
+</html>
