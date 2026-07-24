@@ -21,9 +21,7 @@ class SupplierCatalogTest extends TestCase
     public function test_catalog_csv_is_parsed_with_supplier_codes_and_prices(): void
     {
         $csv = <<<'CSV'
-PL TUNAS JAYA ELEKTRONIK,,,
-,TIANDY,,
-kode item,NAMA ITEM,JENIS,HARGA
+PL TUNAS JAYA ELEKTRONIK kode item,TIANDY NAMA ITEM,JENIS,HARGA
 IPCPTZTIA001,IPCAM PTZ TIANDY TC-H324S,IP CAMERA PTZ,"Rp2,800,000"
 IPCTIA001,IPCAM TURRET INDOOR,IP CAMERA,"Rp440,000"
 CSV;
@@ -36,6 +34,39 @@ CSV;
         $this->assertSame('IPCAM PTZ TIANDY TC-H324S', $items[0]['name']);
         $this->assertSame(2800000.0, $items[0]['supplier_price']);
         $this->assertSame('tiandy:IPCPTZTIA001', $items[0]['ref']);
+    }
+
+    public function test_catalog_csv_skips_section_headers_without_item_code(): void
+    {
+        $csv = <<<'CSV'
+PL TUNAS JAYA ELEKTRONIK KABEL LAN kode item,NAMA ITEM,JENIS,HARGA
+KBLLNBLD001ROLL,KABEL LAN BELDEN CAT 6,KABEL LAN,"Rp2,850,000"
+,KABEL RG,,
+KBLRG59CLN001ROLL,KABEL RG 59 + POWER COLAN BLACK,KABEL RG 59 + POWER,"Rp900,000"
+CSV;
+
+        $service = app(SupplierCatalogService::class);
+        $items = $service->parseCsv($csv, ['key' => 'kabel-lan-rg', 'label' => 'KABEL LAN / RG']);
+
+        $this->assertCount(2, $items);
+        $this->assertSame('KBLLNBLD001ROLL', $items[0]['code']);
+        $this->assertSame('KBLRG59CLN001ROLL', $items[1]['code']);
+    }
+
+    public function test_sheet_rows_parser_handles_jenis_item_header(): void
+    {
+        $rows = [
+            ['PL TUNAS JAYA ELEKTRONIK HIKVISION ANALOG CAMERA DAN DVR kode item', 'NAMA ITEM', 'JENIS ITEM ', 'HARGA'],
+            ['CAMHK002', 'DS-2CE10DF0T-LPFS (HIKVISION CAMERA OUTDOOR 2MP AUDIO COLORVU)', 'CAMERA', 'Rp455,000'],
+        ];
+
+        $service = app(SupplierCatalogService::class);
+        $items = $service->parseSheetRows($rows, ['key' => 'hikvision-analog-dvr', 'label' => 'HIKVISION ANALOG & DVR']);
+
+        $this->assertCount(1, $items);
+        $this->assertSame('CAMHK002', $items[0]['code']);
+        $this->assertSame('CAMERA', $items[0]['category']);
+        $this->assertSame(455000.0, $items[0]['supplier_price']);
     }
 
     public function test_mark_deal_promotes_catalog_items_to_master_products(): void
@@ -219,17 +250,33 @@ CSV;
     public function test_sheet_rows_parser_handles_hikvision_column_layout(): void
     {
         $rows = [
-            ['PL TUNAS JAYA ELEKTRONIK HIKVISION kode item', '', 'NAMA ITEM', 'HARGA'],
+            ['PL TUNAS JAYA ELEKTRONIK HIKVISION ACCES CONTROL kode item', 'NAMA ITEM', 'JENIS', 'HARGA'],
             ['ACHK003', 'DS-K1T342MFX (CARD,FINGER,FACE)', 'ACCES CONTROL', 'Rp2,341,000'],
         ];
 
         $service = app(SupplierCatalogService::class);
-        $items = $service->parseSheetRows($rows, ['key' => 'hikvision', 'label' => 'HIKVISION']);
+        $items = $service->parseSheetRows($rows, ['key' => 'hikvision-access-poe', 'label' => 'HIKVISION ACCESS / POE / PSU']);
 
         $this->assertCount(1, $items);
         $this->assertSame('ACHK003', $items[0]['code']);
         $this->assertSame('DS-K1T342MFX (CARD,FINGER,FACE)', $items[0]['name']);
         $this->assertSame(2341000.0, $items[0]['supplier_price']);
+    }
+
+    public function test_sheet_rows_parser_handles_mislabeled_price_as_jenis(): void
+    {
+        $rows = [
+            ['PL TUNAS JAYA ELEKTRONIK MERCUSYS kode item', 'NAMA ITEM', 'JENIS', 'JENIS'],
+            ['RTRMCS001', 'ROUTER MERCUSYS MB110 N300 WIFI 4G LTE', 'ROUTER', 'Rp450,000'],
+        ];
+
+        $service = app(SupplierCatalogService::class);
+        $items = $service->parseSheetRows($rows, ['key' => 'mercusys-huawei', 'label' => 'MERCUSYS & HUAWEI']);
+
+        $this->assertCount(1, $items);
+        $this->assertSame('RTRMCS001', $items[0]['code']);
+        $this->assertSame('ROUTER', $items[0]['category']);
+        $this->assertSame(450000.0, $items[0]['supplier_price']);
     }
 
     public function test_catalog_sheets_api_returns_configured_brands(): void
@@ -242,9 +289,9 @@ CSV;
             ->actingAs($user)
             ->getJson('/api/supplier-catalog/sheets')
             ->assertOk()
-            ->assertJsonPath('sheets.0.key', 'hikvision')
-            ->assertJsonPath('sheets.4.key', 'tiandy')
-            ->assertJsonFragment(['label' => 'TIANDY']);
+            ->assertJsonPath('sheets.0.key', 'hikvision-analog-dvr')
+            ->assertJsonFragment(['key' => 'tiandy', 'label' => 'TIANDY'])
+            ->assertJsonFragment(['key' => 'kabel-lan-rg', 'label' => 'KABEL LAN / RG']);
     }
 
     public function test_catalog_sync_endpoint_syncs_all_sheets(): void

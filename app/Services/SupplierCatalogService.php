@@ -11,7 +11,7 @@ use RuntimeException;
 class SupplierCatalogService
 {
     /**
-     * @return list<array{key: string, label: string, sheet_name: string}>
+     * @return list<array{key: string, label: string, sheet_name: string, gid: string|null}>
      */
     public function sheets(): array
     {
@@ -20,6 +20,7 @@ class SupplierCatalogService
                 'key' => (string) $sheet['key'],
                 'label' => (string) $sheet['label'],
                 'sheet_name' => (string) $sheet['sheet_name'],
+                'gid' => isset($sheet['gid']) ? (string) $sheet['gid'] : null,
             ],
             config('supplier_catalog.sheets', []),
         ));
@@ -130,7 +131,7 @@ class SupplierCatalogService
     }
 
     /**
-     * @return array{key: string, label: string, sheet_name: string}|null
+     * @return array{key: string, label: string, sheet_name: string, gid: string|null}|null
      */
     public function findSheet(string $sheetKey): ?array
     {
@@ -140,6 +141,7 @@ class SupplierCatalogService
                     'key' => (string) $sheet['key'],
                     'label' => (string) $sheet['label'],
                     'sheet_name' => (string) $sheet['sheet_name'],
+                    'gid' => isset($sheet['gid']) ? (string) $sheet['gid'] : null,
                 ];
             }
         }
@@ -148,7 +150,7 @@ class SupplierCatalogService
     }
 
     /**
-     * @param  array{key: string, label: string, sheet_name: string}  $sheet
+     * @param  array{key: string, label: string, sheet_name: string, gid?: string|null}  $sheet
      * @return list<array{
      *     ref: string,
      *     code: string,
@@ -162,19 +164,31 @@ class SupplierCatalogService
      */
     private function fetchAndParseSheet(array $sheet): array
     {
-        $csv = $this->fetchSheetCsv($sheet['sheet_name']);
+        $csv = $this->fetchSheetCsv($sheet);
 
         return $this->parseCsv($csv, $sheet);
     }
 
-    private function fetchSheetCsv(string $sheetName): string
+    /**
+     * @param  array{key: string, label: string, sheet_name: string, gid?: string|null}  $sheet
+     */
+    private function fetchSheetCsv(array $sheet): string
     {
         $spreadsheetId = (string) config('supplier_catalog.spreadsheet_id');
-        $url = sprintf(
-            'https://docs.google.com/spreadsheets/d/%s/gviz/tq?tqx=out:csv&sheet=%s',
-            $spreadsheetId,
-            rawurlencode($sheetName),
-        );
+        $sheetName = (string) ($sheet['sheet_name'] ?? '');
+        $gid = $sheet['gid'] ?? null;
+
+        $url = $gid
+            ? sprintf(
+                'https://docs.google.com/spreadsheets/d/%s/gviz/tq?tqx=out:csv&gid=%s',
+                $spreadsheetId,
+                rawurlencode((string) $gid),
+            )
+            : sprintf(
+                'https://docs.google.com/spreadsheets/d/%s/gviz/tq?tqx=out:csv&sheet=%s',
+                $spreadsheetId,
+                rawurlencode($sheetName),
+            );
 
         $response = Http::timeout(30)->get($url);
         if (! $response->successful()) {
@@ -225,9 +239,10 @@ class SupplierCatalogService
                     $columnMap['code'] = $colIndex;
                 } elseif (Str::contains($header, 'nama item')) {
                     $columnMap['name'] = $colIndex;
-                } elseif ($header === 'jenis') {
+                } elseif (Str::contains($header, 'jenis') && ! isset($columnMap['category'])) {
+                    // "JENIS" / "JENIS ITEM" — ambil kolom jenis pertama saja
                     $columnMap['category'] = $colIndex;
-                } elseif ($header === 'harga') {
+                } elseif ($header === 'harga' || Str::contains($header, 'harga')) {
                     $columnMap['price'] = $colIndex;
                 }
             }
@@ -253,8 +268,9 @@ class SupplierCatalogService
 
             [$code, $name, $category, $supplierPrice] = $parsed;
 
+            // Baris section header (mis. "KABEL RG") tanpa kode item diabaikan
             if ($code === '') {
-                $code = Str::upper(Str::slug($name, '-'));
+                continue;
             }
 
             $items[] = [
@@ -278,18 +294,37 @@ class SupplierCatalogService
     private function rowHasCatalogHeader(array $normalizedRow): bool
     {
         $hasName = false;
-        $hasCodeOrPrice = false;
+        $hasCode = false;
+        $hasPrice = false;
 
         foreach ($normalizedRow as $header) {
             if (Str::contains($header, 'nama item')) {
                 $hasName = true;
             }
-            if (Str::contains($header, 'kode item') || $header === 'harga') {
-                $hasCodeOrPrice = true;
+            if (Str::contains($header, 'kode item') || $header === 'kode') {
+                $hasCode = true;
+            }
+            if ($header === 'harga' || Str::contains($header, 'harga')) {
+                $hasPrice = true;
             }
         }
 
-        return $hasName && $hasCodeOrPrice;
+        // Header PL baru: kode + nama (+ harga atau jenis). Beberapa tab salah label harga sebagai "JENIS".
+        return $hasName && $hasCode && ($hasPrice || in_array('jenis', $normalizedRow, true) || $this->rowContainsJenisHeader($normalizedRow));
+    }
+
+    /**
+     * @param  list<string>  $normalizedRow
+     */
+    private function rowContainsJenisHeader(array $normalizedRow): bool
+    {
+        foreach ($normalizedRow as $header) {
+            if (Str::contains($header, 'jenis')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
