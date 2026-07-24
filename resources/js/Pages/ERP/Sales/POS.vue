@@ -436,7 +436,7 @@ const openReceiptPreview = () => {
   document.getElementById('modal-pos-receipt').showModal();
 };
 const receiptLines = computed(() => (lastReceipt.value?.lines?.length ? lastReceipt.value.lines : cart.value));
-const canDirectPrintFromPreview = computed(() => !lastReceipt.value?.number);
+const canDirectPrintFromPreview = computed(() => !!lastReceipt.value?.number);
 
 const printReceipt = async () => {
   if (!lastReceipt.value?.number || printingReceipt.value) {

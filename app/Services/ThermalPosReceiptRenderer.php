@@ -4,22 +4,33 @@ namespace App\Services;
 
 final class ThermalPosReceiptRenderer
 {
+    /**
+     * Placeholder header yang selalu dianggap "data transaksi" dan dipaksa rata kiri,
+     * apa pun pengaturan header_align (yang hanya berlaku untuk baris judul/nama toko).
+     */
+    private const HEADER_META_PLACEHOLDERS = [
+        '{{transaction_number}}',
+        '{{date}}',
+        '{{time}}',
+        '{{payment_method}}',
+        '{{cashier}}',
+    ];
+
     public function defaultHeaderTemplate(): string
     {
         return "{{app_name}}\n"
             ."STRUK PENJUALAN\n"
             ."\n"
-            ."Nomor Transaksi: {{transaction_number}}\n"
-            ."Tanggal: {{date}}\n"
-            ."Waktu: {{time}}\n"
-            ."Metode Pembayaran: {{payment_method}}\n"
+            ."No: {{transaction_number}}\n"
+            ."Tanggal: {{date}} {{time}}\n"
+            ."Metode: {{payment_method}}\n"
             .'Kasir: {{cashier}}';
     }
 
     public function defaultItemLineTemplate(): string
     {
-        return "{{item_padded_line}}\n"
-            .'{{unit_price}} / {{uom}}';
+        return "{{item_number}}. {{name}}\n"
+            .'  {{item_qty_price_total_line}}';
     }
 
     public function defaultFooterTemplate(): string
@@ -75,15 +86,16 @@ final class ThermalPosReceiptRenderer
 
         $segments = [];
 
-        $headerGroups = $this->splitHeaderLineGroups($this->expandMultiline($this->replaceScalars($header, $data, $lineCols)));
+        $headerLines = $this->alignHeaderMetaLabels($this->expandMultiline($header));
+        $headerGroups = $this->buildHeaderLineGroups($headerLines, $data, $lineCols, $headerAlign);
         foreach ($headerGroups as $idx => $group) {
             if ($idx > 0) {
                 $segments[] = ['type' => 'spacer', 'count' => 1];
             }
             $segments[] = [
                 'type' => 'lines',
-                'align' => $idx === 0 ? $headerAlign : 'left',
-                'lines' => $this->mapLines($group, $lineCols),
+                'align' => $group['align'],
+                'lines' => $this->mapLines($group['lines'], $lineCols),
                 'double_height_first' => $emphasis && $idx === 0,
             ];
         }
@@ -92,12 +104,12 @@ final class ThermalPosReceiptRenderer
         $segments[] = ['type' => 'separator'];
         $segments = array_merge($segments, $this->spacerSegments($gap));
 
-        foreach ($data->lines as $row) {
-            $rawLines = $this->expandMultiline($this->replaceItemLine($itemLine, $row, $lineCols));
+        foreach ($data->lines as $idx => $row) {
+            $itemLines = $this->buildItemLines($itemLine, $row, $lineCols, $idx + 1);
             $segments[] = [
                 'type' => 'lines',
                 'align' => $itemAlign,
-                'lines' => $this->mapLines($rawLines, $lineCols),
+                'lines' => $this->mapLines($itemLines, $lineCols),
                 'double_height_first' => false,
             ];
         }
@@ -130,32 +142,96 @@ final class ThermalPosReceiptRenderer
     }
 
     /**
-     * Baris header kosong pertama memisahkan blok judul (rata sesuai pengaturan) dan blok meta (selalu kiri).
+     * Kelompokkan baris header jadi segmen rata kiri/tengah/kanan berdasarkan isinya, bukan posisi baris
+     * kosong: baris yang memuat placeholder data transaksi ({{transaction_number}}, {{date}}, dst) selalu
+     * dipaksa rata kiri, baris lain (nama toko/judul) memakai header_align. Baris kosong pada template hanya
+     * jadi jarak (spacer) antar segmen dan tidak ikut menentukan perataan.
      *
-     * @param  list<string>  $lines
-     * @return list<list<string>>
+     * @param  list<string>  $rawLines  baris template asli (sebelum substitusi placeholder)
+     * @return list<array{align: 'left'|'center'|'right', lines: list<string>}>
      */
-    private function splitHeaderLineGroups(array $lines): array
+    private function buildHeaderLineGroups(array $rawLines, ThermalPosReceiptData $data, int $cols, string $headerAlign): array
     {
         $groups = [];
         $buf = [];
-        foreach ($lines as $ln) {
-            if ($ln === '' && $buf !== []) {
-                $groups[] = $buf;
-                $buf = [];
+        $bufAlign = null;
+
+        foreach ($rawLines as $rawLine) {
+            if (trim($rawLine) === '') {
+                if ($buf !== []) {
+                    $groups[] = ['align' => $bufAlign, 'lines' => $buf];
+                    $buf = [];
+                    $bufAlign = null;
+                }
 
                 continue;
             }
-            if ($ln === '' && $buf === []) {
-                continue;
+
+            $align = $this->isHeaderMetaLine($rawLine) ? 'left' : $headerAlign;
+            if ($buf !== [] && $bufAlign !== $align) {
+                $groups[] = ['align' => $bufAlign, 'lines' => $buf];
+                $buf = [];
             }
-            $buf[] = $ln;
+            $bufAlign = $align;
+            $buf[] = $this->replaceScalars($rawLine, $data, $cols);
         }
         if ($buf !== []) {
-            $groups[] = $buf;
+            $groups[] = ['align' => $bufAlign, 'lines' => $buf];
         }
 
-        return $groups !== [] ? $groups : [[]];
+        return $groups !== [] ? $groups : [['align' => $headerAlign, 'lines' => []]];
+    }
+
+    /**
+     * Ratakan tanda titik-dua antar baris data transaksi ("No:", "Tanggal:", "Metode:", ...) dengan menyamakan
+     * lebar label ke label terpanjang, supaya kolonnya sejajar satu sama lain. Baris non-meta atau baris meta
+     * tanpa titik-dua (mis. hasil kustomisasi admin tanpa label) dibiarkan apa adanya.
+     *
+     * @param  list<string>  $rawLines
+     * @return list<string>
+     */
+    private function alignHeaderMetaLabels(array $rawLines): array
+    {
+        $labelWidths = [];
+        $splitByIndex = [];
+
+        foreach ($rawLines as $i => $line) {
+            if (! $this->isHeaderMetaLine($line)) {
+                continue;
+            }
+            $pos = strpos($line, ':');
+            if ($pos === false) {
+                continue;
+            }
+            $label = rtrim(substr($line, 0, $pos));
+            if ($label === '') {
+                continue;
+            }
+            $splitByIndex[$i] = [$label, ltrim(substr($line, $pos + 1))];
+            $labelWidths[] = strlen($label);
+        }
+
+        if ($labelWidths === []) {
+            return $rawLines;
+        }
+
+        $width = max($labelWidths);
+        foreach ($splitByIndex as $i => [$label, $value]) {
+            $rawLines[$i] = str_pad($label, $width).': '.$value;
+        }
+
+        return $rawLines;
+    }
+
+    private function isHeaderMetaLine(string $rawLine): bool
+    {
+        foreach (self::HEADER_META_PLACEHOLDERS as $token) {
+            if (str_contains($rawLine, $token)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -312,9 +388,59 @@ final class ThermalPosReceiptRenderer
     }
 
     /**
+     * Placeholder yang sudah dipadding penuh ke lebar kolom (kolom kiri + kolom kanan rata).
+     * Spasi yang diketik admin di depan placeholder ini pada template dianggap margin/indent baris
+     * tersebut — lebar isinya otomatis dikurangi sebesar indent itu supaya tetap muat di kolom kertas.
+     */
+    private const PADDED_LINE_PLACEHOLDERS = [
+        '{{item_qty_price_total_line}}',
+        '{{item_padded_line}}',
+    ];
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return list<string>
+     */
+    private function buildItemLines(string $template, array $row, int $contentCols, int $itemNumber): array
+    {
+        $rawLines = preg_split("/\r\n|\n|\r/", $template) ?: [];
+        $lines = [];
+
+        foreach ($rawLines as $rawLine) {
+            $indent = $this->paddedLinePlaceholderIndent($rawLine);
+            if ($indent !== null) {
+                $budget = max(4, $contentCols - $indent);
+                $substituted = $this->replaceItemLine(trim($rawLine), $row, $budget, $itemNumber);
+                $lines[] = str_repeat(' ', $indent).$substituted;
+
+                continue;
+            }
+
+            $lines[] = trim($this->replaceItemLine($rawLine, $row, $contentCols, $itemNumber));
+        }
+
+        return $lines;
+    }
+
+    /**
+     * Jumlah spasi/tab di depan salah satu placeholder baris-terpadding, kalau baris ini memang hanya
+     * berisi placeholder itu (boleh diapit spasi). Null kalau baris bukan baris placeholder terpadding.
+     */
+    private function paddedLinePlaceholderIndent(string $rawLine): ?int
+    {
+        foreach (self::PADDED_LINE_PLACEHOLDERS as $token) {
+            if (trim($rawLine) === $token) {
+                return strlen($rawLine) - strlen(ltrim($rawLine, " \t"));
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @param  array<string, mixed>  $row
      */
-    private function replaceItemLine(string $text, array $row, int $contentCols): string
+    private function replaceItemLine(string $text, array $row, int $contentCols, int $itemNumber): string
     {
         $sku = (string) ($row['sku'] ?? '');
         $name = (string) ($row['name'] ?? '');
@@ -328,7 +454,8 @@ final class ThermalPosReceiptRenderer
         }
 
         $qtyStr = (string) $qty;
-        $leftRaw = ' '.$qtyStr.' x '.$name;
+        $leftPaddedLine = ' '.$qtyStr.' x '.$name;
+        $leftQtyPrice = ' '.$qtyStr.' x '.$unit;
 
         $map = [
             '{{sku}}' => $sku,
@@ -339,7 +466,9 @@ final class ThermalPosReceiptRenderer
             '{{uom}}' => $uom,
             '{{satuan}}' => $uom,
             '{{discount_percent}}' => (string) $disc,
-            '{{item_padded_line}}' => $this->padLeftRightThermal($leftRaw, $total, $contentCols),
+            '{{item_number}}' => (string) $itemNumber,
+            '{{item_padded_line}}' => $this->padLeftRightThermal($leftPaddedLine, $total, $contentCols),
+            '{{item_qty_price_total_line}}' => $this->padLeftRightThermal($leftQtyPrice, $total, $contentCols),
         ];
 
         return strtr($text, $map);
